@@ -112,7 +112,56 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
     }
   }
 
+  private async ensurePersistentVolume(userId: string): Promise<void> {
+    const pvcName = `peerbot-user-workspace-${userId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`;
+    
+    try {
+      // Check if PVC already exists
+      await this.coreV1Api.readNamespacedPersistentVolumeClaim(
+        pvcName,
+        this.config.kubernetes.namespace
+      );
+      console.log(`✅ PVC already exists: ${pvcName}`);
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        // PVC doesn't exist, create it
+        const pvc = {
+          apiVersion: 'v1',
+          kind: 'PersistentVolumeClaim',
+          metadata: {
+            name: pvcName,
+            namespace: this.config.kubernetes.namespace,
+            labels: {
+              'app.kubernetes.io/name': 'peerbot',
+              'app.kubernetes.io/component': 'user-workspace',
+              'peerbot.io/user-id': userId
+            }
+          },
+          spec: {
+            accessModes: ['ReadWriteOnce'],
+            resources: {
+              requests: {
+                storage: '10Gi'
+              }
+            }
+          }
+        };
+        
+        await this.coreV1Api.createNamespacedPersistentVolumeClaim(
+          this.config.kubernetes.namespace,
+          pvc
+        );
+        console.log(`✅ Created PVC: ${pvcName}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
   async createDeployment(deploymentName: string, username: string, userId: string, messageData?: any): Promise<void> {
+    // Ensure the user has a persistent volume for data persistence across pod restarts
+    await this.ensurePersistentVolume(userId);
+    
     const deployment: SimpleDeployment = {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
@@ -267,7 +316,9 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
             }],
             volumes: [{
               name: 'workspace',
-              emptyDir: {}
+              persistentVolumeClaim: {
+                claimName: `peerbot-user-workspace-${userId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`
+              }
             }]
           }
         }
@@ -321,21 +372,10 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       }
     }
 
-    // Delete associated PVC if it exists
-    try {
-      const pvcName = `peerbot-workspace-${deploymentId}`;
-      await this.coreV1Api.deleteNamespacedPersistentVolumeClaim(
-        pvcName,
-        this.config.kubernetes.namespace
-      );
-      console.log(`✅ Deleted PVC: ${pvcName}`);
-    } catch (error: any) {
-      if (error.statusCode === 404) {
-        console.log(`⚠️  PVC for ${deploymentName} not found (already deleted)`);
-      } else {
-        console.log(`⚠️  Failed to delete PVC for ${deploymentName}:`, error.message);
-      }
-    }
+    // Delete associated PVC if it exists (Note: We should NOT delete user PVCs automatically 
+    // as they contain user data across multiple threads - they should only be deleted manually)
+    // const pvcName = `peerbot-user-workspace-${deploymentId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`;
+    console.log(`ℹ️  User PVC preserved for future threads (not auto-deleted): peerbot-user-workspace-${deploymentId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`)
 
     // Delete associated secret if it exists
     try {

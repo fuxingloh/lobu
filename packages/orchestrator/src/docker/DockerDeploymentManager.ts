@@ -121,7 +121,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         },
         HostConfig: {
           Binds: [
-            `${workspaceDir}:/workspace/${userId}`
+            `${workspaceDir}:/workspace`
           ],
           RestartPolicy: {
             Name: 'unless-stopped'
