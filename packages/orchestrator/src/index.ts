@@ -9,11 +9,11 @@ import { config as dotenvConfig } from 'dotenv';
 import { join } from 'path';
 import { spawn } from 'child_process';
 import { OrchestratorConfig, OrchestratorError, ErrorCode } from './types';
-import { DatabasePool } from './database-pool';
+import { DatabasePool } from './db-connection-pool';
 import { BaseDeploymentManager } from './base/BaseDeploymentManager';
 import { K8sDeploymentManager } from './k8s/K8sDeploymentManager';
 import { DockerDeploymentManager } from './docker/DockerDeploymentManager';
-import { QueueConsumer } from './queue-consumer';
+import { QueueConsumer } from './task-queue-consumer';
 
 class PeerbotOrchestrator {
   private config: OrchestratorConfig;

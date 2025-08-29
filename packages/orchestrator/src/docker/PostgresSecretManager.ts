@@ -1,6 +1,6 @@
 import { BaseSecretManager } from '../base/BaseSecretManager';
 import { OrchestratorConfig, OrchestratorError, ErrorCode } from '../types';
-import { DatabasePool } from '../database-pool';
+import { DatabasePool } from '../db-connection-pool';
 
 export class PostgresSecretManager extends BaseSecretManager {
   private dbPool: DatabasePool;

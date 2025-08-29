@@ -7,7 +7,7 @@ import {
   OrchestratorError,
   ErrorCode 
 } from '../types';
-import { DatabasePool } from '../database-pool';
+import { DatabasePool } from '../db-connection-pool';
 
 export class K8sDeploymentManager extends BaseDeploymentManager {
   private appsV1Api: k8s.AppsV1Api;

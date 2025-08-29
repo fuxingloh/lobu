@@ -9,19 +9,19 @@ Peerbot is a Kubernetes-native Slack bot that provides AI-powered coding assista
 ### 🚀 Dispatcher ([`packages/dispatcher/`](packages/dispatcher/))
 **Responsibilities**: Slack integration, session management, job queuing
 - **Socket listener**: [`src/index.ts`](packages/dispatcher/src/index.ts) - Main Slack app server that connects to Slack via Socket Mode
-- **Event Handling**: [`src/slack/event-handlers.ts`](packages/dispatcher/src/slack/event-handlers.ts) - Processes Slack messages/interactions and handles Markdown conversions 
+- **Event Handling**: [`src/slack/slack-event-handlers.ts`](packages/dispatcher/src/slack/slack-event-handlers.ts) - Processes Slack messages/interactions and handles Markdown conversions 
 - **Repository Management**: [`src/github/repository-manager.ts`](packages/dispatcher/src/github/repository-manager.ts) - GitHub repository operations
 
 ### ⚡ Orchestrator ([`packages/orchestrator/`](packages/orchestrator/))
 **Responsibilities**: Queue processing, Kubernetes worker lifecycle, deployment cleanup
 - **Main Service**: [`src/index.ts`](packages/orchestrator/src/index.ts) - Queue consumer and service coordinator
 - **Deployment Manager**: [`src/k8s/K8sDeploymentManager.ts`](packages/orchestrator/src/k8s/K8sDeploymentManager.ts) and [`src/docker/DockerDeploymentManager.ts`](packages/orchestrator/src/docker/DockerDeploymentManager.ts)
-- **Queue Consumer**: [`src/queue-consumer.ts`](packages/orchestrator/src/queue-consumer.ts) - PostgreSQL/pgboss job processing
+- **Queue Consumer**: [`src/task-queue-consumer.ts`](packages/orchestrator/src/task-queue-consumer.ts) - PostgreSQL/pgboss job processing
 
 ### 🔧 Worker ([`packages/worker/`](packages/worker/))
 **Responsibilities**: Claude CLI execution, GitHub integration, progress streaming, MCP process management
 - **Claude Integration**: [`src/claude-worker.ts`](packages/worker/src/claude-worker.ts) - Claude CLI execution and streaming
-- **Queue Integration**: [`src/queue-integration.ts`](packages/worker/src/queue-integration.ts) - Job processing and status updates
+- **Queue Integration**: [`src/task-queue-integration.ts`](packages/worker/src/task-queue-integration.ts) - Job processing and status updates
 - **MCP Process Server**: [`mcp/process-manager-server.ts`](packages/worker/mcp/process-manager-server.ts) - MCP-based process lifecycle management
 
 ## Queue System
@@ -225,5 +225,5 @@ This ensures workers can only access their own thread messages and user data.
 
 - **Local Setup**: [make setup](Makefile) - Interactive configuration wizard
 - **Development Mode**: [`make dev`](Makefile) - Hot reload with Docker
-- **QA Testing**: [`test-bot.js`](test-bot.js) - Automated bot testing tool
+- **QA Testing**: [`slack-qa-bot.js`](slack-qa-bot.js) - Automated bot testing tool
 - **Kubernetes Deployment**: [`make k8s-install`](Makefile) - Deploy to K8s cluster

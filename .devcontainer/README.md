@@ -81,10 +81,10 @@ make dev
 ### Testing
 ```bash
 # Test the bot with a message
-./test-bot.js "Hello, test message"
+./slack-qa-bot.js "Hello, test message"
 
 # Test with timeout
-./test-bot.js "Complex task" --timeout 30
+./slack-qa-bot.js "Complex task" --timeout 30
 ```
 
 ### Development

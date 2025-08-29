@@ -73,7 +73,7 @@ build-worker:
 # Run test bot
 test:
 	@echo "🧪 Running test bot..."
-	@source .env && node test-bot.js --qa
+	@source .env && node slack-qa-bot.js --qa
 # Clean up
 clean:
 	@echo "🧹 Cleaning up..."

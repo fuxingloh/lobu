@@ -2,9 +2,9 @@
 
 import * as Sentry from "@sentry/node";
 import { ClaudeSessionRunner } from "./core";
-import { WorkspaceManager } from "./workspace-setup";
-import { QueueIntegration } from "./queue-integration";
-import { parseClaudeOutput } from "./claude-output-parser";
+import { WorkspaceManager } from "./workspace-manager";
+import { QueueIntegration } from "./task-queue-integration";
+import { parseClaudeOutput } from "./claude-response-parser";
 import type { WorkerConfig } from "./types";
 import logger from "./logger";
 // import { execSync } from "node:child_process";

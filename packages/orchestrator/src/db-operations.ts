@@ -1,4 +1,4 @@
-import { DatabasePool } from './database-pool';
+import { DatabasePool } from './db-connection-pool';
 
 export class DatabaseManager {
   private dbPool: DatabasePool;

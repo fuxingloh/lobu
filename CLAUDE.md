@@ -4,7 +4,7 @@
 - You can check logs with docker to understand the recent behavior the user is asking for.
 - Anytime you make changes in the code, you MUST:
 1. Have the bot running via `make dev` running in the background for development that uses hot reload. If there is `peerbot.log` file in the project root, you can skip this step.
-2. Run ./test-bot.js "Relevant prompt" --timeout [based on complexity change by default 10] and make sure it works properly. If the script fails (including getting stuck at "Starting environment setup"), you MUST fix it.
+2. Run ./slack-qa-bot.js "Relevant prompt" --timeout [based on complexity change by default 10] and make sure it works properly. If the script fails (including getting stuck at "Starting environment setup"), you MUST fix it.
 2. Read the logs from `peerbot.log` to make sure it works properly.
 - If you create ephemeral files, you MUST delete them when you're done with them.
 - Use Docker to build and run the Slack bot in development mode, K8S for production.

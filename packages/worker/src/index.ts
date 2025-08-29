@@ -6,8 +6,8 @@ import { initSentry } from "./sentry";
 // Initialize Sentry monitoring
 initSentry();
 
-import { QueuePersistentClaudeWorker } from "./queue-persistent-worker";
-import { QueueIntegration } from "./queue-integration";
+import { QueuePersistentClaudeWorker } from "./persistent-task-worker";
+import { QueueIntegration } from "./task-queue-integration";
 import logger from "./logger";
 
 // Re-export ClaudeWorker for backward compatibility

@@ -98,7 +98,7 @@ RUN mkdir -p /home/claude/.claude/projects && \
     echo 'export PATH="/home/claude/bin:$PATH"' >> /home/claude/.bashrc
 
 # Copy the entrypoint script and make it executable
-COPY packages/worker/scripts/entrypoint.sh /app/entrypoint.sh
+COPY packages/worker/scripts/worker-entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && \
     chown claude:claude /app/entrypoint.sh
 

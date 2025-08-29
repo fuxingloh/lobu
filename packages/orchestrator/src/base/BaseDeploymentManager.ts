@@ -1,5 +1,5 @@
-import { DatabasePool } from '../database-pool';
-import { DatabaseManager } from '../database-manager';
+import { DatabasePool } from '../db-connection-pool';
+import { DatabaseManager } from '../db-operations';
 import { BaseSecretManager } from './BaseSecretManager';
 import { OrchestratorConfig, OrchestratorError, ErrorCode } from '../types';
 

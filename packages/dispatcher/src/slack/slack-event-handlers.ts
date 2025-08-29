@@ -8,7 +8,7 @@ import type {
   SlackContext, 
   ThreadSession
 } from "../types";
-import { QueueProducer, type WorkerDeploymentPayload, type ThreadMessagePayload } from "../queue/queue-producer";
+import { QueueProducer, type WorkerDeploymentPayload, type ThreadMessagePayload } from "../queue/task-queue-producer";
 import { SessionUtils } from "@claude-code-slack/shared";
 import logger from "../logger";
 

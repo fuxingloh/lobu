@@ -2,7 +2,7 @@ import Docker from 'dockerode';
 import { BaseDeploymentManager, DeploymentInfo } from '../base/BaseDeploymentManager';
 import { PostgresSecretManager } from './PostgresSecretManager';
 import { OrchestratorConfig, OrchestratorError, ErrorCode } from '../types';
-import { DatabasePool } from '../database-pool';
+import { DatabasePool } from '../db-connection-pool';
 
 interface ContainerInfo {
   id: string;

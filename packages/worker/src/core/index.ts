@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { runClaudeWithProgress } from "./claude-execution";
+import { runClaudeWithProgress } from "./claude-session-executor";
 import { SessionManager } from "./session-manager";
 import { createPromptFile } from "./prompt-generation";
 import logger from "./logger";
@@ -155,5 +155,5 @@ export type {
 } from "./types";
 
 export { SessionManager } from "./session-manager";
-export { runClaudeWithProgress } from "./claude-execution";
+export { runClaudeWithProgress } from "./claude-session-executor";
 export { createPromptFile } from "./prompt-generation";
