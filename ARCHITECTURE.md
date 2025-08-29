@@ -4,13 +4,6 @@
 
 Peerbot is a Kubernetes-native Slack bot that provides AI-powered coding assistance. It uses a scalable dispatcher-orchestrator-worker pattern with persistent storage for conversation continuity.
 
-**Quick Links:**
-- [Setup Guide](README.md) - Installation and configuration
-- [Development Guide](DEVELOPMENT.md) - Development workflow and testing
-- [Design Decisions](DESIGN.md) - Architecture decisions and trade-offs
-- [Environment Configuration](.env.example) - Configuration variables
-- [Claude Instructions](CLAUDE.md) - Project-specific instructions
-
 ## Core Modules
 
 ### 🚀 Dispatcher ([`packages/dispatcher/`](packages/dispatcher/))
@@ -22,8 +15,7 @@ Peerbot is a Kubernetes-native Slack bot that provides AI-powered coding assista
 ### ⚡ Orchestrator ([`packages/orchestrator/`](packages/orchestrator/))
 **Responsibilities**: Queue processing, Kubernetes worker lifecycle, deployment cleanup
 - **Main Service**: [`src/index.ts`](packages/orchestrator/src/index.ts) - Queue consumer and service coordinator
-- **K8s Deployment Manager**: [`src/k8s/K8sDeploymentManager.ts`](packages/orchestrator/src/k8s/K8sDeploymentManager.ts) - Kubernetes deployment operations
-- **Docker Deployment Manager**: [`src/docker/DockerDeploymentManager.ts`](packages/orchestrator/src/docker/DockerDeploymentManager.ts) - Docker deployment operations
+- **Deployment Manager**: [`src/k8s/K8sDeploymentManager.ts`](packages/orchestrator/src/k8s/K8sDeploymentManager.ts) and [`src/docker/DockerDeploymentManager.ts`](packages/orchestrator/src/docker/DockerDeploymentManager.ts)
 - **Queue Consumer**: [`src/queue-consumer.ts`](packages/orchestrator/src/queue-consumer.ts) - PostgreSQL/pgboss job processing
 
 ### 🔧 Worker ([`packages/worker/`](packages/worker/))
@@ -154,12 +146,6 @@ Workers include a background process management MCP server.
         └── [project files]
 ```
 
-**Key Changes from Original Design:**
-- **Thread-based isolation**: Each Slack thread gets its own workspace directory to prevent conflicts between concurrent conversations from the same user
-- **Two-level hierarchy**: `/workspace/{userId}/{threadId}/` structure ensures proper isolation
-- **PVC per user**: In Kubernetes, each user gets a persistent volume claim (`peerbot-user-workspace-{userId}`) that persists across pod restarts
-- **Auto-resume capability**: Claude CLI's `--resume` flag automatically continues conversations within the same persistent workspace
-
 ## Deployment Management
 
 ### Worker Lifecycle
@@ -219,11 +205,6 @@ SELECT set_config('app.current_user_id', $1, true);
 
 This ensures workers can only access their own thread messages and user data.
 
-### Resource Limits
-- **Dispatcher**: 1 replica, 256Mi-1Gi memory, 100m-500m CPU - [Config](charts/peerbot/templates/dispatcher-deployment.yaml)
-- **Orchestrator**: 1 replica, 256Mi-2Gi memory, 100m-1000m CPU - [Config](charts/peerbot/templates/orchestrator-deployment.yaml)
-- **Workers**: 0-N replicas, 256Mi-2Gi memory, 100m-1000m CPU (auto-scaled) - [Config](charts/peerbot/templates/worker-deployment.yaml)
-
 ## Status Indicators
 
 | Emoji | Status | Description |
@@ -242,19 +223,7 @@ This ensures workers can only access their own thread messages and user data.
 
 ## Development & Testing
 
-- **Local Setup**: [Setup Script](bin/setup-slack.sh) - Interactive configuration wizard
+- **Local Setup**: [make setup](Makefile) - Interactive configuration wizard
 - **Development Mode**: [`make dev`](Makefile) - Hot reload with Docker
 - **QA Testing**: [`test-bot.js`](test-bot.js) - Automated bot testing tool
 - **Kubernetes Deployment**: [`make k8s-install`](Makefile) - Deploy to K8s cluster
-
-# Error / Exception Tracking
-
-Use `Sentry.captureException(error)` to capture an exception and log the error in Sentry.
-Use this in try catch blocks or areas where exceptions are expected
-
-# Tracing Examples
-
-Spans should be created for meaningful actions within an applications like button clicks, API calls, and function calls
-Ensure you are creating custom spans with meaningful names and operations
-Use the `Sentry.startSpan` function to create a span
-Child spans can exist within a parent span
