@@ -2,7 +2,7 @@
 
 import { exec } from "child_process";
 import { promisify } from "util";
-import { unlink, writeFile, stat } from "fs/promises";
+import { unlink, stat } from "fs/promises";
 import { createWriteStream } from "fs";
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
@@ -48,7 +48,6 @@ async function checkAndCommitUnstashedFiles(workingDirectory?: string): Promise<
     logger.warn("Could not check/commit unstashed files:", error);
   }
 }
-const EXECUTION_FILE = `${process.env.RUNNER_TEMP || "/tmp"}/claude-execution-output.json`;
 const BASE_ARGS = ["--verbose", "--output-format", "stream-json", "--dangerously-skip-permissions", "-p"];
 
 function parseCustomEnvVars(claudeEnv?: string): Record<string, string> {
@@ -378,55 +377,46 @@ export async function runClaudeWithProgress(
     // Ignore errors during cleanup
   }
 
-  let executionFile: string | undefined;
-
-  // Process the output and save execution metrics
+  // Process completion without saving files
   if (exitCode === 0) {
     console.log(`✅ CLAUDE EXECUTION: Claude agent completed successfully (exit code: ${exitCode})`);
-    try {
-      await writeFile("output.txt", output);
-
-      // Process output.txt into JSON and save to execution file
-      const { stdout: jsonOutput } = await execAsync("jq -s '.' output.txt");
-      await writeFile(EXECUTION_FILE, jsonOutput);
-      executionFile = EXECUTION_FILE;
-
-      logger.info(`Log saved to ${EXECUTION_FILE}`);
-
-      // Call completion callback
-      if (onProgress) {
-        await onProgress({
-          type: "completion",
-          data: { success: true, exitCode, executionFile },
-          timestamp: Date.now(),
-        });
-      }
-    } catch (e) {
-      logger.warn(`Failed to process output for execution metrics: ${e}`);
+    
+    // Call completion callback
+    if (onProgress) {
+      await onProgress({
+        type: "completion",
+        data: { success: true, exitCode },
+        timestamp: Date.now(),
+      });
     }
 
     return {
       success: true,
       exitCode,
       output,
-      executionFile,
     };
   } else {
     console.log(`❌ CLAUDE EXECUTION: Claude agent failed (exit code: ${exitCode}${errorOutput ? `, stderr: ${errorOutput.substring(0, 100)}...` : ''})`);
     
-    // Still try to save execution file if we have output
-    if (output) {
-      try {
-        await writeFile("output.txt", output);
-        const { stdout: jsonOutput } = await execAsync("jq -s '.' output.txt");
-        await writeFile(EXECUTION_FILE, jsonOutput);
-        executionFile = EXECUTION_FILE;
-      } catch (e) {
-        // Ignore errors when processing output during failure
-      }
-    }
 
-    const error = `Claude process exited with code ${exitCode}${errorOutput ? `. Stderr: ${errorOutput}` : ''}`;
+    // Create detailed error message with more context
+    let error = `Claude process exited with code ${exitCode}`;
+    
+    // Add stderr details if available
+    if (errorOutput) {
+      error += `\n\nStderr output:\n${errorOutput.trim()}`;
+    }
+    
+    // Add specific guidance based on exit code
+    if (exitCode === 124) {
+      error += `\n\n💡 This was a timeout error. Consider increasing the timeout or breaking down the task into smaller steps.`;
+    } else if (exitCode === 1) {
+      error += `\n\n💡 This was a general error. Check the stderr output above for specific details.`;
+    } else if (exitCode === 126) {
+      error += `\n\n💡 Permission denied or command not executable.`;
+    } else if (exitCode === 127) {
+      error += `\n\n💡 Command not found - Claude CLI may not be properly installed.`;
+    }
     
     // Call error callback
     if (onProgress) {
@@ -441,7 +431,6 @@ export async function runClaudeWithProgress(
       success: false,
       exitCode,
       output,
-      executionFile,
       error,
     };
   }

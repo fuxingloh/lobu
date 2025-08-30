@@ -14,7 +14,7 @@ import { join } from "node:path";
 export class ClaudeWorker {
   private sessionRunner: ClaudeSessionRunner;
   private workspaceManager: WorkspaceManager;
-  private queueIntegration: QueueIntegration;
+  public queueIntegration: QueueIntegration; // Made public for error handling access
   private config: WorkerConfig;
 
   constructor(config: WorkerConfig) {
@@ -307,9 +307,20 @@ export class ClaudeWorker {
         // Hide stop button before showing error
         this.queueIntegration.hideStopButton();
         
-        const errorMessage = `💥 Worker crashed: ${error instanceof Error ? error.message : "Unknown error"}`;
+        // Create more informative error message
+        let errorMessage = `💥 Worker crashed`;
+        if (error instanceof Error) {
+          errorMessage += `: ${error.message}`;
+          // Add error type if it's not generic
+          if (error.constructor.name !== 'Error') {
+            errorMessage = `💥 Worker crashed (${error.constructor.name}): ${error.message}`;
+          }
+        } else {
+          errorMessage += ': Unknown error';
+        }
+        
         await this.queueIntegration.updateProgress(errorMessage);
-        await this.queueIntegration.signalError(error instanceof Error ? error : new Error("Unknown error"));
+        await this.queueIntegration.signalError(error instanceof Error ? error : new Error(String(error)));
         
         // Reactions are now handled by dispatcher based on error status
       } catch (queueError) {

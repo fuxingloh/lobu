@@ -379,6 +379,17 @@ export class WorkerQueueConsumer {
 
     } catch (error) {
       logger.error(`❌ Failed to process message batch:`, error);
+      
+      // Try to provide more detailed error context in the queue
+      if (this.currentWorker?.queueIntegration) {
+        try {
+          const enhancedError = error instanceof Error ? error : new Error(String(error));
+          await this.currentWorker.queueIntegration.signalError(enhancedError);
+        } catch (queueError) {
+          logger.error('Failed to send enhanced error to queue:', queueError);
+        }
+      }
+      
       throw error;
     } finally {
       // Cleanup worker instance

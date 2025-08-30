@@ -410,12 +410,37 @@ export class QueueIntegration {
     }
 
     try {
+      // Create detailed error message including stack trace and error type
+      let detailedError = `${error.message}`;
+      
+      // Add error type if it's not a generic Error
+      if (error.constructor.name !== 'Error') {
+        detailedError = `${error.constructor.name}: ${detailedError}`;
+      }
+      
+      // Add stack trace for better debugging (first few lines)
+      if (error.stack) {
+        const stackLines = error.stack.split('\n').slice(1, 4); // Get first 3 stack lines
+        if (stackLines.length > 0) {
+          detailedError += `\n\nStack trace:\n${stackLines.map(line => line.trim()).join('\n')}`;
+        }
+      }
+      
+      // Check for common error patterns and add specific context
+      if (error.message.includes('Permission denied') || error.message.includes('EACCES')) {
+        detailedError += '\n\n💡 This appears to be a permission error. Check file/directory permissions or authentication.';
+      } else if (error.message.includes('git')) {
+        detailedError += '\n\n💡 This appears to be a Git-related error. Check repository access, credentials, or branch state.';
+      } else if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+        detailedError += '\n\n💡 This appears to be a timeout error. The operation may need more time or there could be a network issue.';
+      }
+
       const payload: ThreadResponsePayload = {
         messageId: this.messageId,
         channelId: this.responseChannel,
         threadTs: this.responseTs,
         userId: process.env.USER_ID || 'unknown',
-        error: error.message,
+        error: detailedError,
         isDone: true, // Agent is done due to error
         timestamp: Date.now(),
         originalMessageTs: process.env.ORIGINAL_MESSAGE_TS, // User's original message for reactions

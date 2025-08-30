@@ -195,14 +195,6 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         throw error;
       }
     }
-
-    // Clean up user secret if needed
-    try {
-      const username = this.databaseManager.generatePostgresUsername(deploymentId);
-      await this.secretManager.deleteUserSecret(username);
-    } catch (error) {
-      console.log(`⚠️  Failed to clean up secret for ${deploymentName}:`, error);
-    }
   }
 
   async updateDeploymentActivity(deploymentName: string): Promise<void> {

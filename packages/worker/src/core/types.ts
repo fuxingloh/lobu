@@ -20,7 +20,6 @@ export interface ClaudeExecutionResult {
   success: boolean;
   exitCode: number;
   output: string;
-  executionFile?: string;
   error?: string;
 }
 

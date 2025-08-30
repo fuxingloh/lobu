@@ -47,14 +47,15 @@ export class PostgresSecretManager extends BaseSecretManager {
     
     console.log(`Creating new credentials for user ${username}`);
     await createPostgresUser(username, password);
-    await this.createUserSecret(username, password);
+    await this.storeUserCredentials(username, password);
     return password;
   }
 
   /**
    * Store user credentials in database HSTORE field
+   * This is a private method that should only be called from getOrCreateUserCredentials
    */
-  async createUserSecret(username: string, password: string): Promise<void> {
+  async storeUserCredentials(username: string, password: string): Promise<void> {
     try {
       // First get the user_id from the users table
       const platformUserId = username.toUpperCase(); // Convert back to original format
@@ -87,7 +88,7 @@ export class PostgresSecretManager extends BaseSecretManager {
           updated_at = NOW()
       `, [userId, hstoreString]);
 
-      console.log(`✅ Stored credentials in database for user: ${username}`);
+      console.log(`✅ Stored permanent credentials in database for user: ${username}`);
     } catch (error) {
       throw new OrchestratorError(
         ErrorCode.DEPLOYMENT_CREATE_FAILED,
@@ -95,25 +96,6 @@ export class PostgresSecretManager extends BaseSecretManager {
         { username, error },
         true
       );
-    }
-  }
-
-  /**
-   * Delete user credentials from database
-   */
-  async deleteUserSecret(username: string): Promise<void> {
-    try {
-      // Remove the specific environment variables for this user
-      await this.dbPool.query(`
-        UPDATE user_configs 
-        SET environment_variables = environment_variables - 'DATABASE_URL' - 'DB_USERNAME' - 'DB_PASSWORD',
-            updated_at = NOW()
-        WHERE environment_variables->>'DB_USERNAME' = $1
-      `, [username]);
-
-      console.log(`✅ Removed credentials from database for user: ${username}`);
-    } catch (error) {
-      console.log(`⚠️  Failed to delete credentials for user ${username}:`, error instanceof Error ? error.message : String(error));
     }
   }
 }

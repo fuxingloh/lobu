@@ -15,12 +15,7 @@ export abstract class BaseSecretManager {
   /**
    * Create or update user secret with PostgreSQL credentials
    */
-  abstract createUserSecret(username: string, password: string): Promise<void>;
-
-  /**
-   * Delete user secret
-   */
-  abstract deleteUserSecret(username: string): Promise<void>;
+  abstract storeUserCredentials(username: string, password: string): Promise<void>;
 
   /**
    * Generate a random password
