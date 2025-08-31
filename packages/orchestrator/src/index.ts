@@ -123,9 +123,10 @@ class PeerbotOrchestrator {
    */
   private async runDbmateMigrations(): Promise<void> {
     return new Promise((resolve, reject) => {
-      console.log('📦 Creating database and running migrations...');
+      console.log('📦 Recreating database and running migrations...');
       
-      const dbmateProcess = spawn('./bin/dbmate', ['up'], {
+      // TODO: Emre: I don't want to worry about migrations until we release the first version.
+      const dbmateProcess = spawn('./bin/dbmate', ['drop', '--force', 'up'], {
         cwd: process.cwd(),
         env: {
           ...process.env,
