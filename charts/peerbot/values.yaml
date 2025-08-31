@@ -34,15 +34,10 @@ podSecurityStandards:
 
 # Security Context
 securityContext:
-  enabled: true
   runAsNonRoot: true
   runAsUser: 1001
   runAsGroup: 1001
-  fsGroup: 1001
   readOnlyRootFilesystem: false  # Claude needs write access
-  worker:
-    readOnlyRootFilesystem: false
-    additionalCapabilities: []
 
 # Pod Disruption Budget
 podDisruptionBudget:
@@ -71,6 +66,7 @@ postgresql:
   enabled: true
   database: peerbot
   username: postgres
+  sslMode: "disable"  # Options: disable, require, verify-ca, verify-full
   resources:
     requests:
       memory: "256Mi"
@@ -96,6 +92,7 @@ claude:
 worker:
   enabled: false
   image:
+    repository: peerbot-worker
     pullPolicy: IfNotPresent
     tag: latest
   resources:
@@ -132,6 +129,7 @@ gcs:
 dispatcher:
   enabled: true
   image:
+    repository: peerbot-dispatcher
     pullPolicy: IfNotPresent
     tag: latest
   resources:
@@ -179,6 +177,10 @@ workerQuota:
 # Re-enable orchestrator - needed for dynamic worker creation
 orchestrator:
   enabled: true
+  image:
+    repository: peerbot-orchestrator
+    tag: latest
+    pullPolicy: IfNotPresent
   resources:
     requests:
       memory: "256Mi"

@@ -505,11 +505,7 @@ export class ThreadResponseConsumer {
         const returnedThreadTs = (postResult.message as any)?.thread_ts || returnedTs;
         
         // Check if the message was created in the intended thread
-        if (threadTs && returnedThreadTs !== threadTs) {
-          // Update monitoring metrics
-          threadMismatchCount++;
-          lastMismatchTime = new Date();        
-          
+        if (threadTs && returnedThreadTs !== threadTs) {   
           // Delete the wrongly placed message
           try {
             await this.slackClient.chat.delete({
@@ -552,9 +548,7 @@ export class ThreadResponseConsumer {
           channel: channelId,
           ts: botTs,
           text: truncatedText,
-          blocks: blocks,
-          unfurl_links: true,
-          unfurl_media: true
+          blocks: blocks
         });
         
         logger.info(`Slack update result: ${updateResult.ok}`);
@@ -669,9 +663,7 @@ export class ThreadResponseConsumer {
           channel: channelId,
           ts: botTs,
           text: errorResult.text || errorContent,
-          blocks: errorResult.blocks,
-          unfurl_links: true,
-          unfurl_media: true
+          blocks: errorResult.blocks
         });
         logger.info(`Error message update result: ${updateResult.ok}`);
       }

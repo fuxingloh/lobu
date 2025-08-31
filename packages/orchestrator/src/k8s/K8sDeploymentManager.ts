@@ -198,15 +198,15 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
             containers: [{
               name: 'worker',
               image: `${this.config.worker.image.repository}:${this.config.worker.image.tag}`,
-              imagePullPolicy: 'IfNotPresent',
+              imagePullPolicy: this.config.worker.image.pullPolicy || 'Always',
               env: [
                 // User-specific database connection from secret
                 {
-                  name: 'DATABASE_URL',
+                  name: 'PEERBOT_DATABASE_URL',
                   valueFrom: {
                     secretKeyRef: {
                       name: `peerbot-user-secret-${username.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
-                      key: 'DATABASE_URL'
+                      key: 'PEERBOT_DATABASE_URL'
                     }
                   }
                 },

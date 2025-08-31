@@ -20,7 +20,6 @@ export class SlackEventHandlers {
   private activeSessions = new Map<string, ThreadSession>();
   private userMappings = new Map<string, string>(); // slackUserId -> githubUsername
   private repositoryCache = new Map<string, { repository: any; timestamp: number }>(); // username -> {repository, timestamp}
-  private sessionMappings = new Map<string, string>(); // sessionKey -> agentSessionId
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
 
   constructor(

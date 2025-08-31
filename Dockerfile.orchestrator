@@ -7,18 +7,34 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install dbmate for database migrations
+RUN ARCH=$(dpkg --print-architecture) && \
+    case ${ARCH} in \
+        amd64) DBMATE_ARCH="linux-amd64" ;; \
+        arm64) DBMATE_ARCH="linux-arm64" ;; \
+        *) DBMATE_ARCH="linux-amd64" ;; \
+    esac && \
+    curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-${DBMATE_ARCH} \
+    && chmod +x /usr/local/bin/dbmate
+
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY packages/orchestrator/package.json ./
-
-# Install dependencies including devDependencies for build
+# Create shared package first
+WORKDIR /app/packages/shared
+COPY packages/shared/package.json ./
 RUN bun install
+COPY packages/shared/ ./
+RUN bun run build
 
-# Copy source code
+# Now handle orchestrator
+WORKDIR /app
+COPY packages/orchestrator/package.json ./
+RUN bun install
 COPY packages/orchestrator/src ./src
 COPY packages/orchestrator/tsconfig.json ./
+# Copy database migrations
+COPY packages/orchestrator/db/ ./db/
 
 # Build TypeScript
 RUN bun run build

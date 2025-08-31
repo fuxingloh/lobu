@@ -29,9 +29,9 @@ dispatcher:
 
 worker:
   image:
-    repository: claude-worker
+    repository: peerbot-worker
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Never
   
   resources:
     requests:
@@ -73,6 +73,9 @@ session:
 
 kubernetes:
   namespace: peerbot
+
+postgresql:
+  sslMode: "disable"  # Development: SSL disabled for simplicity
 
 serviceAccount:
   create: true

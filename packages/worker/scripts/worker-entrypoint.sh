@@ -68,7 +68,7 @@ mkdir -p "$WORKSPACE_DIR"
 cd "$WORKSPACE_DIR"
 
 # Set proper permissions for workspace
-chmod 755 "$WORKSPACE_DIR"
+chmod 755 "$WORKSPACE_DIR" 2>/dev/null || echo "⚠️  Could not change workspace permissions (this is normal in Kubernetes)"
 
 echo "✅ Workspace directory ready: $WORKSPACE_DIR"
 

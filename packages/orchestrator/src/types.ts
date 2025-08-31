@@ -12,6 +12,7 @@ export interface OrchestratorConfig {
     image: {
       repository: string;
       tag: string;
+      pullPolicy?: string;
     };
     resources: {
       requests: { cpu: string; memory: string };

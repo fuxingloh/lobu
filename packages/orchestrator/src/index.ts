@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { initSentry } from "@claude-code-slack/shared";
+import { initSentry } from "../packages/shared/dist";
 
 // Initialize Sentry monitoring
 initSentry();
@@ -102,31 +102,14 @@ class PeerbotOrchestrator {
   }
 
   /**
-   * Reset all user environment variables at startup
-   */
-  private async resetAllUserEnvironmentVariables(): Promise<void> {
-    try {
-      console.log('🔄 Resetting all user environment variables...');
-      
-      // Delete all records from user_environment_variables table
-      await this.dbPool.query('DELETE FROM user_environment_variables');
-      
-      console.log('✅ All user environment variables have been reset');
-    } catch (error) {
-      console.warn('⚠️ Could not reset user environment variables:', error);
-      // Continue anyway - this is not critical for startup
-    }
-  }
-
-  /**
    * Run database migrations using dbmate
    */
   private async runDbmateMigrations(): Promise<void> {
     return new Promise((resolve, reject) => {
-      console.log('📦 Recreating database and running migrations...');
+      console.log('📦 Running database migrations...');
       
       // TODO: Emre: I don't want to worry about migrations until we release the first version.
-      const dbmateProcess = spawn('./bin/dbmate', ['drop', '--force', 'up'], {
+      const dbmateProcess = spawn('dbmate', ['up'], {
         cwd: process.cwd(),
         env: {
           ...process.env,
@@ -172,9 +155,6 @@ class PeerbotOrchestrator {
 
       // Run database migrations using dbmate (this will create database and run migrations)
       await this.runDbmateMigrations();
-
-      // Reset all user environment variables at startup
-      await this.resetAllUserEnvironmentVariables();
 
       // Start queue consumer
       await this.queueConsumer.start();
@@ -419,7 +399,8 @@ async function main() {
       worker: {
         image: {
           repository: process.env.WORKER_IMAGE_REPOSITORY || 'peerbot-worker',
-          tag: process.env.WORKER_IMAGE_TAG || 'latest'
+          tag: process.env.WORKER_IMAGE_TAG || 'latest',
+          pullPolicy: process.env.WORKER_IMAGE_PULL_POLICY || 'Always'
         },
         resources: {
           requests: {

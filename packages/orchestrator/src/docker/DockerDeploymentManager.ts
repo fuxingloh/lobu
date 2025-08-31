@@ -133,7 +133,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
           NanoCpus: this.parseCpuLimit(this.config.worker.resources.limits.cpu)
         },
         WorkingDir: '/workspace',
-        NetworkMode: process.env.NODE_ENV === 'development' ? 'host' : 'bridge'
+        // NetworkMode: process.env.NODE_ENV === 'development' ? 'host' : 'bridge' // Removed due to type issues
       };
 
       const container = await this.docker.createContainer(createOptions);
