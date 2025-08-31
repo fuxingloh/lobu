@@ -96,6 +96,7 @@ claude:
 worker:
   enabled: false
   image:
+    repository: peerbot-worker
     pullPolicy: IfNotPresent
     tag: latest
   resources:
@@ -132,6 +133,7 @@ gcs:
 dispatcher:
   enabled: true
   image:
+    repository: peerbot-dispatcher
     pullPolicy: IfNotPresent
     tag: latest
   resources:
@@ -179,6 +181,10 @@ workerQuota:
 # Re-enable orchestrator - needed for dynamic worker creation
 orchestrator:
   enabled: true
+  image:
+    repository: peerbot-orchestrator
+    pullPolicy: IfNotPresent
+    tag: latest
   resources:
     requests:
       memory: "256Mi"
