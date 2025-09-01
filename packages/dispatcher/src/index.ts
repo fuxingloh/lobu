@@ -219,6 +219,9 @@ export class SlackDispatcher {
           
           await Promise.race([startPromise, timeoutPromise]);
           logger.info("✅ Socket Mode connection established!");
+          
+          // Start dedicated health check server for Socket Mode
+          setupHealthEndpoints();
         } catch (socketError) {
           logger.error("❌ Failed to start Socket Mode:", socketError);
           throw socketError;

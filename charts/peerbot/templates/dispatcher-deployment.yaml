@@ -74,7 +74,9 @@ spec:
             - name: http
               containerPort: {{ .Values.dispatcher.service.targetPort }}
               protocol: TCP
-          {{- if not .Values.slack.socketMode }}
+            - name: health
+              containerPort: 8080
+              protocol: TCP
           livenessProbe:
             httpGet:
               path: /health
@@ -87,7 +89,6 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
-          {{- end }}
           resources:
             {{- toYaml .Values.dispatcher.resources | nindent 12 }}
           env:

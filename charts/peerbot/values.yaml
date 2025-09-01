@@ -140,7 +140,7 @@ dispatcher:
       memory: "1Gi"
       cpu: "500m"
   service:
-    type: LoadBalancer
+    type: ClusterIP
     port: 3000
     targetPort: 3000
   config:
