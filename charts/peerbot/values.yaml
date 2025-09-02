@@ -13,6 +13,11 @@ secrets:
   claudeCodeOAuthToken: "placeholder"
   postgresqlPassword: "placeholder"
 
+config:
+  githubOrganization: "peerbot-community"
+  githubRepository: "" # Optional: Override repository URL for all users
+  sessionTimeoutMinutes: "5"
+
 kubernetes:
   namespace: peerbot
 
@@ -117,11 +122,6 @@ worker:
     DISABLE_AUTOUPDATER: "1"
     K8S_SKIP_TLS_VERIFY: "true"
 
-# GCS configuration (empty for local)
-gcs:
-  enabled: false
-  customPorts: []
-
 # Development settings
 dispatcher:
   enabled: true
@@ -186,13 +186,6 @@ orchestrator:
       cpu: "500m"
   maxWorkerDeployments: 5
 
-# Dispatcher configuration moved to line 56
-
-config:
-  githubOrganization: "peerbot-community"
-  githubRepository: "" # Optional: Override repository URL for all users
-  gcsProjectId: ""
-  sessionTimeoutMinutes: "5"
 
 # pgboss configuration override
 pgboss:

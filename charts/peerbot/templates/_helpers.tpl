@@ -75,14 +75,6 @@ Common environment variables for workers
     secretKeyRef:
       name: {{ include "peerbot.fullname" . }}-secrets
       key: github-token
-- name: GOOGLE_CLOUD_PROJECT
-  valueFrom:
-    configMapKeyRef:
-      name: {{ include "peerbot.fullname" . }}-config
-      key: gcs-project-id
-      optional: true
-- name: GOOGLE_APPLICATION_CREDENTIALS
-  value: "/etc/gcs/key.json"
 {{- end }}
 
 {{/*
@@ -91,9 +83,6 @@ Common volume mounts for workers
 {{- define "peerbot.workerVolumeMounts" -}}
 - name: workspace
   mountPath: /workspace
-- name: gcs-key
-  mountPath: /etc/gcs
-  readOnly: true
 {{- end }}
 
 {{/*
@@ -103,11 +92,4 @@ Common volumes for workers
 - name: workspace
   emptyDir:
     sizeLimit: {{ .Values.worker.workspace.sizeLimit }}
-- name: gcs-key
-  secret:
-    secretName: {{ include "peerbot.fullname" . }}-secrets
-    items:
-      - key: gcs-service-account
-        path: key.json
-    optional: true
 {{- end }}

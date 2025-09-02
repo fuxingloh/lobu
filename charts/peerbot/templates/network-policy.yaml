@@ -48,7 +48,7 @@ spec:
     - protocol: TCP
       port: 53
   
-  # Allow HTTPS to external APIs (Slack, GitHub, Claude, GCS)
+  # Allow HTTPS to external APIs (Slack, GitHub, Claude)
   - to: []
     ports:
     - protocol: TCP
@@ -115,16 +115,6 @@ spec:
     ports:
     - protocol: TCP
       port: 80
-  
-  # Allow communication to GCS (if using custom ports)
-  {{- if .Values.gcs.customPorts }}
-  {{- range .Values.gcs.customPorts }}
-  - to: []
-    ports:
-    - protocol: TCP
-      port: {{ . }}
-  {{- end }}
-  {{- end }}
 
 ---
 # Deny-all default policy (optional, uncomment if you want default deny)

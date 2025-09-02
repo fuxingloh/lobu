@@ -99,7 +99,7 @@ function generateEnvironmentSection(context: SessionContext): string {
   sections.push("Container Information:");
   sections.push("- This is an ephemeral Kubernetes job container");
   sections.push("- Maximum execution time: 5 minutes");
-  sections.push("- Changes will be persisted to GitHub and GCS");
+  sections.push("- Changes will be persisted to GitHub ");
   sections.push("- Progress updates are streamed to Slack in real-time");
 
   return sections.join("\n") + "\n\n";

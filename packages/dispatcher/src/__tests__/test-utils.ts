@@ -333,14 +333,12 @@ export function setupMockEnvironment() {
   process.env.SLACK_BOT_TOKEN = "xoxb-test-token";
   process.env.SLACK_SIGNING_SECRET = "test-signing-secret";
   process.env.GITHUB_TOKEN = "ghp_test_token";
-  process.env.GCS_PROJECT_ID = "test-project";
 
   return () => {
     // Cleanup
     delete process.env.SLACK_BOT_TOKEN;
     delete process.env.SLACK_SIGNING_SECRET;
     delete process.env.GITHUB_TOKEN;
-    delete process.env.GCS_PROJECT_ID;
   };
 }
 

@@ -5,9 +5,6 @@ metadata:
   labels:
     {{- include "peerbot.labels" . | nindent 4 }}
 data:
-  # GCS Configuration
-  gcs-project-id: {{ .Values.config.gcsProjectId | quote }}
-  
   # GitHub Configuration
   github-organization: {{ .Values.config.githubOrganization | quote }}
   {{- if .Values.config.githubRepository }}

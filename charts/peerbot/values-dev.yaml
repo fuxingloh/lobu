@@ -61,10 +61,6 @@ slack:
 github:
   organization: "peerbot-community"
 
-gcs:
-  bucketName: "peerbot-conversations-dev"
-  projectId: ""
-
 claude:
   timeoutMinutes: "5"
 
@@ -93,7 +89,6 @@ secrets:
 
 config:
   githubOrganization: "peerbot-community"
-  gcsProjectId: ""
   sessionTimeoutMinutes: "5"
 
 # Disable production features for local development

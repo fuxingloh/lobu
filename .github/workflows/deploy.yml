@@ -112,13 +112,6 @@ jobs:
             --set worker.image.tag=$GITHUB_SHA \
             --wait
 
-      # Apply GCS lifecycle policy
-      - name: Apply GCS Lifecycle Policy
-        if: github.ref == 'refs/heads/main'
-        run: |-
-          echo "Applying GCS lifecycle policy for cost optimization..."
-          gsutil lifecycle set gcs-lifecycle-policy.json gs://peerbot-conversations-prod || true
-
       # Run tests
       - name: Run Tests
         run: |-

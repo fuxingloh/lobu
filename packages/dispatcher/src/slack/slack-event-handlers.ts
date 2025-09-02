@@ -12,6 +12,16 @@ import {
 import { SessionUtils } from "@peerbot/shared";
 import logger from "../logger";
 import { convertMarkdownToSlack } from "../queue/slack-thread-processor";
+import { setupMessageHandlers, setupUserHandlers, setupFileHandlers } from "./event-handlers";
+import { 
+  handleExecutableCodeBlock, 
+  handleBlockkitForm, 
+  handleStopWorker 
+} from "./event-handlers/block-actions";
+import { 
+  handleBlockkitFormSubmission, 
+  handleRepositoryOverrideSubmission 
+} from "./event-handlers/form-handlers";
 
 /**
  * Queue-based Slack event handlers that replace direct Kubernetes job creation
@@ -48,6 +58,11 @@ export class SlackEventHandlers {
    */
   private setupEventHandlers(): void {
     logger.info("Setting up Queue-based Slack event handlers...");
+
+    // Setup modular event handlers
+    setupMessageHandlers(this.app);
+    setupUserHandlers(this.app);
+    setupFileHandlers(this.app);
 
     // Handle app mentions
     this.app.event("app_mention", async ({ event, client, say }) => {
@@ -211,13 +226,20 @@ export class SlackEventHandlers {
 
         // Handle repository override modal specifically
         if (view.callback_id === "repository_override_modal") {
-          await this.handleRepositoryOverrideSubmission(userId, view, client);
+          await handleRepositoryOverrideSubmission(
+            userId, 
+            view, 
+            client, 
+            this.getOrCreateUserMapping.bind(this),
+            this.updateAppHome.bind(this),
+            this.repositoryCache
+          );
           return;
         }
 
         // Handle blockkit form modal submissions
         if (view.callback_id === "blockkit_form_modal") {
-          await this.handleBlockkitFormSubmission(userId, view, client);
+          await handleBlockkitFormSubmission(userId, view, client, this.handleUserRequest.bind(this));
           return;
         }
 
@@ -319,161 +341,6 @@ export class SlackEventHandlers {
           user: userId,
           text: `❌ Error: ${error instanceof Error ? error.message : "Unknown error occurred"}`,
         });
-      }
-    });
-
-    // Handle message changes (edits)
-    this.app.event("message_changed", async ({ event, client }) => {
-      logger.info("=== MESSAGE_CHANGED HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Handle message edits appropriately - may need to update or recreate worker sessions
-        logger.info(`Message changed: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling message changed:", error);
-      }
-    });
-
-    // Handle message deletions
-    this.app.event("message_deleted", async ({ event, client }) => {
-      logger.info("=== MESSAGE_DELETED HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Handle message deletions appropriately - may need to stop/cleanup worker sessions
-        logger.info(`Message deleted: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling message deleted:", error);
-      }
-    });
-
-    // Handle team joins
-    this.app.event("team_join", async ({ event, client }) => {
-      logger.info("=== TEAM_JOIN HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Implement welcome message functionality for new team members
-        // Should:
-        // 1. Send personalized welcome DM to new user
-        // 2. Explain bot capabilities and how to get started
-        // 3. Optionally create initial user repository if auto-provisioning is enabled
-        // 4. Set up user preferences and default settings
-        // 5. Track onboarding metrics and user engagement
-        // 6. Consider team-specific welcome templates or customization
-        logger.info(`Team join: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling team join:", error);
-      }
-    });
-
-    // Handle presence changes
-    this.app.event("presence_change", async ({ event, client }) => {
-      logger.info("=== PRESENCE_CHANGE HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Implement worker scaling based on user presence
-        // Should consider:
-        // 1. Scale down idle workers when users go offline/away
-        // 2. Pre-scale workers when active users come online
-        // 3. Implement presence-based resource optimization
-        // 4. Track user activity patterns for predictive scaling
-        // 5. Handle bulk presence changes efficiently to avoid scaling storms
-        // 6. Consider different scaling policies per user/team (VIP users, etc.)
-        // 7. Integration with Kubernetes HPA or custom scaling logic
-        // 8. Graceful session handling during scale-down operations
-        logger.info(`Presence change: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling presence change:", error);
-      }
-    });
-
-    // Handle file sharing
-    this.app.event("file_shared", async ({ event, client }) => {
-      logger.info("=== FILE_SHARED HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Implement file processing and integration with Claude
-        // Should:
-        // 1. Download and analyze shared files (images, documents, code files)
-        // 2. Extract relevant information and context for Claude sessions
-        // 3. Handle different file types appropriately (code, images, docs, etc.)
-        // 4. Store file references in user repositories if needed
-        // 5. Security scanning for malicious files
-        // 6. File size and type restrictions based on team policies
-        // 7. Integration with version control for code files
-        // 8. OCR for image-based content extraction
-        logger.info(`File shared: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling file shared:", error);
-      }
-    });
-
-    // Handle file deletions
-    this.app.event("file_deleted", async ({ event, client }) => {
-      logger.info("=== FILE_DELETED HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Implement file deletion cleanup
-        // Should:
-        // 1. Clean up any cached file data or references
-        // 2. Update Claude session context if file was being referenced
-        // 3. Remove file from user repositories if it was stored there
-        // 4. Update any ongoing conversations that referenced the deleted file
-        // 5. Audit trail for compliance (who deleted what when)
-        // 6. Notify relevant sessions about file unavailability
-        logger.info(`File deleted: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling file deleted:", error);
-      }
-    });
-
-    // Handle group/channel joins
-    this.app.event("member_joined_channel", async ({ event, client }) => {
-      logger.info("=== MEMBER_JOINED_CHANNEL HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Implement channel-specific welcome messages
-        // Should:
-        // 1. Send channel-specific welcome message mentioning bot capabilities
-        // 2. Provide channel-specific usage guidelines and examples
-        // 3. Set up channel-specific user preferences if needed
-        // 4. Track channel adoption and user engagement metrics
-        // 5. Consider different welcome messages for public vs private channels
-        // 6. Integration with channel-specific repository configurations
-        // 7. Respect channel settings and permissions for bot interactions
-        logger.info(`Member joined channel: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling member joined channel:", error);
-      }
-    });
-
-    // Handle workspace invite requests
-    this.app.event("invite_requested", async ({ event, client }) => {
-      logger.info("=== INVITE_REQUESTED HANDLER TRIGGERED (QUEUE) ===");
-
-      try {
-        // For now, just log the event
-        // TODO: Implement invite request processing and approval workflow
-        // Should:
-        // 1. Validate invite requests against allowed domains/email patterns
-        // 2. Auto-approve requests from trusted domains (company email, etc.)
-        // 3. Queue requests for manual admin approval with notification system
-        // 4. Send welcome information to approved users before they join
-        // 5. Track invite metrics and conversion rates
-        // 6. Integration with external approval systems (ServiceNow, Jira, etc.)
-        // 7. Implement invite expiration and cleanup policies
-        // 8. Support for different approval workflows per team/workspace
-        // 9. Anti-spam and rate limiting for invite requests
-        // 10. Audit trail for compliance (who requested, who approved, when)
-        logger.info(`Invite requested: ${JSON.stringify(event, null, 2)}`);
-      } catch (error) {
-        logger.error("Error handling invite requested:", error);
       }
     });
 
@@ -877,7 +744,7 @@ export class SlackEventHandlers {
       default:
         // Handle blockkit form button clicks
         if (actionId.startsWith("blockkit_form_")) {
-          await this.handleBlockkitForm(
+          await handleBlockkitForm(
             actionId,
             userId,
             channelId,
@@ -890,19 +757,20 @@ export class SlackEventHandlers {
         else if (
           actionId.match(/^(bash|python|javascript|js|typescript|ts|sql|sh)_/)
         ) {
-          await this.handleExecutableCodeBlock(
+          await handleExecutableCodeBlock(
             actionId,
             userId,
             channelId,
             messageTs,
             body,
             client,
+            this.handleUserRequest.bind(this),
           );
         }
         // Handle stop worker button clicks
         else if (actionId.startsWith("stop_worker_")) {
           const deploymentName = actionId.replace("stop_worker_", "");
-          await this.handleStopWorker(
+          await handleStopWorker(
             deploymentName,
             userId,
             channelId,
@@ -916,225 +784,6 @@ export class SlackEventHandlers {
           );
           // Silently acknowledge - no user notification needed
         }
-    }
-  }
-
-  /**
-   * Handle executable code block button clicks
-   * Sends the code content back to Claude for execution
-   */
-  private async handleExecutableCodeBlock(
-    actionId: string,
-    userId: string,
-    channelId: string,
-    messageTs: string,
-    body: any,
-    client: any,
-  ): Promise<void> {
-    logger.info(`Handling executable code block: ${actionId}`);
-
-    try {
-      // Extract the code from the button's value
-      const action = (body as any).actions?.[0];
-      if (!action?.value) {
-        throw new Error("No code content found in button");
-      }
-
-      const codeContent = action.value;
-      const language = actionId.split("_")[0]; // Extract language from action_id
-      const buttonText = action.text?.text || `Run ${language}`;
-
-      // Post the code execution request as a user message
-      const formattedInput = `> 🚀 *Executed "${buttonText}" button*\n\n\`\`\`${language}\n${codeContent}\n\`\`\``;
-
-      const inputMessage = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: messageTs,
-        text: formattedInput,
-        blocks: [
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `<@${userId}> executed "${buttonText}" button`,
-              },
-            ],
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `\`\`\`${language}\n${codeContent}\n\`\`\``,
-            },
-          },
-        ],
-      });
-
-      const context = {
-        channelId,
-        userId,
-        userDisplayName: "Unknown User", // TODO: Get from user info
-        teamId: "", // TODO: Get from body
-        messageTs: inputMessage.ts as string,
-        threadTs: messageTs,
-        text: formattedInput,
-      };
-
-      await this.handleUserRequest(context, formattedInput, client);
-    } catch (error) {
-      logger.error(
-        `Failed to handle executable code block ${actionId}:`,
-        error,
-      );
-
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text: `❌ Failed to execute code: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    }
-  }
-
-  /**
-   * Handle blockkit form button clicks
-   * Opens a modal with the blockkit form content
-   */
-  private async handleBlockkitForm(
-    actionId: string,
-    userId: string,
-    channelId: string,
-    messageTs: string,
-    body: any,
-    client: any,
-  ): Promise<void> {
-    logger.info(`Handling blockkit form: ${actionId}`);
-
-    let blocks: any[] = [];
-
-    try {
-      // Extract the blocks from the button's value
-      const action = (body as any).actions?.[0];
-      if (!action?.value) {
-        throw new Error("No form data found in button");
-      }
-
-      const formData = JSON.parse(action.value);
-      blocks = formData.blocks || [];
-
-      if (blocks.length === 0) {
-        throw new Error("No blocks found in form data");
-      }
-
-      // Create modal with the blockkit form
-      await client.views.open({
-        trigger_id: body.trigger_id,
-        view: {
-          type: "modal",
-          callback_id: "blockkit_form_modal",
-          private_metadata: JSON.stringify({
-            channel_id: channelId,
-            thread_ts: messageTs,
-            action_id: actionId,
-            button_text: action.text?.text || "Form",
-          }),
-          title: { type: "plain_text", text: action.text?.text || "Form" },
-          submit: { type: "plain_text", text: "Submit" },
-          close: { type: "plain_text", text: "Cancel" },
-          blocks: blocks,
-        },
-      });
-    } catch (error) {
-      logger.error(`Failed to handle blockkit form ${actionId}:`, error);
-
-      // Show the raw Block Kit content for troubleshooting
-      const rawBlocksJson = JSON.stringify(blocks, null, 2);
-      const truncatedBlocks =
-        rawBlocksJson.length > 2500
-          ? rawBlocksJson.substring(0, 2500) + "\n...[truncated]"
-          : rawBlocksJson;
-
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text: `❌ **Failed to open form:** ${error instanceof Error ? error.message : "Unknown error"}\n\n**Raw Block Kit content for debugging:**\n\`\`\`json\n${truncatedBlocks}\n\`\`\`\n\n💡 *The Block Kit content may not be compatible with Slack modals. Check the Slack Block Kit documentation for modal-specific validation rules.*`,
-      });
-    }
-  }
-
-  /**
-   * Handle stop worker button clicks
-   * Scales the deployment to 0 to stop the Claude worker
-   */
-  private async handleStopWorker(
-    deploymentName: string,
-    userId: string,
-    channelId: string,
-    messageTs: string,
-    client: any,
-  ): Promise<void> {
-    logger.info(
-      `Handling stop worker request for deployment: ${deploymentName}`,
-    );
-
-    try {
-      // Make API call to orchestrator to scale deployment to 0
-      const orchestratorUrl =
-        process.env.ORCHESTRATOR_URL || "http://peerbot-orchestrator:8080";
-      const response = await fetch(
-        `${orchestratorUrl}/scale/${deploymentName}/0`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            requestedBy: userId,
-            reason: "User requested stop via Slack button",
-          }),
-        },
-      );
-
-      if (response.ok) {
-        // Success - notify user
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: `✅ Claude worker stopped successfully. The deployment "${deploymentName}" has been scaled to 0.`,
-        });
-
-        // Update the original message to remove the stop button
-        await client.chat.update({
-          channel: channelId,
-          ts: messageTs,
-          text: "Claude worker has been stopped by user request.",
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "🛑 *Claude worker stopped by user request*",
-              },
-            },
-          ],
-        });
-      } else {
-        const errorText = await response.text();
-        throw new Error(
-          `Orchestrator responded with ${response.status}: ${errorText}`,
-        );
-      }
-    } catch (error) {
-      logger.error(
-        `Failed to stop worker for deployment ${deploymentName}:`,
-        error,
-      );
-
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text: `❌ Failed to stop Claude worker: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
     }
   }
 
@@ -1283,200 +932,8 @@ export class SlackEventHandlers {
     return convertMarkdownToSlack(truncatedReadme);
   }
 
-  private async handleBlockkitFormSubmission(
-    userId: string,
-    view: any,
-    client: any,
-  ): Promise<void> {
-    logger.info(`Handling blockkit form submission for user: ${userId}`);
-
-    const metadata = view.private_metadata
-      ? JSON.parse(view.private_metadata)
-      : {};
-    const channelId = metadata.channel_id;
-    const threadTs = metadata.thread_ts;
-    const buttonText = metadata.button_text || "Form";
-
-    if (!channelId || !threadTs) {
-      logger.error(
-        "Missing channel or thread information in blockkit form submission",
-      );
-      return;
-    }
-
-    // Extract input fields from state values
-    const inputFieldsData = this.extractViewInputs(view.state.values);
-
-    // Extract action selections from view blocks (for button-based forms)
-    const actionSelections = this.extractActionSelections(view);
-
-    // Combine both input fields and action selections
-    const userInput = [inputFieldsData, actionSelections]
-      .filter((data) => data.trim())
-      .join("\n");
-
-    // If no form inputs were found, extract the content from the modal blocks
-    // This handles cases where the blockkit is just informational content with action buttons
-    if (!userInput.trim()) {
-      logger.info(
-        `No form inputs found, extracting modal content for button: ${buttonText}`,
-      );
-
-      // Extract text content from the modal blocks
-      const modalContent = this.extractModalContent(view.blocks);
-      const userInput = modalContent || `Selected "${buttonText}"`;
-
-      const formattedInput = `> 📝 *Form submitted from "${buttonText}" button*\n\n${userInput}`;
-
-      const inputMessage = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: formattedInput,
-        blocks: [
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `<@${userId}> submitted form from "${buttonText}" button`,
-              },
-            ],
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: userInput,
-            },
-          },
-        ],
-      });
-
-      const context = {
-        channelId,
-        userId,
-        userDisplayName: metadata.user_display_name || "Unknown User",
-        teamId: metadata.team_id || "",
-        messageTs: inputMessage.ts as string,
-        threadTs: threadTs,
-        text: userInput,
-      };
-
-      await this.handleUserRequest(context, userInput, client);
-      return;
-    }
-
-    try {
-      const formattedInput = `> 📝 *Form submitted from "${buttonText}" button*\n\n${userInput}`;
-
-      const inputMessage = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: formattedInput,
-        blocks: [
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `<@${userId}> submitted form from "${buttonText}" button`,
-              },
-            ],
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: userInput,
-            },
-          },
-        ],
-      });
-
-      const context = {
-        channelId,
-        userId,
-        userDisplayName: metadata.user_display_name || "Unknown User",
-        teamId: metadata.team_id || "",
-        messageTs: inputMessage.ts as string,
-        threadTs: threadTs,
-        text: userInput,
-      };
-
-      await this.handleUserRequest(context, userInput, client);
-    } catch (error) {
-      logger.error(`Failed to handle blockkit form submission:`, error);
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text: `❌ Failed to process form submission: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    }
-  }
-
-  private async handleRepositoryOverrideSubmission(
-    userId: string,
-    view: any,
-    client: any,
-  ): Promise<void> {
-    logger.info(`Handling repository override submission for user: ${userId}`);
-
-    const repoUrl = view.state.values?.repo_input?.repo_url?.value?.trim();
-    const metadata = view.private_metadata
-      ? JSON.parse(view.private_metadata)
-      : {};
-    const channelId = metadata.channel_id;
-    const threadTs = metadata.thread_ts;
-
-    if (!repoUrl) {
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text: "Please provide a repository URL.",
-      });
-      return;
-    }
-
-    const username = await this.getOrCreateUserMapping(userId, client);
-
-    // Update memory cache
-    try {
-      // Also update memory cache for immediate use
-      this.repositoryCache.set(username, {
-        repository: { repositoryUrl: repoUrl },
-        timestamp: Date.now(),
-      });
-    } catch (error) {
-      logger.error(`Failed to save repository URL for ${username}:`, error);
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: userId,
-        text: "❌ Failed to save repository URL. Please try again.",
-      });
-      return;
-    }
-
-    // Send confirmation message if triggered from a thread
-    if (channelId && threadTs) {
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `✅ Repository set to ${repoUrl}`,
-      });
-    } else {
-      // If triggered from home tab, send ephemeral confirmation and refresh home tab
-      await client.chat.postEphemeral({
-        channel: userId, // DM channel
-        user: userId,
-        text: `✅ Repository set to ${repoUrl}`,
-      });
-
-      // Refresh the home tab to show updated repository
-      await this.updateAppHome(userId, client);
-    }
-  }
-
   private extractViewInputs(stateValues: any): string {
+    // This method was kept for backward compatibility but could be moved to form-handlers
     const inputs: string[] = [];
     for (const [blockId, block] of Object.entries(stateValues || {})) {
       for (const [actionId, action] of Object.entries(block as any)) {
@@ -1487,45 +944,10 @@ export class SlackEventHandlers {
           value = (action as any).value;
         } else if ((action as any).selected_option?.value) {
           value = (action as any).selected_option.value;
-        } else if ((action as any).selected_options) {
-          // Multi-select
-          const options = (action as any).selected_options;
-          value = options.map((opt: any) => opt.value).join(", ");
-        } else if ((action as any).selected_date) {
-          value = (action as any).selected_date;
-        } else if ((action as any).selected_time) {
-          value = (action as any).selected_time;
-        } else if ((action as any).selected_button) {
-          // Handle button selections (radio buttons, etc.)
-          value = (action as any).selected_button.value;
-        } else if ((action as any).selected_user) {
-          // Handle user picker
-          value = (action as any).selected_user;
-        } else if ((action as any).selected_channel) {
-          // Handle channel picker
-          value = (action as any).selected_channel;
-        } else if ((action as any).selected_conversation) {
-          // Handle conversation picker
-          value = (action as any).selected_conversation;
-        } else if (
-          (action as any).actions &&
-          Array.isArray((action as any).actions)
-        ) {
-          // Handle action blocks with button selections
-          const selectedActions = (action as any).actions.filter(
-            (act: any) => act.selected || act.value,
-          );
-          if (selectedActions.length > 0) {
-            value = selectedActions
-              .map((act: any) => act.value || act.text?.text || act.action_id)
-              .join(", ");
-          }
         }
 
         if (value && value.toString().trim()) {
-          // Use actionId as label if available, otherwise use blockId
           const label = actionId || blockId;
-          // Convert snake_case or camelCase to readable format
           const readableLabel = label
             .replace(/[_-]/g, " ")
             .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -1538,91 +960,7 @@ export class SlackEventHandlers {
       }
     }
 
-    // Debug logging to help troubleshoot form submission issues
-    logger.info(
-      `Form submission debug - stateValues: ${JSON.stringify(stateValues, null, 2)}`,
-    );
-    logger.info(`Extracted inputs: ${inputs.join(", ")}`);
-
     return inputs.join("\n");
-  }
-
-  /**
-   * Extract text content from modal blocks (for display-only forms)
-   */
-  private extractModalContent(blocks: any[]): string {
-    const content: string[] = [];
-
-    if (!blocks || !Array.isArray(blocks)) {
-      return "";
-    }
-
-    for (const block of blocks) {
-      if (block.type === "section" && block.text?.text) {
-        // Extract section text content
-        let text = block.text.text;
-        // Clean up markdown formatting for plain text
-        text = text.replace(/\*\*(.+?)\*\*/g, "$1"); // Bold
-        text = text.replace(/\*(.+?)\*/g, "$1"); // Italic
-        text = text.replace(/`(.+?)`/g, "$1"); // Code
-        content.push(text);
-      } else if (block.type === "context" && block.elements) {
-        // Extract context elements
-        for (const element of block.elements) {
-          if (element.type === "mrkdwn" && element.text) {
-            let text = element.text
-              .replace(/\*\*(.+?)\*\*/g, "$1")
-              .replace(/\*(.+?)\*/g, "$1");
-            content.push(text);
-          }
-        }
-      }
-    }
-
-    return content.join("\n").trim();
-  }
-
-  /**
-   * Extract action selections from view blocks (for button-based forms)
-   */
-  private extractActionSelections(view: any): string {
-    const selections: string[] = [];
-
-    if (!view.blocks || !Array.isArray(view.blocks)) {
-      return "";
-    }
-
-    for (const block of view.blocks) {
-      if (block.type === "actions" && block.elements) {
-        // This is an action block with buttons/elements
-        for (const element of block.elements) {
-          if (element.type === "button" && element.text?.text) {
-            // For now, we'll capture the button text as the user's selection
-            // In a real scenario, we'd need to track which button was actually clicked
-            // But since this is a modal submission, we know the user made a selection
-            selections.push(`Selected: ${element.text.text}`);
-          } else if (
-            element.type === "static_select" &&
-            element.placeholder?.text
-          ) {
-            selections.push(`Option available: ${element.placeholder.text}`);
-          }
-        }
-      } else if (block.type === "section" && block.text?.text) {
-        // Capture section text as context
-        const text = block.text.text;
-        if (text && !text.includes("Would you like to")) {
-          selections.push(text);
-        }
-      }
-    }
-
-    // If no specific selections found, provide a generic indication
-    if (selections.length === 0) {
-      selections.push("User made a selection from the available options");
-    }
-
-    return selections.join("\n");
   }
 
   /**
