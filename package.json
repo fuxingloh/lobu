@@ -1,7 +1,6 @@
 {
-  "name": "@peerbot/peerbot",
+  "name": "@peerbot/cli",
   "version": "1.0.0",
-  "private": true,
   "bin": {
     "peerbot": "./bin/peerbot"
   },

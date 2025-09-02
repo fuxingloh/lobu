@@ -143,13 +143,13 @@ export class ClaudeWorker {
       
       // Check if this is a resumed session to show appropriate message
       const isResumedSession = !!this.config.resumeSessionId;
-      const workspaceMessage = isResumedSession ? "💻 Restoring workspace..." : "💻 Setting up workspace...";
+      const workspaceMessage = isResumedSession ? "💻 Resuming workspace..." : "💻 Setting up new workspace...";
       
       // Update initial message with appropriate status
       await this.queueIntegration.updateProgress(workspaceMessage);
 
       // Setup workspace
-      logger.info(isResumedSession ? "Restoring workspace..." : "Setting up workspace...");
+      logger.info(isResumedSession ? "Resuming workspace..." : "Setting up workspace...");
       await Sentry.startSpan(
         {
           name: "worker.workspace_setup",

@@ -43,7 +43,7 @@ Peerbot uses a queue-based architecture where the dispatcher receives Slack mess
 3. Enqueues `WorkerDeploymentPayload` with `resumeSessionId` instead of `sessionId`
 4. Orchestrator creates new worker deployment
 5. Worker resumes Claude session using `--resume` functionality
-6. Worker sends "💻 Restoring workspace..." to thread_response queue (existing workspace)
+6. Worker sends "💻 Resuming workspace..." to thread_response queue (existing workspace)
 7. Worker continues conversation in existing thread
 8. **Creates new bot message** (no cached timestamp for this worker instance)
 9. Updates proceed normally
@@ -177,7 +177,7 @@ Even for existing threads, workspace setup is required because each worker is a 
 - Sets up git configuration
 
 ### Existing Threads (Resumed Sessions) 
-- Shows "💻 Restoring workspace..." 
+- Shows "💻 Resuming workspace..." 
 - Repository already exists in persistent volume
 - Quick `git fetch origin` (2-5 seconds)
 - Checks out session branch

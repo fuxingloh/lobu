@@ -3,6 +3,7 @@
 import PgBoss from "pg-boss";
 import { WebClient } from "@slack/web-api";
 import { createHash } from "crypto";
+import { marked } from "marked";
 import type { GitHubRepositoryManager } from "../github/repository-manager";
 
 // Generate deterministic action IDs based on content to prevent conflicts during rapid message updates - fixed
@@ -10,9 +11,9 @@ function generateDeterministicActionId(content: string, prefix: string = "action
   const hash = createHash('sha256').update(content).digest('hex').substring(0, 8);
   return `${prefix}_${hash}`;
 }
-// Simple blockkit detection and conversion for now
+// Enhanced markdown to Slack conversion with proper handling of all common markdown elements
 function processMarkdownAndBlockkit(content: string): { text: string; blocks: any[] } {
-  // Process blockkit with metadata
+  // Process blockkit with metadata first
   const codeBlockRegex = /```(\w+)\s*\{([^}]+)\}\s*\n?([\s\S]*?)\n?```/g;
   let processedContent = content;
   const actionButtons: any[] = [];
@@ -74,11 +75,8 @@ function processMarkdownAndBlockkit(content: string): { text: string; blocks: an
     }
   }
 
-  // Convert basic markdown
-  const text = processedContent
-    .replace(/\*\*(.*?)\*\*/g, '*$1*')
-    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '_$1_')
-    .trim();
+  // Enhanced markdown to Slack conversion
+  const text = convertMarkdownToSlack(processedContent);
 
   // Always create at least one block
   const blocks: any[] = [];
@@ -102,6 +100,118 @@ function processMarkdownAndBlockkit(content: string): { text: string; blocks: an
   }
 
   return { text, blocks };
+}
+
+/**
+ * Custom renderer for converting markdown to Slack's mrkdwn format
+ */
+class SlackRenderer extends marked.Renderer {
+  heading(text: string, level: number): string {
+    // Convert all headings to bold text with extra spacing
+    return `*${text}*\n\n`;
+  }
+
+  paragraph(text: string): string {
+    return `${text}\n\n`;
+  }
+
+  strong(text: string): string {
+    // Bold in Slack is *text*
+    return `*${text}*`;
+  }
+
+  em(text: string): string {
+    // Italic in Slack is _text_
+    return `_${text}_`;
+  }
+
+  code(text: string): string {
+    // Inline code in Slack is `text`
+    return `\`${text}\``;
+  }
+
+  codespan(text: string): string {
+    // Inline code in Slack is `text`
+    return `\`${text}\``;
+  }
+
+  blockquote(quote: string): string {
+    // Convert blockquote to italic with quote prefix
+    const lines = quote.trim().split('\n');
+    return lines.map(line => `_> ${line.trim()}_`).join('\n') + '\n\n';
+  }
+
+  list(body: string, ordered: boolean, start?: number): string {
+    return body + '\n';
+  }
+
+  listitem(text: string, task?: boolean, checked?: boolean): string {
+    // Slack supports bullet points and numbered lists
+    return `• ${text.trim()}\n`;
+  }
+
+  link(href: string, title: string | null | undefined, text: string): string {
+    // Slack link format is <url|text>
+    return `<${href}|${text}>`;
+  }
+
+  br(): string {
+    return '\n';
+  }
+
+  hr(): string {
+    return '\n---\n\n';
+  }
+}
+
+/**
+ * Convert markdown to Slack's mrkdwn format using marked with custom renderer
+ */
+function convertMarkdownToSlack(content: string): string {
+  const renderer = new SlackRenderer();
+  
+  // Configure marked options
+  marked.setOptions({
+    renderer: renderer,
+    breaks: true, // Convert single line breaks to <br>
+    gfm: true,    // GitHub flavored markdown
+  });
+
+  try {
+    let processed = marked.parse(content) as string;
+    
+    // Clean up extra whitespace but preserve intentional line breaks
+    processed = processed
+      .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
+      .trim();
+
+    // Handle code blocks specially - marked converts them to HTML, we need to convert back to Slack format
+    processed = processed.replace(/<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g, (match, language, code) => {
+      // Decode HTML entities in code blocks
+      const decodedCode = code
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+      
+      return `\`\`\`\n${decodedCode.trim()}\n\`\`\``;
+    });
+
+    // Clean up any remaining HTML entities that might have been introduced
+    processed = processed
+      .replace(/&gt;/g, '>')
+      .replace(/&lt;/g, '<')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+    return processed;
+  } catch (error) {
+    console.error('Failed to parse markdown:', error);
+    // Fallback to original content if parsing fails
+    return content;
+  }
 }
 
 

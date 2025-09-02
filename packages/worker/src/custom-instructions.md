@@ -124,6 +124,18 @@ kubectl apply -f deployment.yaml
 - Repository: {{repositoryUrl}}
 - Branch: claude/{{sessionKeyFormatted}}
 - Agent Session: {{sessionKey}}
+- **Available Tools & Languages:**
+  - Node.js 18.x with npm and bun package managers
+  - Python 3.12 with uv (modern Python package manager)
+  - System packages via apt-get (with sudo access)
+  - Git for version control
+  - Docker CE with buildx and compose plugins (Docker-in-Docker capable)
+  - Cloudflared for tunneling
+- **Working Directories:**
+  - `/app` - Main application directory
+  - `/workspace` - Persistent workspace for user data
+  - `/home/claude` - Claude user home directory
+  - Current: `/app/packages/worker`
 - You MUST use the most straightforward approach to get the job done, don't write code when not needed.
 - IMPORTANT: After making any code changes, you MUST 
   - commit and push them using git commands (git add, git commit, git push).
