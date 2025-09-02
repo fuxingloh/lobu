@@ -37,7 +37,7 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1001
   runAsGroup: 1001
-  readOnlyRootFilesystem: false  # Claude needs write access
+  readOnlyRootFilesystem: false # Claude needs write access
 
 # Pod Disruption Budget
 podDisruptionBudget:
@@ -60,13 +60,12 @@ ingress:
 limitRange:
   enabled: false
 
-
 # PostgreSQL configuration
 postgresql:
   enabled: true
   database: peerbot
   username: postgres
-  sslMode: "disable"  # Options: disable, require, verify-ca, verify-full
+  sslMode: "disable" # Options: disable, require, verify-ca, verify-full
   resources:
     requests:
       memory: "256Mi"
@@ -85,7 +84,7 @@ slack:
 
 claude:
   model: "claude-sonnet-4-20250514"
-  timeoutMinutes: "5"  # Default timeout
+  timeoutMinutes: "5" # Default timeout
 
 # Disable static worker deployment - workers are created dynamically by orchestrator
 worker:
@@ -96,15 +95,15 @@ worker:
     tag: latest
   resources:
     requests:
-      memory: "512Mi"   # Reduced for security
-      cpu: "100m"       # Minimal CPU allocation
+      memory: "512Mi" # Reduced for security
+      cpu: "100m" # Minimal CPU allocation
     limits:
-      memory: "1Gi"     # Hard cap at 1GB
-      cpu: "500m"       # Max 0.5 CPU cores
+      memory: "1Gi" # Hard cap at 1GB
+      cpu: "500m" # Max 0.5 CPU cores
   persistence:
     enabled: true
     size: "1Gi"
-    storageClass: ""  # Use default storage class
+    storageClass: "" # Use default storage class
   job:
     timeoutSeconds: 300
     backoffLimit: 0
@@ -149,29 +148,28 @@ dispatcher:
 image:
   pullPolicy: Always
 
-
 # Resource quota configuration - DISABLED for development
 resourceQuota:
-  enabled: false  # Disabled in dev mode to allow unlimited workers
+  enabled: false # Disabled in dev mode to allow unlimited workers
   requests:
-    cpu: "2"      # Temporarily increased to allow worker testing
+    cpu: "2" # Temporarily increased to allow worker testing
     memory: "4Gi" # Temporarily increased to allow worker testing
   limits:
-    cpu: "2"      # Allow dispatcher bursts
+    cpu: "2" # Allow dispatcher bursts
     memory: "4Gi" # Allow dispatcher bursts
 
 # Worker-specific quota (uses worker-priority class) - DISABLED for development
 workerQuota:
-  enabled: false  # Disabled in dev mode
+  enabled: false # Disabled in dev mode
   requests:
-    cpu: "2"      # ~10 concurrent threads (200m each)
+    cpu: "2" # ~10 concurrent threads (200m each)
     memory: "8Gi" # ~15 concurrent threads (512Mi each)
   limits:
-    cpu: "4"      # Allow worker bursts
+    cpu: "4" # Allow worker bursts
     memory: "12Gi" # Allow worker bursts
   counts:
-    pods: "15"    # Max 15 concurrent worker pods
-    jobs: "10"    # Legacy job limit
+    pods: "15" # Max 15 concurrent worker pods
+    jobs: "10" # Legacy job limit
 
 # Re-enable orchestrator - needed for dynamic worker creation
 orchestrator:
@@ -193,10 +191,10 @@ orchestrator:
 
 config:
   githubOrganization: "peerbot-community"
-  githubRepository: ""  # Optional: Override repository URL for all users
+  githubRepository: "" # Optional: Override repository URL for all users
   gcsProjectId: ""
   sessionTimeoutMinutes: "5"
 
 # pgboss configuration override
 pgboss:
-  expireInHours: 1  # 1 hour minimum required by pgboss
+  expireInHours: 1 # 1 hour minimum required by pgboss

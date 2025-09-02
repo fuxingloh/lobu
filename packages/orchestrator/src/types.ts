@@ -41,7 +41,7 @@ export interface QueueJob {
   id: string;
   name: string;
   data: any;
-  state: 'created' | 'retry' | 'active' | 'completed' | 'failed';
+  state: "created" | "retry" | "active" | "completed" | "failed";
   startAfter?: Date;
   expireIn?: Date;
   createdOn: Date;
@@ -72,10 +72,9 @@ export interface ThreadDeployment {
   lastHeartbeat: Date;
 }
 
-
 export interface SimpleDeployment {
-  apiVersion: 'apps/v1';
-  kind: 'Deployment';
+  apiVersion: "apps/v1";
+  kind: "Deployment";
   metadata: {
     name: string;
     namespace: string;
@@ -140,18 +139,18 @@ export interface SimpleDeployment {
 }
 
 export enum ErrorCode {
-  DATABASE_CONNECTION_FAILED = 'DATABASE_CONNECTION_FAILED',
-  KUBERNETES_API_ERROR = 'KUBERNETES_API_ERROR',
-  DEPLOYMENT_SCALE_FAILED = 'DEPLOYMENT_SCALE_FAILED',
-  DEPLOYMENT_CREATE_FAILED = 'DEPLOYMENT_CREATE_FAILED',
-  DEPLOYMENT_DELETE_FAILED = 'DEPLOYMENT_DELETE_FAILED',
-  QUEUE_JOB_PROCESSING_FAILED = 'QUEUE_JOB_PROCESSING_FAILED',
-  USER_CREDENTIALS_CREATE_FAILED = 'USER_CREDENTIALS_CREATE_FAILED',
-  SECRET_CREATE_FAILED = 'SECRET_CREATE_FAILED',
-  PVC_CREATE_FAILED = 'PVC_CREATE_FAILED',
-  INVALID_CONFIGURATION = 'INVALID_CONFIGURATION',
-  THREAD_DEPLOYMENT_NOT_FOUND = 'THREAD_DEPLOYMENT_NOT_FOUND',
-  USER_QUEUE_NOT_FOUND = 'USER_QUEUE_NOT_FOUND'
+  DATABASE_CONNECTION_FAILED = "DATABASE_CONNECTION_FAILED",
+  KUBERNETES_API_ERROR = "KUBERNETES_API_ERROR",
+  DEPLOYMENT_SCALE_FAILED = "DEPLOYMENT_SCALE_FAILED",
+  DEPLOYMENT_CREATE_FAILED = "DEPLOYMENT_CREATE_FAILED",
+  DEPLOYMENT_DELETE_FAILED = "DEPLOYMENT_DELETE_FAILED",
+  QUEUE_JOB_PROCESSING_FAILED = "QUEUE_JOB_PROCESSING_FAILED",
+  USER_CREDENTIALS_CREATE_FAILED = "USER_CREDENTIALS_CREATE_FAILED",
+  SECRET_CREATE_FAILED = "SECRET_CREATE_FAILED",
+  PVC_CREATE_FAILED = "PVC_CREATE_FAILED",
+  INVALID_CONFIGURATION = "INVALID_CONFIGURATION",
+  THREAD_DEPLOYMENT_NOT_FOUND = "THREAD_DEPLOYMENT_NOT_FOUND",
+  USER_QUEUE_NOT_FOUND = "USER_QUEUE_NOT_FOUND",
 }
 
 export class OrchestratorError extends Error {
@@ -159,19 +158,18 @@ export class OrchestratorError extends Error {
     public code: ErrorCode,
     message: string,
     public details?: any,
-    public shouldRetry: boolean = false
+    public shouldRetry: boolean = false,
   ) {
     super(message);
-    this.name = 'OrchestratorError';
+    this.name = "OrchestratorError";
   }
-
 
   static fromDatabaseError(error: any): OrchestratorError {
     return new OrchestratorError(
       ErrorCode.DATABASE_CONNECTION_FAILED,
       `Database error: ${error instanceof Error ? error.message : String(error)}`,
       { code: error.code, detail: error.detail },
-      true
+      true,
     );
   }
 }

@@ -1,31 +1,31 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Make Dev",
-            "type": "shell",
-            "command": "trap 'pkill -f \"bun --watch packages/orchestrator/src/index.ts\"; pkill -f \"bun --watch packages/dispatcher/src/index.ts\"; rm -f peerbot.log' EXIT; script -q peerbot.log make dev",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "new",
-                "showReuseMessage": true,
-                "clear": false
-            },
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {}
-            },
-            "problemMatcher": [],
-            "isBackground": true,
-            "runOptions": {
-                "runOn": "default"
-            }
-        }
-    ]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Make Dev",
+      "type": "shell",
+      "command": "trap 'pkill -f \"bun --watch packages/orchestrator/src/index.ts\"; pkill -f \"bun --watch packages/dispatcher/src/index.ts\"; rm -f peerbot.log' EXIT; script -q peerbot.log make dev",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {}
+      },
+      "problemMatcher": [],
+      "isBackground": true,
+      "runOptions": {
+        "runOn": "default"
+      }
+    }
+  ]
 }

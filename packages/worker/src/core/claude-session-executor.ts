@@ -7,10 +7,10 @@ import { createWriteStream } from "fs";
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 import logger from "./logger";
-import type { 
-  ClaudeExecutionOptions, 
-  ClaudeExecutionResult, 
-  ProgressCallback
+import type {
+  ClaudeExecutionOptions,
+  ClaudeExecutionResult,
+  ProgressCallback,
 } from "./types";
 
 const execAsync = promisify(exec);
@@ -20,35 +20,52 @@ const PIPE_PATH = `${process.env.RUNNER_TEMP || "/tmp"}/claude_prompt_pipe`;
 /**
  * Check for unstashed files and commit them if any exist
  */
-async function checkAndCommitUnstashedFiles(workingDirectory?: string): Promise<void> {
+async function checkAndCommitUnstashedFiles(
+  workingDirectory?: string,
+): Promise<void> {
   const cwd = workingDirectory || process.cwd();
-  
+
   try {
     // Check git status to see if there are any unstashed files
-    const { stdout: gitStatus } = await execAsync("git status --porcelain", { cwd });
-    
+    const { stdout: gitStatus } = await execAsync("git status --porcelain", {
+      cwd,
+    });
+
     if (gitStatus.trim()) {
       logger.info("Found unstashed files, committing them automatically...");
-      
+
       // Stage all changes
       await execAsync("git add -A", { cwd });
-      
+
       // Get list of modified files for commit message
-      const { stdout: statusOutput } = await execAsync("git status --porcelain --cached", { cwd });
-      const modifiedFiles = statusOutput.split('\n').filter(line => line.trim()).length;
-      
+      const { stdout: statusOutput } = await execAsync(
+        "git status --porcelain --cached",
+        { cwd },
+      );
+      const modifiedFiles = statusOutput
+        .split("\n")
+        .filter((line) => line.trim()).length;
+
       // Commit with a descriptive message
       const commitMessage = `Auto-commit before Claude execution: ${modifiedFiles} file(s) modified`;
       await execAsync(`git commit -m "${commitMessage}"`, { cwd });
-      
-      logger.info(`Committed ${modifiedFiles} unstashed files before Claude execution`);
+
+      logger.info(
+        `Committed ${modifiedFiles} unstashed files before Claude execution`,
+      );
     }
   } catch (error) {
     // Log but don't fail if git operations don't work (e.g., not a git repository)
     logger.warn("Could not check/commit unstashed files:", error);
   }
 }
-const BASE_ARGS = ["--verbose", "--output-format", "stream-json", "--dangerously-skip-permissions", "-p"];
+const BASE_ARGS = [
+  "--verbose",
+  "--output-format",
+  "stream-json",
+  "--dangerously-skip-permissions",
+  "-p",
+];
 
 function parseCustomEnvVars(claudeEnv?: string): Record<string, string> {
   if (!claudeEnv || claudeEnv.trim() === "") {
@@ -157,7 +174,7 @@ export async function runClaudeWithProgress(
   promptPath: string,
   options: ClaudeExecutionOptions,
   onProgress?: ProgressCallback,
-  workingDirectory?: string
+  workingDirectory?: string,
 ): Promise<ClaudeExecutionResult> {
   const config = prepareRunConfig(promptPath, options);
 
@@ -192,7 +209,9 @@ export async function runClaudeWithProgress(
   }
 
   // Output to console
-  console.log(`🚀 CLAUDE EXECUTION: Starting Claude agent with prompt file ${config.promptPath} (${promptSize} bytes)`);
+  console.log(
+    `🚀 CLAUDE EXECUTION: Starting Claude agent with prompt file ${config.promptPath} (${promptSize} bytes)`,
+  );
   logger.info(`Running Claude with prompt from file: ${config.promptPath}`);
 
   // Start sending prompt to pipe in background
@@ -208,14 +227,19 @@ export async function runClaudeWithProgress(
   });
 
   // Use claude command directly - check for different possible paths
-  const claudeCommand = process.env.CLAUDE_COMMAND || 
+  const claudeCommand =
+    process.env.CLAUDE_COMMAND ||
     (process.env.NODE_ENV === "production" ? "node" : "claude");
-  
+
   // Adjust args for Node.js execution
-  const claudeArgs = claudeCommand === "node" 
-    ? ["/app/node_modules/@anthropic-ai/claude-code/cli.js", ...config.claudeArgs]
-    : config.claudeArgs;
-  
+  const claudeArgs =
+    claudeCommand === "node"
+      ? [
+          "/app/node_modules/@anthropic-ai/claude-code/cli.js",
+          ...config.claudeArgs,
+        ]
+      : config.claudeArgs;
+
   const claudeProcess = spawn(claudeCommand, claudeArgs, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd: workingDirectory || process.cwd(),
@@ -234,7 +258,7 @@ export async function runClaudeWithProgress(
   // Capture output for parsing execution metrics
   let output = "";
   let errorOutput = "";
-  
+
   claudeProcess.stdout.on("data", async (data) => {
     const text = data.toString();
 
@@ -246,16 +270,20 @@ export async function runClaudeWithProgress(
       try {
         // Check if this line is a JSON object
         const parsed = JSON.parse(line);
-        
+
         // Log agent stream updates with useful context
         if (parsed.type) {
-          console.log(`🤖 AGENT STREAM: ${parsed.type}${parsed.content ? ` - ${parsed.content.substring(0, 100)}${parsed.content.length > 100 ? '...' : ''}` : ''}`);
+          console.log(
+            `🤖 AGENT STREAM: ${parsed.type}${parsed.content ? ` - ${parsed.content.substring(0, 100)}${parsed.content.length > 100 ? "..." : ""}` : ""}`,
+          );
         } else if (parsed.error) {
           console.log(`❌ AGENT ERROR: ${parsed.error}`);
         } else if (parsed.message) {
-          console.log(`💬 AGENT MESSAGE: ${parsed.message.substring(0, 100)}${parsed.message.length > 100 ? '...' : ''}`);
+          console.log(
+            `💬 AGENT MESSAGE: ${parsed.message.substring(0, 100)}${parsed.message.length > 100 ? "..." : ""}`,
+          );
         }
-        
+
         // Call progress callback if provided
         if (onProgress) {
           await onProgress({
@@ -379,8 +407,10 @@ export async function runClaudeWithProgress(
 
   // Process completion without saving files
   if (exitCode === 0) {
-    console.log(`✅ CLAUDE EXECUTION: Claude agent completed successfully (exit code: ${exitCode})`);
-    
+    console.log(
+      `✅ CLAUDE EXECUTION: Claude agent completed successfully (exit code: ${exitCode})`,
+    );
+
     // Call completion callback
     if (onProgress) {
       await onProgress({
@@ -396,17 +426,18 @@ export async function runClaudeWithProgress(
       output,
     };
   } else {
-    console.log(`❌ CLAUDE EXECUTION: Claude agent failed (exit code: ${exitCode}${errorOutput ? `, stderr: ${errorOutput.substring(0, 100)}...` : ''})`);
-    
+    console.log(
+      `❌ CLAUDE EXECUTION: Claude agent failed (exit code: ${exitCode}${errorOutput ? `, stderr: ${errorOutput.substring(0, 100)}...` : ""})`,
+    );
 
     // Create detailed error message with more context
     let error = `Claude process exited with code ${exitCode}`;
-    
+
     // Add stderr details if available
     if (errorOutput) {
       error += `\n\nStderr output:\n${errorOutput.trim()}`;
     }
-    
+
     // Add specific guidance based on exit code
     if (exitCode === 124) {
       error += `\n\n💡 This was a timeout error. Consider increasing the timeout or breaking down the task into smaller steps.`;
@@ -417,7 +448,7 @@ export async function runClaudeWithProgress(
     } else if (exitCode === 127) {
       error += `\n\n💡 Command not found - Claude CLI may not be properly installed.`;
     }
-    
+
     // Call error callback
     if (onProgress) {
       await onProgress({

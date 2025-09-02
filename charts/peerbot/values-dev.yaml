@@ -9,12 +9,12 @@ dispatcher:
     repository: peerbot-dispatcher
     pullPolicy: Always
     tag: "latest"
-  
+
   service:
     type: ClusterIP
     port: 3000
     targetPort: 3000
-  
+
   resources:
     limits:
       cpu: 500m
@@ -22,7 +22,7 @@ dispatcher:
     requests:
       cpu: 100m
       memory: 128Mi
-  
+
   config:
     nodeEnv: "development"
     logLevel: "DEBUG"
@@ -32,7 +32,7 @@ worker:
     repository: peerbot-worker
     tag: latest
     pullPolicy: Always
-  
+
   resources:
     requests:
       cpu: "500m"
@@ -40,12 +40,12 @@ worker:
     limits:
       cpu: "1"
       memory: "2Gi"
-  
+
   job:
     timeoutSeconds: 300
     backoffLimit: 0
     ttlSecondsAfterFinished: 300
-  
+
   workspace:
     sizeLimit: "10Gi"
 
@@ -75,7 +75,7 @@ kubernetes:
   namespace: peerbot
 
 postgresql:
-  sslMode: "disable"  # Development: SSL disabled for simplicity
+  sslMode: "disable" # Development: SSL disabled for simplicity
 
 serviceAccount:
   create: true
@@ -85,7 +85,7 @@ rbac:
   create: true
 
 secrets:
-  create: false  # We'll create them manually
+  create: false # We'll create them manually
   slackBotToken: ""
   slackAppToken: ""
   slackSigningSecret: ""
@@ -105,7 +105,6 @@ monitoring:
 
 autoscaling:
   enabled: false
-
 
 podDisruptionBudget:
   enabled: false
@@ -135,7 +134,7 @@ securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
-    - ALL
+      - ALL
   readOnlyRootFilesystem: false
   runAsNonRoot: true
   runAsUser: 1000

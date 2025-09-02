@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
 import logger from "./logger";
-import type { 
-  SessionState, 
-  SessionContext, 
-  ConversationMessage, 
-  ProgressUpdate
+import type {
+  SessionState,
+  SessionContext,
+  ConversationMessage,
+  ProgressUpdate,
 } from "./types";
 
 /**
@@ -13,15 +13,20 @@ import type {
  */
 export class SessionManager {
   constructor(_config: { timeoutMinutes?: number }) {
-    logger.info("SessionManager initialized (stateless - using Slack as source of truth)");
+    logger.info(
+      "SessionManager initialized (stateless - using Slack as source of truth)",
+    );
   }
 
   /**
    * Create a new session state object
    */
-  async createSession(sessionKey: string, context: SessionContext): Promise<SessionState> {
+  async createSession(
+    sessionKey: string,
+    context: SessionContext,
+  ): Promise<SessionState> {
     const now = Date.now();
-    
+
     const sessionState: SessionState = {
       sessionKey,
       context,
@@ -47,14 +52,22 @@ export class SessionManager {
   /**
    * Add message to conversation
    */
-  async addMessage(sessionKey: string, message: ConversationMessage): Promise<void> {
-    logger.info(`Would add ${message.role} message to session ${sessionKey} (no-op in stateless mode)`);
+  async addMessage(
+    sessionKey: string,
+    message: ConversationMessage,
+  ): Promise<void> {
+    logger.info(
+      `Would add ${message.role} message to session ${sessionKey} (no-op in stateless mode)`,
+    );
   }
 
   /**
    * Update session progress (no-op in stateless mode)
    */
-  async updateProgress(sessionKey: string, update: ProgressUpdate): Promise<void> {
+  async updateProgress(
+    sessionKey: string,
+    update: ProgressUpdate,
+  ): Promise<void> {
     logger.info(`Progress update for ${sessionKey}: ${update.type}`);
   }
 
@@ -62,7 +75,9 @@ export class SessionManager {
    * No-op methods for compatibility
    */
   startTimeoutMonitoring(sessionKey: string): Promise<void> {
-    logger.info(`Timeout monitoring for ${sessionKey} (no-op in stateless mode)`);
+    logger.info(
+      `Timeout monitoring for ${sessionKey} (no-op in stateless mode)`,
+    );
     return Promise.resolve();
   }
 
@@ -74,12 +89,10 @@ export class SessionManager {
     // No-op
   }
 
-
   async sessionExists(_sessionKey: string): Promise<boolean> {
     // Always return false since we don't store sessions
     return false;
   }
-
 
   async cleanup(sessionKey: string): Promise<void> {
     logger.info(`Cleanup for ${sessionKey} (no-op in stateless mode)`);
@@ -95,14 +108,14 @@ export class SessionManager {
   static generateSessionKey(context: SessionContext): string {
     // Use thread timestamp as the session key (if in a thread)
     // Otherwise use message timestamp
-    const timestamp = context.threadTs || context.messageTs || '';
-    
+    const timestamp = context.threadTs || context.messageTs || "";
+
     // If we have a thread timestamp, use it directly as the session key
     // This ensures consistency across all worker executions in the same thread
     if (context.threadTs) {
       return context.threadTs;
     }
-    
+
     // For non-threaded messages, use message timestamp
     // This should rarely happen as bot typically creates threads
     return timestamp || `session-${Date.now()}`;

@@ -54,16 +54,19 @@ export class QueueProducer {
   private pool?: Pool;
   private isConnected = false;
 
-  constructor(connectionString: string, databaseConfig?: {
-    host: string;
-    port: number;
-    database: string;
-    username: string;
-    password: string;
-    ssl?: boolean;
-  }) {
+  constructor(
+    connectionString: string,
+    databaseConfig?: {
+      host: string;
+      port: number;
+      database: string;
+      username: string;
+      password: string;
+      ssl?: boolean;
+    },
+  ) {
     this.pgBoss = new PgBoss(connectionString);
-    
+
     // Create separate pool for RLS context management
     if (databaseConfig) {
       this.pool = new Pool({
@@ -87,11 +90,11 @@ export class QueueProducer {
     try {
       await this.pgBoss.start();
       this.isConnected = true;
-      
+
       // Create the messages queue if it doesn't exist
-      await this.pgBoss.createQueue('messages');
+      await this.pgBoss.createQueue("messages");
       logger.info("✅ Created/verified messages queue");
-      
+
       logger.info("✅ Queue producer started successfully");
     } catch (error) {
       logger.error("Failed to start queue producer:", error);
@@ -127,7 +130,7 @@ export class QueueProducer {
       retryLimit?: number;
       retryDelay?: number;
       expireInSeconds?: number;
-    }
+    },
   ): Promise<string> {
     if (!this.isConnected) {
       throw new Error("Queue producer is not connected");
@@ -135,7 +138,7 @@ export class QueueProducer {
 
     try {
       // All messages go to the single 'messages' queue
-      const jobId = await this.pgBoss.send('messages', payload, {
+      const jobId = await this.pgBoss.send("messages", payload, {
         priority: options?.priority || 0,
         retryLimit: options?.retryLimit || 3,
         retryDelay: options?.retryDelay || 30,
@@ -144,13 +147,19 @@ export class QueueProducer {
       });
 
       // Debug: Check what send() actually returns
-      logger.info(`pgBoss.send() returned: ${JSON.stringify(jobId)}, type: ${typeof jobId}`);
-      logger.info(`Enqueued message job ${jobId} for user ${payload.userId}, thread ${payload.threadId}`);
-      return jobId || 'job-sent';
-
+      logger.info(
+        `pgBoss.send() returned: ${JSON.stringify(jobId)}, type: ${typeof jobId}`,
+      );
+      logger.info(
+        `Enqueued message job ${jobId} for user ${payload.userId}, thread ${payload.threadId}`,
+      );
+      return jobId || "job-sent";
     } catch (error) {
       Sentry.captureException(error);
-      logger.error(`Failed to enqueue message for user ${payload.userId}:`, error);
+      logger.error(
+        `Failed to enqueue message for user ${payload.userId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -166,7 +175,7 @@ export class QueueProducer {
       retryLimit?: number;
       retryDelay?: number;
       expireInSeconds?: number;
-    }
+    },
   ): Promise<string> {
     return this.enqueueMessage(payload, options);
   }
@@ -182,11 +191,10 @@ export class QueueProducer {
       retryLimit?: number;
       retryDelay?: number;
       expireInSeconds?: number;
-    }
+    },
   ): Promise<string> {
     return this.enqueueMessage(payload, options);
   }
-
 
   /**
    * Execute a query with user context for RLS
@@ -194,22 +202,26 @@ export class QueueProducer {
   async queryWithUserContext<T>(
     userId: string,
     query: string,
-    params?: any[]
+    params?: any[],
   ): Promise<{ rows: T[]; rowCount: number }> {
     if (!this.pool) {
-      throw new Error("Database pool not available - queue producer not configured with database config");
+      throw new Error(
+        "Database pool not available - queue producer not configured with database config",
+      );
     }
 
     const client = await this.pool.connect();
-    
+
     try {
       // Set user context for RLS policies using PostgreSQL session configuration
-      await client.query("SELECT set_config('app.current_user_id', $1, true)", [userId]);
-      
+      await client.query("SELECT set_config('app.current_user_id', $1, true)", [
+        userId,
+      ]);
+
       const result = await client.query(query, params);
       return {
         rows: result.rows,
-        rowCount: result.rowCount || 0
+        rowCount: result.rowCount || 0,
       };
     } finally {
       client.release();
@@ -221,18 +233,20 @@ export class QueueProducer {
    */
   async updateJobStatus(
     jobId: string,
-    status: 'pending' | 'active' | 'completed' | 'failed',
-    retryCount?: number
+    status: "pending" | "active" | "completed" | "failed",
+    retryCount?: number,
   ): Promise<void> {
     if (!this.pool) {
-      logger.warn(`Cannot update job status for ${jobId} - database pool not available`);
+      logger.warn(
+        `Cannot update job status for ${jobId} - database pool not available`,
+      );
       return;
     }
 
     try {
-      const query = 'SELECT update_job_status($1, $2, $3)';
+      const query = "SELECT update_job_status($1, $2, $3)";
       const params = [jobId, status, retryCount || null];
-      
+
       await this.pool.query(query, params);
       logger.debug(`Updated job ${jobId} status to: ${status}`);
     } catch (error) {
@@ -253,18 +267,16 @@ export class QueueProducer {
     try {
       const stats = await this.pgBoss.getQueueSize(queueName);
       return {
-        waiting: typeof stats === 'number' ? stats : 0,
+        waiting: typeof stats === "number" ? stats : 0,
         active: 0, // PgBoss.getQueueSize only returns waiting count
         completed: 0,
-        failed: 0
+        failed: 0,
       };
     } catch (error) {
       logger.error(`Failed to get queue stats for ${queueName}:`, error);
       return { waiting: 0, active: 0, completed: 0, failed: 0 };
     }
   }
-
-
 
   /**
    * Check if producer is connected

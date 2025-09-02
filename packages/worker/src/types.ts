@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-
 export interface WorkerConfig {
   sessionKey: string;
   userId: string;
@@ -25,7 +24,6 @@ export interface WorkspaceSetupConfig {
   githubToken: string;
 }
 
-
 export interface GitRepository {
   url: string;
   branch: string;
@@ -45,7 +43,7 @@ export class WorkerError extends Error {
   constructor(
     public operation: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "WorkerError";
@@ -56,7 +54,7 @@ export class WorkspaceError extends Error {
   constructor(
     public operation: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "WorkspaceError";
@@ -67,7 +65,7 @@ export class SlackError extends Error {
   constructor(
     public operation: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "SlackError";

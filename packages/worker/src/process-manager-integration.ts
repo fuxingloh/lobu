@@ -1,5 +1,5 @@
-import { startProcessManagerServer } from '../mcp/process-manager-server.js';
-import logger from './logger.js';
+import { startProcessManagerServer } from "../mcp/process-manager-server.js";
+import logger from "./logger.js";
 
 export interface ProcessManagerInstance {
   port: number;
@@ -16,14 +16,18 @@ let processManagerInstance: ProcessManagerInstance | null = null;
  */
 export async function startProcessManager(): Promise<ProcessManagerInstance> {
   if (processManagerInstance) {
-    logger.info('Process manager already running on port', processManagerInstance.port);
+    logger.info(
+      "Process manager already running on port",
+      processManagerInstance.port,
+    );
     return processManagerInstance;
   }
 
   try {
-    logger.info('🔧 Starting integrated process manager HTTP server...');
-    const { port, server, httpServer, close } = await startProcessManagerServer();
-    
+    logger.info("🔧 Starting integrated process manager HTTP server...");
+    const { port, server, httpServer, close } =
+      await startProcessManagerServer();
+
     processManagerInstance = {
       port,
       server,
@@ -31,17 +35,17 @@ export async function startProcessManager(): Promise<ProcessManagerInstance> {
       close,
       stop: async () => {
         if (processManagerInstance) {
-          logger.info('🛑 Stopping process manager HTTP server...');
+          logger.info("🛑 Stopping process manager HTTP server...");
           await processManagerInstance.close();
           processManagerInstance = null;
         }
-      }
+      },
     };
-    
+
     logger.info(`✅ Process manager HTTP server started on port ${port}`);
     return processManagerInstance;
   } catch (error) {
-    logger.error('❌ Failed to start process manager HTTP server:', error);
+    logger.error("❌ Failed to start process manager HTTP server:", error);
     throw error;
   }
 }

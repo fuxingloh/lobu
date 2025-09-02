@@ -4,11 +4,11 @@ import { runClaudeWithProgress } from "./claude-session-executor";
 import { SessionManager } from "./session-manager";
 import { createPromptFile } from "./prompt-generation";
 import logger from "./logger";
-import type { 
-  ClaudeExecutionOptions, 
-  ClaudeExecutionResult, 
+import type {
+  ClaudeExecutionOptions,
+  ClaudeExecutionResult,
   ProgressCallback,
-  SessionContext
+  SessionContext,
 } from "./types";
 
 export interface ExecuteClaudeSessionOptions {
@@ -31,29 +31,49 @@ export interface SessionExecutionResult extends ClaudeExecutionResult {
 export class ClaudeSessionRunner {
   private sessionManager: SessionManager;
 
-  constructor(config: {
-    timeoutMinutes?: number;
-  } = {}) {
+  constructor(
+    config: {
+      timeoutMinutes?: number;
+    } = {},
+  ) {
     this.sessionManager = new SessionManager({
-      timeoutMinutes: config.timeoutMinutes
+      timeoutMinutes: config.timeoutMinutes,
     });
   }
 
   /**
    * Execute a Claude session with conversation history
    */
-  async executeSession(options: ExecuteClaudeSessionOptions): Promise<SessionExecutionResult> {
-    const { sessionKey, userPrompt, context, options: claudeOptions, onProgress } = options;
+  async executeSession(
+    options: ExecuteClaudeSessionOptions,
+  ): Promise<SessionExecutionResult> {
+    const {
+      sessionKey,
+      userPrompt,
+      context,
+      options: claudeOptions,
+      onProgress,
+    } = options;
 
     try {
       // Create session with conversation history from context
-      logger.info(`Creating session ${sessionKey} with ${context.conversationHistory?.length || 0} messages from history`);
-      const sessionState = await this.sessionManager.createSession(sessionKey, context);
-      
+      logger.info(
+        `Creating session ${sessionKey} with ${context.conversationHistory?.length || 0} messages from history`,
+      );
+      const sessionState = await this.sessionManager.createSession(
+        sessionKey,
+        context,
+      );
+
       // Add conversation history to session if provided
-      if (context.conversationHistory && context.conversationHistory.length > 0) {
+      if (
+        context.conversationHistory &&
+        context.conversationHistory.length > 0
+      ) {
         sessionState.conversation = [...context.conversationHistory];
-        logger.info(`Loaded ${context.conversationHistory.length} messages into session`);
+        logger.info(
+          `Loaded ${context.conversationHistory.length} messages into session`,
+        );
       }
 
       // Add user message to conversation
@@ -62,15 +82,18 @@ export class ClaudeSessionRunner {
         content: userPrompt,
         timestamp: Date.now(),
       };
-      
+
       // Add to session state's conversation directly since addMessage is a no-op
       sessionState.conversation.push(userMessage);
-      
+
       // Also call the session manager method for consistency
       await this.sessionManager.addMessage(sessionKey, userMessage);
 
       // Create prompt file with full conversation context (now includes the user message)
-      const promptPath = await createPromptFile(context, sessionState.conversation);
+      const promptPath = await createPromptFile(
+        context,
+        sessionState.conversation,
+      );
 
       // Start session timeout monitoring
       this.sessionManager.startTimeoutMonitoring(sessionKey);
@@ -82,22 +105,22 @@ export class ClaudeSessionRunner {
         async (update) => {
           // Reset session timeout on activity
           this.sessionManager.resetTimeout(sessionKey);
-          
+
           // Persist progress to session
           await this.sessionManager.updateProgress(sessionKey, update);
-          
+
           // Call external progress callback
           if (onProgress) {
             await onProgress(update);
           }
         },
-        context.workingDirectory // Pass working directory
+        context.workingDirectory, // Pass working directory
       );
 
       // Add Claude's response to conversation
       if (result.success && result.output) {
         await this.sessionManager.addMessage(sessionKey, {
-          role: "assistant", 
+          role: "assistant",
           content: result.output,
           timestamp: Date.now(),
         });
@@ -112,10 +135,9 @@ export class ClaudeSessionRunner {
         persisted: false, // No persistence needed - Slack is the source of truth
         storagePath: "slack://thread", // Indicate data is in Slack
       };
-
     } catch (error) {
       logger.error(`Session ${sessionKey} execution failed:`, error);
-      
+
       // Clean up
       this.sessionManager.clearTimeout(sessionKey);
 
@@ -135,7 +157,6 @@ export class ClaudeSessionRunner {
   async cleanupSession(sessionKey: string): Promise<void> {
     await this.sessionManager.cleanup(sessionKey);
   }
-
 
   /**
    * Check if session exists (always returns false in stateless mode)

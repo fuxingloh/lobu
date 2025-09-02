@@ -7,12 +7,21 @@ import { marked } from "marked";
 import type { GitHubRepositoryManager } from "../github/repository-manager";
 
 // Generate deterministic action IDs based on content to prevent conflicts during rapid message updates - fixed
-function generateDeterministicActionId(content: string, prefix: string = "action"): string {
-  const hash = createHash('sha256').update(content).digest('hex').substring(0, 8);
+function generateDeterministicActionId(
+  content: string,
+  prefix: string = "action",
+): string {
+  const hash = createHash("sha256")
+    .update(content)
+    .digest("hex")
+    .substring(0, 8);
   return `${prefix}_${hash}`;
 }
 // Enhanced markdown to Slack conversion with proper handling of all common markdown elements
-function processMarkdownAndBlockkit(content: string): { text: string; blocks: any[] } {
+function processMarkdownAndBlockkit(content: string): {
+  text: string;
+  blocks: any[];
+} {
   // Process blockkit with metadata first
   const codeBlockRegex = /```(\w+)\s*\{([^}]+)\}\s*\n?([\s\S]*?)\n?```/g;
   let processedContent = content;
@@ -22,56 +31,66 @@ function processMarkdownAndBlockkit(content: string): { text: string; blocks: an
   let match;
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const [fullMatch, language, metadataStr, codeContent] = match;
-    
+
     try {
       const metadata: any = {};
-      metadataStr?.split(',').forEach(pair => {
-        const [key, value] = pair.split(':').map(s => s.trim());
+      metadataStr?.split(",").forEach((pair) => {
+        const [key, value] = pair.split(":").map((s) => s.trim());
         if (key && value) {
-          const cleanKey = key.replace(/"/g, '');
-          let cleanValue: any = value.replace(/"/g, '');
-          if (cleanValue === 'true') cleanValue = true;
-          if (cleanValue === 'false') cleanValue = false;
+          const cleanKey = key.replace(/"/g, "");
+          let cleanValue: any = value.replace(/"/g, "");
+          if (cleanValue === "true") cleanValue = true;
+          if (cleanValue === "false") cleanValue = false;
           metadata[cleanKey] = cleanValue;
         }
       });
 
       if (metadata.action) {
         if (metadata.show === false) {
-          console.log(`[DEBUG] Skipping blockkit with show:false - action: ${metadata.action}`);
-          processedContent = processedContent.replace(fullMatch, '');
+          console.log(
+            `[DEBUG] Skipping blockkit with show:false - action: ${metadata.action}`,
+          );
+          processedContent = processedContent.replace(fullMatch, "");
           continue;
         }
-        
-        if (language === 'blockkit') {
-          const parsed = codeContent ? JSON.parse(codeContent.trim()) : { blocks: [] };
-          const actionId = generateDeterministicActionId(codeContent + metadata.action + blockIndex, 'blockkit_form');
+
+        if (language === "blockkit") {
+          const parsed = codeContent
+            ? JSON.parse(codeContent.trim())
+            : { blocks: [] };
+          const actionId = generateDeterministicActionId(
+            codeContent + metadata.action + blockIndex,
+            "blockkit_form",
+          );
           actionButtons.push({
             type: "button",
             text: { type: "plain_text", text: metadata.action },
             action_id: actionId,
-            value: JSON.stringify({ blocks: parsed.blocks || [parsed] })
+            value: JSON.stringify({ blocks: parsed.blocks || [parsed] }),
           });
-          processedContent = processedContent.replace(fullMatch, '');
+          processedContent = processedContent.replace(fullMatch, "");
         } else {
           if (codeContent && codeContent.length <= 2000) {
-            const actionId = generateDeterministicActionId(codeContent + metadata.action + blockIndex, language);
+            const actionId = generateDeterministicActionId(
+              codeContent + metadata.action + blockIndex,
+              language,
+            );
             actionButtons.push({
               type: "button",
               text: { type: "plain_text", text: metadata.action },
               action_id: actionId,
-              value: codeContent
+              value: codeContent,
             });
           }
           if (metadata.show === false) {
-            processedContent = processedContent.replace(fullMatch, '');
+            processedContent = processedContent.replace(fullMatch, "");
           }
         }
       }
-      
+
       blockIndex++; // Increment for each processed block to ensure unique action_ids
     } catch (error) {
-      console.error('Failed to parse code block:', error);
+      console.error("Failed to parse code block:", error);
     }
   }
 
@@ -80,14 +99,14 @@ function processMarkdownAndBlockkit(content: string): { text: string; blocks: an
 
   // Always create at least one block
   const blocks: any[] = [];
-  
+
   if (text) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: text
-      }
+        text: text,
+      },
     });
   }
 
@@ -95,7 +114,7 @@ function processMarkdownAndBlockkit(content: string): { text: string; blocks: an
     if (blocks.length > 0) blocks.push({ type: "divider" });
     blocks.push({
       type: "actions",
-      elements: actionButtons
+      elements: actionButtons,
     });
   }
 
@@ -137,12 +156,12 @@ class SlackRenderer extends marked.Renderer {
 
   blockquote(quote: string): string {
     // Convert blockquote to italic with quote prefix
-    const lines = quote.trim().split('\n');
-    return lines.map(line => `_> ${line.trim()}_`).join('\n') + '\n\n';
+    const lines = quote.trim().split("\n");
+    return lines.map((line) => `_> ${line.trim()}_`).join("\n") + "\n\n";
   }
 
   list(body: string, ordered: boolean, start?: number): string {
-    return body + '\n';
+    return body + "\n";
   }
 
   listitem(text: string, task?: boolean, checked?: boolean): string {
@@ -156,11 +175,11 @@ class SlackRenderer extends marked.Renderer {
   }
 
   br(): string {
-    return '\n';
+    return "\n";
   }
 
   hr(): string {
-    return '\n---\n\n';
+    return "\n---\n\n";
   }
 }
 
@@ -169,51 +188,53 @@ class SlackRenderer extends marked.Renderer {
  */
 function convertMarkdownToSlack(content: string): string {
   const renderer = new SlackRenderer();
-  
+
   // Configure marked options
   marked.setOptions({
     renderer: renderer,
     breaks: true, // Convert single line breaks to <br>
-    gfm: true,    // GitHub flavored markdown
+    gfm: true, // GitHub flavored markdown
   });
 
   try {
     let processed = marked.parse(content) as string;
-    
+
     // Clean up extra whitespace but preserve intentional line breaks
     processed = processed
-      .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
+      .replace(/\n{3,}/g, "\n\n") // Max 2 consecutive newlines
       .trim();
 
     // Handle code blocks specially - marked converts them to HTML, we need to convert back to Slack format
-    processed = processed.replace(/<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g, (match, language, code) => {
-      // Decode HTML entities in code blocks
-      const decodedCode = code
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'");
-      
-      return `\`\`\`\n${decodedCode.trim()}\n\`\`\``;
-    });
+    processed = processed.replace(
+      /<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g,
+      (match, language, code) => {
+        // Decode HTML entities in code blocks
+        const decodedCode = code
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&amp;/g, "&")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'");
+
+        return `\`\`\`\n${decodedCode.trim()}\n\`\`\``;
+      },
+    );
 
     // Clean up any remaining HTML entities that might have been introduced
     processed = processed
-      .replace(/&gt;/g, '>')
-      .replace(/&lt;/g, '<')
-      .replace(/&amp;/g, '&')
+      .replace(/&gt;/g, ">")
+      .replace(/&lt;/g, "<")
+      .replace(/&amp;/g, "&")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'");
 
     return processed;
   } catch (error) {
-    console.error('Failed to parse markdown:', error);
+    console.error("Failed to parse markdown:", error);
     // Fallback to original content if parsing fails
     return content;
   }
 }
-
 
 /**
  * Generate GitHub action buttons for the session branch
@@ -223,17 +244,19 @@ async function generateGitHubActionButtons(
   gitBranch: string | undefined,
   userMappings: Map<string, string>,
   repoManager: GitHubRepositoryManager,
-  slackClient?: any
+  slackClient?: any,
 ): Promise<any[] | undefined> {
   try {
-    logger.debug(`Generating GitHub action buttons for user ${userId}, gitBranch: ${gitBranch}`);
-    
+    logger.debug(
+      `Generating GitHub action buttons for user ${userId}, gitBranch: ${gitBranch}`,
+    );
+
     // If no git branch provided, don't show Edit button
     if (!gitBranch) {
       logger.debug(`No git branch provided, skipping Edit button`);
       return undefined;
     }
-    
+
     // Get GitHub username from Slack user ID
     let githubUsername = userMappings.get(userId);
     if (!githubUsername && slackClient) {
@@ -242,21 +265,23 @@ async function generateGitHubActionButtons(
       try {
         const userInfo = await slackClient.users.info({ user: userId });
         const user = userInfo.user;
-        
-        let username = user.profile?.display_name || user.profile?.real_name || user.name;
+
+        let username =
+          user.profile?.display_name || user.profile?.real_name || user.name;
         if (!username) {
           username = userId;
         }
-        
+
         // Sanitize username for GitHub
-        username = username.toLowerCase()
+        username = username
+          .toLowerCase()
           .replace(/[^a-z0-9-]/g, "-")
           .replace(/^-|-$/g, "");
-        
+
         username = `user-${username}`;
         userMappings.set(userId, username);
         githubUsername = username;
-        
+
         logger.info(`Created user mapping: ${userId} -> ${username}`);
       } catch (error) {
         logger.error(`Failed to create user mapping for ${userId}:`, error);
@@ -265,7 +290,7 @@ async function generateGitHubActionButtons(
         githubUsername = fallbackUsername;
       }
     }
-    
+
     if (!githubUsername) {
       logger.debug(`No GitHub username mapping found for user ${userId}`);
       return undefined;
@@ -279,8 +304,8 @@ async function generateGitHubActionButtons(
     }
 
     const repoUrl = repository.repositoryUrl;
-    const repoPath = repoUrl.replace('https://github.com/', '');
-    
+    const repoPath = repoUrl.replace("https://github.com/", "");
+
     logger.info(`Showing Edit button for branch: ${gitBranch}`);
     return [
       `<https://github.com/${repoPath}/compare/main...${gitBranch}?quick_pull=1&labels=peerbot|🔀 Pull Request>`,
@@ -326,7 +351,7 @@ export class ThreadResponseConsumer {
     connectionString: string,
     slackToken: string,
     repoManager: GitHubRepositoryManager,
-    userMappings: Map<string, string>
+    userMappings: Map<string, string>,
   ) {
     this.pgBoss = new PgBoss(connectionString);
     this.slackClient = new WebClient(slackToken);
@@ -340,19 +365,18 @@ export class ThreadResponseConsumer {
   async start(): Promise<void> {
     try {
       await this.pgBoss.start();
-      
+
       // Create the thread_response queue if it doesn't exist
-      await this.pgBoss.createQueue('thread_response');
-      
+      await this.pgBoss.createQueue("thread_response");
+
       // Register job handler for thread response messages
       await this.pgBoss.work(
-        'thread_response',
-        this.handleThreadResponse.bind(this)
+        "thread_response",
+        this.handleThreadResponse.bind(this),
       );
 
       this.isRunning = true;
       logger.info("✅ Thread response consumer started");
-      
     } catch (error) {
       logger.error("Failed to start thread response consumer:", error);
       throw error;
@@ -378,24 +402,32 @@ export class ThreadResponseConsumer {
    */
   private async handleThreadResponse(job: any): Promise<void> {
     let data;
-    
+
     try {
       // Handle PgBoss serialized format (similar to worker queue consumer)
-      if (typeof job === 'object' && job !== null) {
+      if (typeof job === "object" && job !== null) {
         const keys = Object.keys(job);
-        const numericKeys = keys.filter(key => !isNaN(Number(key)));
-        
+        const numericKeys = keys.filter((key) => !isNaN(Number(key)));
+
         if (numericKeys.length > 0) {
           // PgBoss passes jobs as an array, get the first element
           const firstKey = numericKeys[0];
           const firstJob = firstKey ? job[firstKey] : null;
-          
-          if (typeof firstJob === 'object' && firstJob !== null && firstJob.data) {
+
+          if (
+            typeof firstJob === "object" &&
+            firstJob !== null &&
+            firstJob.data
+          ) {
             // This is the actual job object from PgBoss
             data = firstJob.data;
-            console.log(`📤 AGENT RESPONSE: Processing agent response for user ${data.userId}, thread ${data.threadId || 'unknown'}, jobId: ${firstJob.id}`);
+            console.log(
+              `📤 AGENT RESPONSE: Processing agent response for user ${data.userId}, thread ${data.threadId || "unknown"}, jobId: ${firstJob.id}`,
+            );
           } else {
-            throw new Error('Invalid job format: expected job object with data field');
+            throw new Error(
+              "Invalid job format: expected job object with data field",
+            );
           }
         } else {
           // Fallback - might be normal job format
@@ -404,71 +436,106 @@ export class ThreadResponseConsumer {
       } else {
         data = job;
       }
-      
+
       if (!data || !data.messageId) {
-        throw new Error(`Invalid thread response data: ${JSON.stringify(data)}`);
+        throw new Error(
+          `Invalid thread response data: ${JSON.stringify(data)}`,
+        );
       }
-      
-      logger.info(`Processing thread response job for message ${data.messageId}, originalMessageTs: ${data.originalMessageTs}, claudeSessionId: ${data.claudeSessionId}`);
+
+      logger.info(
+        `Processing thread response job for message ${data.messageId}, originalMessageTs: ${data.originalMessageTs}, claudeSessionId: ${data.claudeSessionId}`,
+      );
 
       // Create a session key to track bot messages per conversation
       // Use the claudeSessionId as the primary key when available
       // This ensures all messages from the same worker session update the same bot message
-      const sessionKey = data.claudeSessionId 
-        ? `session:${data.claudeSessionId}` 
+      const sessionKey = data.claudeSessionId
+        ? `session:${data.claudeSessionId}`
         : `${data.userId}:${data.originalMessageTs || data.messageId}`;
-      
+
       logger.info(`Using session key: ${sessionKey}`);
-      
+
       // Check if we have a bot message for this Claude session
       const existingBotMessageTs = this.sessionBotMessages.get(sessionKey);
       const isFirstResponse = !existingBotMessageTs && !data.botResponseTs;
       // Use originalMessageTs for reactions (the actual user message timestamp)
       const reactionTimestamp = data.originalMessageTs || data.messageId;
-      
+
       // Handle reaction transitions
       if (reactionTimestamp) {
         if (isFirstResponse && !data.isDone && !data.error) {
           // First pickup by worker: Replace eyes with gear
-          await this.updateReaction(data.channelId, reactionTimestamp, "eyes", "gear");
+          await this.updateReaction(
+            data.channelId,
+            reactionTimestamp,
+            "eyes",
+            "gear",
+          );
         } else if (data.isDone) {
           // Processing completed: Replace gear with checkmark
-          await this.updateReaction(data.channelId, reactionTimestamp, "gear", "white_check_mark");
+          await this.updateReaction(
+            data.channelId,
+            reactionTimestamp,
+            "gear",
+            "white_check_mark",
+          );
         } else if (data.error) {
           // Error occurred: Replace current reaction with error
-          await this.updateReaction(data.channelId, reactionTimestamp, "gear", "x");
-          await this.updateReaction(data.channelId, reactionTimestamp, "eyes", "x");
+          await this.updateReaction(
+            data.channelId,
+            reactionTimestamp,
+            "gear",
+            "x",
+          );
+          await this.updateReaction(
+            data.channelId,
+            reactionTimestamp,
+            "eyes",
+            "x",
+          );
         }
       }
-      
+
       // Handle message content
       if (data.content) {
         // Pass the existing bot message timestamp if we have one
         const botMessageTs = existingBotMessageTs || data.botResponseTs;
-        const newBotResponseTs = await this.handleMessageUpdate(data, isFirstResponse, botMessageTs);
-        
+        const newBotResponseTs = await this.handleMessageUpdate(
+          data,
+          isFirstResponse,
+          botMessageTs,
+        );
+
         // Store the bot response timestamp for future updates
         if (isFirstResponse && newBotResponseTs) {
           // Validate that the bot message timestamp is reasonable
           // Timestamps should be close to the current time (within 1 minute)
           const currentTime = Date.now() / 1000; // Convert to seconds
           const messageTime = parseFloat(newBotResponseTs);
-          
+
           if (Math.abs(currentTime - messageTime) > 60) {
-            logger.warn(`Suspicious bot message timestamp: ${newBotResponseTs} (current: ${currentTime})`);
+            logger.warn(
+              `Suspicious bot message timestamp: ${newBotResponseTs} (current: ${currentTime})`,
+            );
           }
-          
+
           // Also validate it's in the same thread family (same integer part)
           const threadBase = Math.floor(parseFloat(data.threadTs));
           const messageBase = Math.floor(messageTime);
-          
-          if (Math.abs(threadBase - messageBase) > 100) { // Allow some variance
-            logger.error(`Bot message ${newBotResponseTs} appears to be in wrong thread (expected near ${data.threadTs})`);
+
+          if (Math.abs(threadBase - messageBase) > 100) {
+            // Allow some variance
+            logger.error(
+              `Bot message ${newBotResponseTs} appears to be in wrong thread (expected near ${data.threadTs})`,
+            );
             // Don't store this mapping as it's likely wrong
             return;
           }
-          
-          logger.info(`Bot created first response with ts: ${newBotResponseTs}, storing for session ${sessionKey}`);
+
+          logger.info(
+            `Bot created first response with ts: ${newBotResponseTs}, storing for session ${sessionKey}`,
+          );
           this.sessionBotMessages.set(sessionKey, newBotResponseTs);
         }
       } else if (data.error) {
@@ -480,119 +547,173 @@ export class ThreadResponseConsumer {
       // Log completion but DON'T clear session
       // Keep the session active so any late-arriving messages still update the same bot message
       if (data.isDone) {
-        logger.info(`Thread processing completed for message ${data.messageId}`);
+        logger.info(
+          `Thread processing completed for message ${data.messageId}`,
+        );
         // Don't clear the session here - it will be cleared when a new user message arrives
         // This prevents duplicate bot messages if the worker sends more messages after isDone
       }
-
     } catch (error: any) {
       // Check if it's a validation error that shouldn't be retried
-      if (error?.data?.error === "invalid_blocks" || 
-          error?.data?.error === "msg_too_long" ||
-          error?.code === "slack_webapi_platform_error") {
-        logger.error(`Slack validation error in job ${job.id}: ${error?.data?.error || error.message}`);
-        
+      if (
+        error?.data?.error === "invalid_blocks" ||
+        error?.data?.error === "msg_too_long" ||
+        error?.code === "slack_webapi_platform_error"
+      ) {
+        logger.error(
+          `Slack validation error in job ${job.id}: ${error?.data?.error || error.message}`,
+        );
+
         // Try to inform the user about the validation error
         if (data && data.channelId && data.messageId) {
           try {
             await this.slackClient.chat.update({
               channel: data.channelId,
               ts: data.messageId,
-              text: `❌ **Message update failed**\n\n**Error:** ${error?.data?.error || error.message}\n\nThe response may contain invalid formatting or be too long for Slack.`
+              text: `❌ **Message update failed**\n\n**Error:** ${error?.data?.error || error.message}\n\nThe response may contain invalid formatting or be too long for Slack.`,
             });
-            logger.info(`Notified user about validation error in job ${job.id}`);
+            logger.info(
+              `Notified user about validation error in job ${job.id}`,
+            );
           } catch (notifyError) {
-            logger.error(`Failed to notify user about validation error: ${notifyError}`);
+            logger.error(
+              `Failed to notify user about validation error: ${notifyError}`,
+            );
           }
         }
-        
+
         // Don't throw - mark job as complete to prevent retry loops
         return;
       }
-      
+
       logger.error(`Failed to process thread response job ${job.id}:`, error);
       throw error; // Let pgboss handle retry logic for other errors
     }
   }
 
-
   /**
    * Update reactions atomically (remove old, add new)
    */
-  private async updateReaction(channel: string, timestamp: string, oldReaction: string, newReaction: string): Promise<void> {
-    console.log(`🔄 REACTION UPDATE: Changing ${oldReaction} → ${newReaction} on message ${timestamp} in channel ${channel}`);
-    
+  private async updateReaction(
+    channel: string,
+    timestamp: string,
+    oldReaction: string,
+    newReaction: string,
+  ): Promise<void> {
+    console.log(
+      `🔄 REACTION UPDATE: Changing ${oldReaction} → ${newReaction} on message ${timestamp} in channel ${channel}`,
+    );
+
     try {
       // Remove old reaction
-      console.log(`🗑️  REACTION CHANGE: Removing '${oldReaction}' from message ${timestamp}`);
+      console.log(
+        `🗑️  REACTION CHANGE: Removing '${oldReaction}' from message ${timestamp}`,
+      );
       await this.slackClient.reactions.remove({
         channel,
         timestamp,
-        name: oldReaction
+        name: oldReaction,
       });
-      console.log(`✅ REACTION REMOVED: '${oldReaction}' successfully removed from message ${timestamp}`);
+      console.log(
+        `✅ REACTION REMOVED: '${oldReaction}' successfully removed from message ${timestamp}`,
+      );
     } catch (error) {
       // Ignore - reaction might not exist
-      console.log(`⚠️  REACTION REMOVE: '${oldReaction}' reaction might not exist on message ${timestamp}:`, error);
-      logger.debug(`Failed to remove ${oldReaction} reaction (might not exist):`, error);
+      console.log(
+        `⚠️  REACTION REMOVE: '${oldReaction}' reaction might not exist on message ${timestamp}:`,
+        error,
+      );
+      logger.debug(
+        `Failed to remove ${oldReaction} reaction (might not exist):`,
+        error,
+      );
     }
-    
+
     try {
       // Add new reaction
-      console.log(`➕ REACTION CHANGE: Adding '${newReaction}' to message ${timestamp}`);
+      console.log(
+        `➕ REACTION CHANGE: Adding '${newReaction}' to message ${timestamp}`,
+      );
       await this.slackClient.reactions.add({
         channel,
         timestamp,
-        name: newReaction
+        name: newReaction,
       });
-      console.log(`✅ REACTION ADDED: '${newReaction}' successfully added to message ${timestamp}`);
-      logger.info(`Updated reaction: ${oldReaction} → ${newReaction} on message ${timestamp}`);
+      console.log(
+        `✅ REACTION ADDED: '${newReaction}' successfully added to message ${timestamp}`,
+      );
+      logger.info(
+        `Updated reaction: ${oldReaction} → ${newReaction} on message ${timestamp}`,
+      );
     } catch (error) {
       // Ignore - reaction might already exist
-      logger.debug(`Failed to add ${newReaction} reaction (might already exist):`, error);
+      logger.debug(
+        `Failed to add ${newReaction} reaction (might already exist):`,
+        error,
+      );
     }
   }
 
   /**
    * Handle message content updates
    */
-  private async handleMessageUpdate(data: ThreadResponsePayload, isFirstResponse: boolean, botMessageTs?: string): Promise<string | void> {
+  private async handleMessageUpdate(
+    data: ThreadResponsePayload,
+    isFirstResponse: boolean,
+    botMessageTs?: string,
+  ): Promise<string | void> {
     const { content, channelId, threadTs, userId } = data;
-    
+
     if (!content) return;
 
     try {
       // Process markdown and blockkit content
       const result = processMarkdownAndBlockkit(content);
-      
+
       // Get GitHub action links for this session
-      const githubActionLinks = await generateGitHubActionButtons(userId, data.gitBranch, this.userMappings, this.repoManager, this.slackClient);
-      
+      const githubActionLinks = await generateGitHubActionButtons(
+        userId,
+        data.gitBranch,
+        this.userMappings,
+        this.repoManager,
+        this.slackClient,
+      );
+
       // Add GitHub action links to the content
       if (githubActionLinks && githubActionLinks.length > 0) {
-        const linksText = `\n\n${githubActionLinks.join(' | ')}`;
+        const linksText = `\n\n${githubActionLinks.join(" | ")}`;
         result.text = (result.text || content) + linksText;
-        
+
         // Also add to the last section block if it exists
-        const lastSectionBlock = result.blocks.slice().reverse().find(block => block.type === "section" && block.text?.type === "mrkdwn");
+        const lastSectionBlock = result.blocks
+          .slice()
+          .reverse()
+          .find(
+            (block) =>
+              block.type === "section" && block.text?.type === "mrkdwn",
+          );
         if (lastSectionBlock) {
           lastSectionBlock.text.text += linksText;
         }
       }
-      
+
       // Truncate text to Slack's limit (3000 chars for text field)
       const MAX_TEXT_LENGTH = 3000;
-      const truncatedText = (result.text || content).length > MAX_TEXT_LENGTH 
-        ? (result.text || content).substring(0, MAX_TEXT_LENGTH - 20) + '\n...[truncated]'
-        : (result.text || content);
-      
+      const truncatedText =
+        (result.text || content).length > MAX_TEXT_LENGTH
+          ? (result.text || content).substring(0, MAX_TEXT_LENGTH - 20) +
+            "\n...[truncated]"
+          : result.text || content;
+
       // Add blocks (always have at least one)
       const MAX_BLOCKS = 50;
       const blocks = result.blocks.slice(0, MAX_BLOCKS);
-      
+
       if (isFirstResponse) {
         // Create new message for first response
-        logger.info(`Creating new bot message in channel ${channelId}, thread ${threadTs}`);
+        logger.info(
+          `Creating new bot message in channel ${channelId}, thread ${threadTs}`,
+        );
         const postResult = await this.slackClient.chat.postMessage({
           channel: channelId,
           thread_ts: threadTs,
@@ -600,36 +721,39 @@ export class ThreadResponseConsumer {
           mrkdwn: true,
           blocks: blocks,
           unfurl_links: true,
-          unfurl_media: true
+          unfurl_media: true,
         });
-        
-        logger.info(`Bot message created: ${postResult.ok}, ts: ${postResult.ts}`);
-        
+
+        logger.info(
+          `Bot message created: ${postResult.ok}, ts: ${postResult.ts}`,
+        );
+
         if (!postResult.ok) {
           logger.error(`Failed to create bot message: ${postResult.error}`);
           return;
         }
-        
+
         // CRITICAL: Validate that Slack created the message in the correct thread
         const returnedTs = postResult.ts as string;
-        const returnedThreadTs = (postResult.message as any)?.thread_ts || returnedTs;
-        
+        const returnedThreadTs =
+          (postResult.message as any)?.thread_ts || returnedTs;
+
         // Check if the message was created in the intended thread
-        if (threadTs && returnedThreadTs !== threadTs) {   
+        if (threadTs && returnedThreadTs !== threadTs) {
           // Delete the wrongly placed message
           try {
             await this.slackClient.chat.delete({
               channel: channelId,
-              ts: returnedTs
+              ts: returnedTs,
             });
             logger.info(`Deleted misplaced message ${returnedTs}`);
           } catch (deleteError) {
             logger.error(`Failed to delete misplaced message:`, deleteError);
           }
-          
+
           // Retry with explicit thread creation
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-          
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+
           const retryResult = await this.slackClient.chat.postMessage({
             channel: channelId,
             thread_ts: threadTs,
@@ -638,36 +762,39 @@ export class ThreadResponseConsumer {
             blocks: blocks,
             unfurl_links: true,
             unfurl_media: true,
-            reply_broadcast: false // Ensure it stays in thread
+            reply_broadcast: false, // Ensure it stays in thread
           });
-          
+
           if (!retryResult.ok) {
-            throw new Error(`Failed to create bot message after retry: ${retryResult.error}`);
+            throw new Error(
+              `Failed to create bot message after retry: ${retryResult.error}`,
+            );
           }
-          
+
           return retryResult.ts as string;
         }
-        
+
         return returnedTs; // Return the new message timestamp
       } else {
         // Update existing message - use the passed botMessageTs or fallback
         const botTs = botMessageTs || data.botResponseTs || threadTs;
-        logger.info(`Updating bot message in channel ${channelId}, ts ${botTs}`);
-        
+        logger.info(
+          `Updating bot message in channel ${channelId}, ts ${botTs}`,
+        );
+
         const updateResult = await this.slackClient.chat.update({
           channel: channelId,
           ts: botTs,
           text: truncatedText,
-          blocks: blocks
+          blocks: blocks,
         });
-        
+
         logger.info(`Slack update result: ${updateResult.ok}`);
-        
+
         if (!updateResult.ok) {
           logger.error(`Slack update failed with error: ${updateResult.error}`);
         }
       }
-
     } catch (error: any) {
       // Handle specific Slack errors
       if (error.code === "message_not_found") {
@@ -676,26 +803,32 @@ export class ThreadResponseConsumer {
         logger.error("Slack channel not found - bot may not have access");
       } else if (error.code === "not_in_channel") {
         logger.error("Bot is not in the channel");
-      } else if (error.data?.error === "invalid_blocks" || error.data?.error === "msg_too_long") {
+      } else if (
+        error.data?.error === "invalid_blocks" ||
+        error.data?.error === "msg_too_long"
+      ) {
         // These are Slack validation errors - retrying won't help
         logger.error(`Slack validation error: ${JSON.stringify(error)}`);
-        
+
         // Try to send a simple error message with raw content for recovery
         try {
           // Truncate content to fit in code block (leave room for error message + code block formatting)
           const maxContentLength = 2500; // Conservative limit
-          const truncatedContent = content.length > maxContentLength 
-            ? content.substring(0, maxContentLength) + '\n...[truncated]'
-            : content;
-          
-          const errorMessage = `❌ *Error occurred while updating message*\n\n*Error:* ${error.data?.error||""}${error.message || ""}\n\nThe response may be too long or contain invalid formatting.\n\n*Raw Content:*\n\`\`\`\n${truncatedContent}\n\`\`\``;
-          
+          const truncatedContent =
+            content.length > maxContentLength
+              ? content.substring(0, maxContentLength) + "\n...[truncated]"
+              : content;
+
+          const errorMessage = `❌ *Error occurred while updating message*\n\n*Error:* ${error.data?.error || ""}${error.message || ""}\n\nThe response may be too long or contain invalid formatting.\n\n*Raw Content:*\n\`\`\`\n${truncatedContent}\n\`\`\``;
+
           await this.slackClient.chat.update({
             channel: channelId,
             ts: threadTs,
-            text: errorMessage
+            text: errorMessage,
           });
-          logger.info(`Sent fallback error message with raw content for validation error: ${error.data?.error}`);
+          logger.info(
+            `Sent fallback error message with raw content for validation error: ${error.data?.error}`,
+          );
         } catch (fallbackError) {
           logger.error("Failed to send fallback error message:", fallbackError);
           // If even the fallback fails, try a minimal message
@@ -703,7 +836,7 @@ export class ThreadResponseConsumer {
             await this.slackClient.chat.update({
               channel: channelId,
               ts: threadTs,
-              text: `❌ *Error occurred while updating message*\n\n*Error:* ${error.data?.error || error.message}`
+              text: `❌ *Error occurred while updating message*\n\n*Error:* ${error.data?.error || error.message}`,
             });
           } catch (minimalError) {
             logger.error("Failed to send minimal error message:", minimalError);
@@ -720,40 +853,54 @@ export class ThreadResponseConsumer {
   /**
    * Handle error messages
    */
-  private async handleError(data: ThreadResponsePayload, isFirstResponse: boolean, botMessageTs?: string): Promise<void> {
+  private async handleError(
+    data: ThreadResponsePayload,
+    isFirstResponse: boolean,
+    botMessageTs?: string,
+  ): Promise<void> {
     const { error, channelId, threadTs, userId } = data;
-    
+
     if (!error) return;
 
     try {
-      logger.info(`Sending error message to channel ${channelId}, thread ${threadTs}`);
-      
+      logger.info(
+        `Sending error message to channel ${channelId}, thread ${threadTs}`,
+      );
+
       const errorContent = `❌ **Error occurred**\n\n**Error:** \`${error}\``;
-      
+
       // Simple error message
-      const errorResult = { 
-        text: errorContent, 
-        blocks: [{
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: errorContent
-          }
-        }]
+      const errorResult = {
+        text: errorContent,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: errorContent,
+            },
+          },
+        ],
       };
-      
+
       // Get GitHub action links for this session
-      const githubActionLinks = await generateGitHubActionButtons(userId, data.gitBranch, this.userMappings, this.repoManager, this.slackClient);
-      
+      const githubActionLinks = await generateGitHubActionButtons(
+        userId,
+        data.gitBranch,
+        this.userMappings,
+        this.repoManager,
+        this.slackClient,
+      );
+
       // Add GitHub action links if available
       if (githubActionLinks && githubActionLinks.length > 0) {
-        const linksText = `\n\n${githubActionLinks.join(' | ')}`;
+        const linksText = `\n\n${githubActionLinks.join(" | ")}`;
         errorResult.text = (errorResult.text || errorContent) + linksText;
         if (errorResult.blocks[0]?.text) {
           errorResult.blocks[0].text.text = errorContent + linksText;
         }
       }
-      
+
       if (isFirstResponse) {
         // Create new error message
         const postResult = await this.slackClient.chat.postMessage({
@@ -763,7 +910,7 @@ export class ThreadResponseConsumer {
           mrkdwn: true,
           blocks: errorResult.blocks,
           unfurl_links: true,
-          unfurl_media: true
+          unfurl_media: true,
         });
         logger.info(`Error message created: ${postResult.ok}`);
       } else {
@@ -773,13 +920,14 @@ export class ThreadResponseConsumer {
           channel: channelId,
           ts: botTs,
           text: errorResult.text || errorContent,
-          blocks: errorResult.blocks
+          blocks: errorResult.blocks,
         });
         logger.info(`Error message update result: ${updateResult.ok}`);
       }
-
     } catch (updateError: any) {
-      logger.error(`Failed to send error message to Slack: ${updateError.message}`);
+      logger.error(
+        `Failed to send error message to Slack: ${updateError.message}`,
+      );
       throw updateError;
     }
   }

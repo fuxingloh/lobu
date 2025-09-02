@@ -3,10 +3,12 @@
 interface ClaudeMessage {
   type: string;
   subtype?: string;
-  message?: {
-    content?: Array<{ type: string; text?: string }> | string;
-    [key: string]: any;
-  } | string;
+  message?:
+    | {
+        content?: Array<{ type: string; text?: string }> | string;
+        [key: string]: any;
+      }
+    | string;
   content?: string;
   name?: string;
   parameters?: Record<string, any>;
@@ -23,21 +25,26 @@ export function parseClaudeOutput(rawOutput: string): string {
     return "_No response from Claude_";
   }
 
-  const lines = rawOutput.split("\n").filter(line => line.trim() !== "");
+  const lines = rawOutput.split("\n").filter((line) => line.trim() !== "");
   const messages: string[] = [];
   let hasContent = false;
 
   for (const line of lines) {
     try {
       const parsed: ClaudeMessage = JSON.parse(line);
-      
+
       // Skip system messages and init messages
       if (parsed.type === "system" && parsed.subtype === "init") {
         continue;
       }
 
       // Extract user-facing content
-      if (parsed.type === "assistant" && parsed.message && typeof parsed.message === 'object' && 'content' in parsed.message) {
+      if (
+        parsed.type === "assistant" &&
+        parsed.message &&
+        typeof parsed.message === "object" &&
+        "content" in parsed.message
+      ) {
         // Handle the content array structure from assistant messages
         const content = parsed.message.content;
         if (Array.isArray(content)) {
@@ -52,7 +59,11 @@ export function parseClaudeOutput(rawOutput: string): string {
         messages.push(parsed.content);
         hasContent = true;
       } else if (parsed.type === "message" && parsed.message) {
-        messages.push(typeof parsed.message === 'string' ? parsed.message : JSON.stringify(parsed.message));
+        messages.push(
+          typeof parsed.message === "string"
+            ? parsed.message
+            : JSON.stringify(parsed.message),
+        );
         hasContent = true;
       } else if (parsed.type === "tool_use" && parsed.name) {
         // Format tool usage in a user-friendly way
@@ -62,7 +73,9 @@ export function parseClaudeOutput(rawOutput: string): string {
           hasContent = true;
         }
       } else if (parsed.type === "error" && parsed.message) {
-        messages.push(`⚠️ **Error:** ${typeof parsed.message === 'string' ? parsed.message : JSON.stringify(parsed.message)}`);
+        messages.push(
+          `⚠️ **Error:** ${typeof parsed.message === "string" ? parsed.message : JSON.stringify(parsed.message)}`,
+        );
         hasContent = true;
       }
     } catch (e) {
@@ -86,27 +99,27 @@ export function parseClaudeOutput(rawOutput: string): string {
  */
 function formatToolUse(toolUse: ClaudeMessage): string | null {
   const toolName = toolUse.name || "Unknown Tool";
-  
+
   // Map technical tool names to user-friendly descriptions
   const toolDescriptions: Record<string, string> = {
-    "Bash": "Running command",
-    "Read": "Reading file",
-    "Write": "Writing file",
-    "Edit": "Editing file",
-    "MultiEdit": "Making multiple edits",
-    "Grep": "Searching files",
-    "Glob": "Finding files",
-    "LS": "Listing directory",
-    "Task": "Running task",
-    "TodoWrite": "Updating task list",
-    "WebSearch": "Searching the web",
-    "WebFetch": "Fetching web content",
-    "NotebookEdit": "Editing notebook",
-    "ExitPlanMode": "Completing planning phase"
+    Bash: "Running command",
+    Read: "Reading file",
+    Write: "Writing file",
+    Edit: "Editing file",
+    MultiEdit: "Making multiple edits",
+    Grep: "Searching files",
+    Glob: "Finding files",
+    LS: "Listing directory",
+    Task: "Running task",
+    TodoWrite: "Updating task list",
+    WebSearch: "Searching the web",
+    WebFetch: "Fetching web content",
+    NotebookEdit: "Editing notebook",
+    ExitPlanMode: "Completing planning phase",
   };
 
   const description = toolDescriptions[toolName] || toolName;
-  
+
   // Extract relevant parameters for user-friendly display
   if (toolUse.parameters) {
     switch (toolName) {
@@ -148,7 +161,7 @@ export function extractFinalResponse(rawOutput: string | undefined): string {
     return "";
   }
 
-  const lines = rawOutput.split("\n").filter(line => line.trim() !== "");
+  const lines = rawOutput.split("\n").filter((line) => line.trim() !== "");
   let lastAssistantMessage = "";
 
   // Process lines to find assistant messages
@@ -156,9 +169,14 @@ export function extractFinalResponse(rawOutput: string | undefined): string {
     if (!line) continue;
     try {
       const parsed: ClaudeMessage = JSON.parse(line);
-      
+
       // Extract text content from assistant messages
-      if (parsed.type === "assistant" && parsed.message && typeof parsed.message === 'object' && 'content' in parsed.message) {
+      if (
+        parsed.type === "assistant" &&
+        parsed.message &&
+        typeof parsed.message === "object" &&
+        "content" in parsed.message
+      ) {
         // Handle the content array structure
         const content = parsed.message.content;
         if (Array.isArray(content)) {

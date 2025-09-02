@@ -1,4 +1,4 @@
-import { OrchestratorConfig } from '../types';
+import { OrchestratorConfig } from "../types";
 
 export abstract class BaseSecretManager {
   protected config: OrchestratorConfig;
@@ -10,19 +10,26 @@ export abstract class BaseSecretManager {
   /**
    * Get existing password from secret or create new user credentials
    */
-  abstract getOrCreateUserCredentials(username: string, createPostgresUser: (username: string, password: string) => Promise<void>): Promise<string>;
+  abstract getOrCreateUserCredentials(
+    username: string,
+    createPostgresUser: (username: string, password: string) => Promise<void>,
+  ): Promise<string>;
 
   /**
    * Create or update user secret with PostgreSQL credentials
    */
-  abstract storeUserCredentials(username: string, password: string): Promise<void>;
+  abstract storeUserCredentials(
+    username: string,
+    password: string,
+  ): Promise<void>;
 
   /**
    * Generate a random password
    */
   protected generatePassword(): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let password = '';
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let password = "";
     for (let i = 0; i < 32; i++) {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }

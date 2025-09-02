@@ -8,7 +8,10 @@ initSentry();
 
 import { QueuePersistentClaudeWorker } from "./persistent-task-worker";
 import { QueueIntegration } from "./task-queue-integration";
-import { startProcessManager, stopProcessManager } from "./process-manager-integration";
+import {
+  startProcessManager,
+  stopProcessManager,
+} from "./process-manager-integration";
 import logger from "./logger";
 
 // Re-export ClaudeWorker for backward compatibility
@@ -17,60 +20,67 @@ export { ClaudeWorker } from "./claude-worker";
 /**
  * Main entry point - now supports both queue-based and legacy workers
  */
-async function main() {  
-    logger.info("🔄 Starting in queue mode (dynamic deployment-based persistent worker)");
-    
-    // Get user ID and optional target thread from environment
-    const userId = process.env.USER_ID;
-    const targetThreadId = process.env.TARGET_THREAD_ID; // Optional - for thread-specific workers
-    
-    if (!userId) {
-      logger.error("❌ USER_ID environment variable is required for queue mode");
-      process.exit(1);
-    }
-    
-    try {
-      // Set workspace directory for MCP process manager based on deployment name
-      const deploymentName = process.env.DEPLOYMENT_NAME || process.env.HOSTNAME;
-      if (deploymentName) {
-        // Extract thread ID from deployment name (e.g., peerbot-worker-1756766056.836119)
-        const threadMatch = deploymentName.match(/(\d+\.\d+)/);
-        if (threadMatch) {
-          const workspaceDir = `/workspace/${threadMatch[1]}`;
-          process.env.WORKSPACE_DIR = workspaceDir;
-          logger.info(`📁 Set WORKSPACE_DIR for process manager: ${workspaceDir}`);
-        }
+async function main() {
+  logger.info(
+    "🔄 Starting in queue mode (dynamic deployment-based persistent worker)",
+  );
+
+  // Get user ID and optional target thread from environment
+  const userId = process.env.USER_ID;
+  const targetThreadId = process.env.TARGET_THREAD_ID; // Optional - for thread-specific workers
+
+  if (!userId) {
+    logger.error("❌ USER_ID environment variable is required for queue mode");
+    process.exit(1);
+  }
+
+  try {
+    // Set workspace directory for MCP process manager based on deployment name
+    const deploymentName = process.env.DEPLOYMENT_NAME || process.env.HOSTNAME;
+    if (deploymentName) {
+      // Extract thread ID from deployment name (e.g., peerbot-worker-1756766056.836119)
+      const threadMatch = deploymentName.match(/(\d+\.\d+)/);
+      if (threadMatch) {
+        const workspaceDir = `/workspace/${threadMatch[1]}`;
+        process.env.WORKSPACE_DIR = workspaceDir;
+        logger.info(
+          `📁 Set WORKSPACE_DIR for process manager: ${workspaceDir}`,
+        );
       }
-      
-      // Start the integrated process manager HTTP server
-      const processManager = await startProcessManager();
-      logger.info(`🔧 Process manager started on port ${processManager.port}`);
-      
-      const queueWorker = new QueuePersistentClaudeWorker(userId, targetThreadId);
-      await queueWorker.start();
-      
-      // Keep the process running for persistent queue consumption
-      process.on("SIGTERM", async () => {
-        logger.info("Received SIGTERM, shutting down queue worker and process manager...");
-        await queueWorker.stop();
-        await stopProcessManager();
-        process.exit(0);
-      });
-      
-      process.on("SIGINT", async () => {
-        logger.info("Received SIGINT, shutting down queue worker and process manager...");
-        await queueWorker.stop();
-        await stopProcessManager();
-        process.exit(0);
-      });
-      
-      // Keep process alive
-      await new Promise(() => {}); // Wait forever
-      
-    } catch (error) {
-      logger.error("❌ Queue worker failed:", error);
-      process.exit(1);
     }
+
+    // Start the integrated process manager HTTP server
+    const processManager = await startProcessManager();
+    logger.info(`🔧 Process manager started on port ${processManager.port}`);
+
+    const queueWorker = new QueuePersistentClaudeWorker(userId, targetThreadId);
+    await queueWorker.start();
+
+    // Keep the process running for persistent queue consumption
+    process.on("SIGTERM", async () => {
+      logger.info(
+        "Received SIGTERM, shutting down queue worker and process manager...",
+      );
+      await queueWorker.stop();
+      await stopProcessManager();
+      process.exit(0);
+    });
+
+    process.on("SIGINT", async () => {
+      logger.info(
+        "Received SIGINT, shutting down queue worker and process manager...",
+      );
+      await queueWorker.stop();
+      await stopProcessManager();
+      process.exit(0);
+    });
+
+    // Keep process alive
+    await new Promise(() => {}); // Wait forever
+  } catch (error) {
+    logger.error("❌ Queue worker failed:", error);
+    process.exit(1);
+  }
 }
 
 // Handle process signals
@@ -91,33 +101,39 @@ process.on("SIGINT", async () => {
  */
 async function appendTerminationMessage(signal: string): Promise<void> {
   try {
-    if (process.env.PEERBOT_DATABASE_URL && process.env.SLACK_RESPONSE_CHANNEL && process.env.SLACK_RESPONSE_TS) {
+    if (
+      process.env.PEERBOT_DATABASE_URL &&
+      process.env.SLACK_RESPONSE_CHANNEL &&
+      process.env.SLACK_RESPONSE_TS
+    ) {
       const queueIntegration = new QueueIntegration({
         databaseUrl: process.env.PEERBOT_DATABASE_URL,
         responseChannel: process.env.SLACK_RESPONSE_CHANNEL,
         responseTs: process.env.SLACK_RESPONSE_TS,
-        messageId: process.env.SLACK_RESPONSE_TS
+        messageId: process.env.SLACK_RESPONSE_TS,
       });
-      
+
       await queueIntegration.start();
       await queueIntegration.updateProgress(
-        `🛑 **Worker terminated (${signal})** - The host is terminated and not processing further requests.`
+        `🛑 **Worker terminated (${signal})** - The host is terminated and not processing further requests.`,
       );
       await queueIntegration.signalDone();
-      
+
       // Reactions are now handled by dispatcher based on message isDone status
       // No direct reaction calls needed here
-      
+
       await queueIntegration.stop();
     }
   } catch (error) {
-    logger.error(`Failed to send ${signal} termination message via queue:`, error);
+    logger.error(
+      `Failed to send ${signal} termination message via queue:`,
+      error,
+    );
   }
 }
 
 export type { WorkerConfig } from "./types";
 
 main();
-
 
 // Cache bust Sat Aug 30 18:38:05 BST 2025

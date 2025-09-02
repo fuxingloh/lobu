@@ -1,13 +1,13 @@
 import * as Sentry from "@sentry/node";
-import PgBoss from 'pg-boss';
-import * as k8s from '@kubernetes/client-node';
-import { 
-  OrchestratorConfig, 
-  WorkerDeploymentRequest, 
+import PgBoss from "pg-boss";
+import * as k8s from "@kubernetes/client-node";
+import {
+  OrchestratorConfig,
+  WorkerDeploymentRequest,
   OrchestratorError,
-  ErrorCode 
-} from './types';
-import { BaseDeploymentManager } from './base/BaseDeploymentManager';
+  ErrorCode,
+} from "./types";
+import { BaseDeploymentManager } from "./base/BaseDeploymentManager";
 
 export class QueueConsumer {
   private pgBoss: PgBoss;
@@ -15,10 +15,13 @@ export class QueueConsumer {
   private config: OrchestratorConfig;
   private isRunning = false;
 
-  constructor(config: OrchestratorConfig, deploymentManager: BaseDeploymentManager) {
+  constructor(
+    config: OrchestratorConfig,
+    deploymentManager: BaseDeploymentManager,
+  ) {
     this.config = config;
     this.deploymentManager = deploymentManager;
-    
+
     this.pgBoss = new PgBoss({
       connectionString: config.queues.connectionString,
       retryLimit: config.queues.retryLimit,
@@ -28,7 +31,7 @@ export class QueueConsumer {
       deleteAfterDays: 30,
       monitorStateIntervalSeconds: 60,
       maintenanceIntervalSeconds: 30,
-      supervise: true  // Explicitly enable maintenance and monitoring
+      supervise: true, // Explicitly enable maintenance and monitoring
     });
   }
 
@@ -43,49 +46,51 @@ export class QueueConsumer {
         if (pool) {
           const client = await pool.connect();
           try {
-            await client.query('SELECT setup_pgboss_rls_on_demand()');
-            console.log('✅ pgboss RLS policies configured');
+            await client.query("SELECT setup_pgboss_rls_on_demand()");
+            console.log("✅ pgboss RLS policies configured");
           } finally {
             client.release();
           }
         }
       } catch (error) {
-        console.warn('⚠️  Failed to setup pgboss RLS:', error instanceof Error ? error.message : String(error));
+        console.warn(
+          "⚠️  Failed to setup pgboss RLS:",
+          error instanceof Error ? error.message : String(error),
+        );
       }
 
       // Create the messages queue if it doesn't exist
-      await this.pgBoss.createQueue('messages');
-      console.log('✅ Created/verified messages queue');
+      await this.pgBoss.createQueue("messages");
+      console.log("✅ Created/verified messages queue");
 
       // Subscribe to the single messages queue for all messages
-      await this.pgBoss.work('messages', async (job: any) => {
+      await this.pgBoss.work("messages", async (job: any) => {
         return await Sentry.startSpan(
-          { 
-            name: "orchestrator.process_queue_job", 
+          {
+            name: "orchestrator.process_queue_job",
             op: "orchestrator.queue_processing",
             attributes: {
-              "job.id": job?.id || "unknown"
-            }
+              "job.id": job?.id || "unknown",
+            },
           },
           async () => {
-            console.log('=== PG-BOSS JOB RECEIVED ===');
-            console.log('Raw job:', JSON.stringify(job, null, 2));
+            console.log("=== PG-BOSS JOB RECEIVED ===");
+            console.log("Raw job:", JSON.stringify(job, null, 2));
             return this.handleMessage(job);
-          }
+          },
         );
       });
 
-      console.log('✅ Queue consumer started - listening for messages');
+      console.log("✅ Queue consumer started - listening for messages");
 
       // Start background cleanup task
       this.startCleanupTask();
-
     } catch (error) {
       throw new OrchestratorError(
         ErrorCode.QUEUE_JOB_PROCESSING_FAILED,
         `Failed to start queue consumer: ${error instanceof Error ? error.message : String(error)}`,
         { error },
-        true
+        true,
       );
     }
   }
@@ -99,57 +104,74 @@ export class QueueConsumer {
    * Handle all messages - creates deployment for new threads or routes to existing thread queues
    */
   private async handleMessage(job: any): Promise<void> {
-    console.log('=== ORCHESTRATOR RECEIVED JOB ===');
-    
+    console.log("=== ORCHESTRATOR RECEIVED JOB ===");
+
     // pgBoss passes job as array sometimes, get the first item
     const actualJob = Array.isArray(job) ? job[0] : job;
     const data = actualJob?.data || actualJob;
-    const jobId = actualJob?.id || 'unknown';
-    
-    console.log('Processing job:', jobId);
-    console.log('Job data:', JSON.stringify(data, null, 2));
-    
-    console.log(`Processing message job ${jobId} for user ${data?.userId}, thread ${data?.threadId}`);
+    const jobId = actualJob?.id || "unknown";
+
+    console.log("Processing job:", jobId);
+    console.log("Job data:", JSON.stringify(data, null, 2));
+
+    console.log(
+      `Processing message job ${jobId} for user ${data?.userId}, thread ${data?.threadId}`,
+    );
 
     try {
       const deploymentName = `peerbot-worker-${data.threadId}`;
       const isNewThread = !data.routingMetadata?.targetThreadId; // New thread if no parent thread
       const teamId = data.platformMetadata?.teamId;
-      
+
       if (isNewThread) {
         // New thread - create deployment
-        console.log(`New thread ${data.threadId} - creating deployment ${deploymentName}`);
-        
+        console.log(
+          `New thread ${data.threadId} - creating deployment ${deploymentName}`,
+        );
+
         await Sentry.startSpan(
-          { 
-            name: "orchestrator.create_worker_deployment", 
+          {
+            name: "orchestrator.create_worker_deployment",
             op: "orchestrator.deployment_management",
             attributes: {
               "user.id": data.userId,
               "thread.id": data.threadId,
-              "deployment.name": deploymentName
-            }
+              "deployment.name": deploymentName,
+            },
           },
           async () => {
-            await this.deploymentManager.createWorkerDeployment(data.userId, data.threadId, teamId, data);
-          }
+            await this.deploymentManager.createWorkerDeployment(
+              data.userId,
+              data.threadId,
+              teamId,
+              data,
+            );
+          },
         );
         console.log(`✅ Created deployment: ${deploymentName}`);
 
         // Reconcile deployments after creating new one
         await this.deploymentManager.reconcileDeployments();
-
       } else {
         // Existing thread - ensure deployment is scaled to 1
-        console.log(`Existing thread ${data.threadId} - ensuring deployment ${deploymentName} is running`);
-        
+        console.log(
+          `Existing thread ${data.threadId} - ensuring deployment ${deploymentName} is running`,
+        );
+
         try {
           await this.deploymentManager.scaleDeployment(deploymentName, 1);
           console.log(`✅ Scaled deployment ${deploymentName} to 1`);
         } catch (error) {
           // Deployment doesn't exist, recreate it
-          console.log(`Deployment ${deploymentName} doesn't exist, recreating...`);
-          await this.deploymentManager.createWorkerDeployment(data.userId, data.threadId, teamId, data);
+          console.log(
+            `Deployment ${deploymentName} doesn't exist, recreating...`,
+          );
+          await this.deploymentManager.createWorkerDeployment(
+            data.userId,
+            data.threadId,
+            teamId,
+            data,
+          );
           console.log(`✅ Recreated deployment: ${deploymentName}`);
 
           // Reconcile deployments after recreating
@@ -159,25 +181,24 @@ export class QueueConsumer {
 
       // Send message to worker queue
       await Sentry.startSpan(
-        { 
-          name: "orchestrator.send_to_worker_queue", 
+        {
+          name: "orchestrator.send_to_worker_queue",
           op: "orchestrator.message_routing",
           attributes: {
             "user.id": data.userId,
             "thread.id": data.threadId,
-            "deployment.name": deploymentName
-          }
+            "deployment.name": deploymentName,
+          },
         },
         async () => {
           await this.sendToWorkerQueue(data, deploymentName);
-        }
+        },
       );
 
       // Update deployment activity annotation for simplified tracking
       await this.deploymentManager.updateDeploymentActivity(deploymentName);
 
       console.log(`✅ Message job ${jobId} completed successfully`);
-      
     } catch (error) {
       Sentry.captureException(error);
       console.error(`❌ Message job ${jobId} failed:`, error);
@@ -187,7 +208,7 @@ export class QueueConsumer {
         ErrorCode.QUEUE_JOB_PROCESSING_FAILED,
         `Failed to process message job: ${error instanceof Error ? error.message : String(error)}`,
         { jobId, data, error },
-        true
+        true,
       );
     }
   }
@@ -195,51 +216,57 @@ export class QueueConsumer {
   /**
    * Send message to worker queue for the worker to consume
    */
-  private async sendToWorkerQueue(data: any, deploymentName: string): Promise<void> {
+  private async sendToWorkerQueue(
+    data: any,
+    deploymentName: string,
+  ): Promise<void> {
     try {
       // Create thread-specific queue name: thread_message_[deploymentid]
       const threadQueueName = `thread_message_${deploymentName}`;
-      
-      
+
       // Create the thread-specific queue if it doesn't exist
       await this.pgBoss.createQueue(threadQueueName);
-      
-      // Send message to thread-specific queue
-      const jobId = await this.pgBoss.send(threadQueueName, {
-        ...data,
-        // Add routing metadata
-        routingMetadata: {
-          deploymentName,
-          threadId: data.threadId,
-          userId: data.userId,
-          timestamp: new Date().toISOString()
-        }
-      }, {
-        expireInSeconds: this.config.queues.expireInSeconds,
-        retryLimit: this.config.queues.retryLimit,
-        retryDelay: this.config.queues.retryDelay,
-        priority: 10 // Thread messages have high priority
-      });
 
-      
+      // Send message to thread-specific queue
+      const jobId = await this.pgBoss.send(
+        threadQueueName,
+        {
+          ...data,
+          // Add routing metadata
+          routingMetadata: {
+            deploymentName,
+            threadId: data.threadId,
+            userId: data.userId,
+            timestamp: new Date().toISOString(),
+          },
+        },
+        {
+          expireInSeconds: this.config.queues.expireInSeconds,
+          retryLimit: this.config.queues.retryLimit,
+          retryDelay: this.config.queues.retryDelay,
+          priority: 10, // Thread messages have high priority
+        },
+      );
+
       if (!jobId) {
-        throw new Error(`pgBoss.send() returned null/undefined for queue: ${threadQueueName}`);
+        throw new Error(
+          `pgBoss.send() returned null/undefined for queue: ${threadQueueName}`,
+        );
       }
 
-      console.log(`✅ Sent message to thread queue ${threadQueueName} for thread ${data.threadId}, jobId: ${jobId}`);
+      console.log(
+        `✅ Sent message to thread queue ${threadQueueName} for thread ${data.threadId}, jobId: ${jobId}`,
+      );
     } catch (error) {
       console.error(`❌ [ERROR] sendToWorkerQueue failed:`, error);
       throw new OrchestratorError(
         ErrorCode.QUEUE_JOB_PROCESSING_FAILED,
         `Failed to send message to thread queue: ${error instanceof Error ? error.message : String(error)}`,
         { deploymentName, data, error },
-        true
+        true,
       );
     }
   }
-
-
-
 
   /**
    * Start background cleanup task for inactive threads
@@ -251,29 +278,27 @@ export class QueueConsumer {
         return;
       }
 
-      console.log('🧹 Running worker deployment cleanup task...');
+      console.log("🧹 Running worker deployment cleanup task...");
       try {
         await this.deploymentManager.reconcileDeployments();
       } catch (error) {
-        console.error('Error during cleanup task:', error);
+        console.error("Error during cleanup task:", error);
       }
     }, 60 * 1000); // Run every minute
   }
-
-
 
   /**
    * Get queue statistics
    */
   async getQueueStats(): Promise<any> {
     try {
-      const stats = await this.pgBoss.getQueueSize('messages');
+      const stats = await this.pgBoss.getQueueSize("messages");
       return {
         messages: stats,
-        isRunning: this.isRunning
+        isRunning: this.isRunning,
       };
     } catch (error) {
-      console.error('Failed to get queue stats:', error);
+      console.error("Failed to get queue stats:", error);
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }

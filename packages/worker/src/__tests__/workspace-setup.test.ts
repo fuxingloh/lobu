@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { describe, it, expect, beforeEach, afterEach, mock, jest } from "bun:test";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  mock,
+  jest,
+} from "bun:test";
 jest.mock = mock.module;
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
@@ -61,7 +69,7 @@ describe("Workspace Setup", () => {
 
   afterEach(() => {
     // Clean up any mock timers (if available)
-    if (typeof jest !== 'undefined' && jest.clearAllTimers) {
+    if (typeof jest !== "undefined" && jest.clearAllTimers) {
       jest.clearAllTimers();
     }
   });
@@ -71,7 +79,9 @@ describe("Workspace Setup", () => {
       // Simulate workspace creation
       await mockFs.mkdir(mockWorkspaceDir, { recursive: true });
 
-      expect(mockFs.mkdir).toHaveBeenCalledWith(mockWorkspaceDir, { recursive: true });
+      expect(mockFs.mkdir).toHaveBeenCalledWith(mockWorkspaceDir, {
+        recursive: true,
+      });
     });
 
     it("should handle existing workspace directory", async () => {
@@ -111,10 +121,11 @@ describe("Workspace Setup", () => {
     it("should clone repository with authentication", async () => {
       const cloneArgs = [
         "clone",
-        "--depth", "1",
+        "--depth",
+        "1",
         "--single-branch",
         mockRepositoryUrl,
-        "repo"
+        "repo",
       ];
 
       mockProcess.on.mockImplementation((event: string, callback: any) => {
@@ -125,7 +136,7 @@ describe("Workspace Setup", () => {
       });
 
       // Simulate git clone
-      const process = spawn("git", cloneArgs, {
+      const gitProcess = spawn("git", cloneArgs, {
         cwd: mockWorkspaceDir,
         env: {
           ...process.env,
@@ -135,13 +146,17 @@ describe("Workspace Setup", () => {
         },
       });
 
-      expect(mockSpawn).toHaveBeenCalledWith("git", cloneArgs, expect.objectContaining({
-        cwd: mockWorkspaceDir,
-        env: expect.objectContaining({
-          GIT_USERNAME: "token",
-          GIT_PASSWORD: mockGitHubToken,
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "git",
+        cloneArgs,
+        expect.objectContaining({
+          cwd: mockWorkspaceDir,
+          env: expect.objectContaining({
+            GIT_USERNAME: "token",
+            GIT_PASSWORD: mockGitHubToken,
+          }),
         }),
-      }));
+      );
     });
 
     it("should handle clone failures gracefully", async () => {
@@ -191,7 +206,7 @@ describe("Workspace Setup", () => {
 
       for (const url of urlFormats) {
         // Normalize URL for cloning
-        const normalizedUrl = url.startsWith("git@") 
+        const normalizedUrl = url.startsWith("git@")
           ? url.replace("git@github.com:", "https://github.com/")
           : url;
 
@@ -212,7 +227,7 @@ describe("Workspace Setup", () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         join(mockWorkspaceDir, ".env"),
-        envContent
+        envContent,
       );
     });
 
@@ -227,7 +242,11 @@ describe("Workspace Setup", () => {
       // Sanitize sensitive values for logging
       const sanitizedEnv = Object.fromEntries(
         Object.entries(rawEnv).map(([key, value]) => {
-          if (key.includes("TOKEN") || key.includes("KEY") || key.includes("SECRET")) {
+          if (
+            key.includes("TOKEN") ||
+            key.includes("KEY") ||
+            key.includes("SECRET")
+          ) {
             return [key, "[REDACTED]"];
           }
           if (key === "USER_INPUT") {
@@ -235,7 +254,7 @@ describe("Workspace Setup", () => {
             return [key, value.replace(/<script.*?<\/script>/gi, "")];
           }
           return [key, value];
-        })
+        }),
       );
 
       expect(sanitizedEnv.CLAUDE_API_KEY).toBe("[REDACTED]");
@@ -286,11 +305,12 @@ describe("Workspace Setup", () => {
 
       for (const input of maliciousInputs) {
         // Path traversal validation
-        const isUnsafe = input.includes("..") || 
-                        input.includes("/etc/") ||
-                        input.includes("~") ||
-                        input.includes("|") ||
-                        input.includes(";");
+        const isUnsafe =
+          input.includes("..") ||
+          input.includes("/etc/") ||
+          input.includes("~") ||
+          input.includes("|") ||
+          input.includes(";");
 
         expect(isUnsafe).toBe(true);
       }
@@ -298,17 +318,17 @@ describe("Workspace Setup", () => {
 
     it("should limit workspace size", async () => {
       const maxSizeBytes = 10 * 1024 * 1024 * 1024; // 10GB
-      
+
       // Mock directory size calculation
       const calculateDirSize = async (dirPath: string): Promise<number> => {
         const files = await mockFs.readdir(dirPath);
         let totalSize = 0;
-        
+
         for (const file of files) {
           const stats = await mockFs.stat(join(dirPath, file));
           totalSize += (stats as any).size || 0;
         }
-        
+
         return totalSize;
       };
 
@@ -417,7 +437,7 @@ describe("Workspace Setup", () => {
             throw lastError;
           }
           // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
     });
@@ -426,7 +446,9 @@ describe("Workspace Setup", () => {
       // Simulate partial failure during setup
       const setupSteps = [
         () => mockFs.mkdir(mockWorkspaceDir, { recursive: true }),
-        () => { throw new Error("Network error during clone"); },
+        () => {
+          throw new Error("Network error during clone");
+        },
         () => mockFs.writeFile(join(mockWorkspaceDir, ".env"), ""),
       ];
 

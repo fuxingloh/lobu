@@ -17,27 +17,30 @@ QA_SLACK_BOT_TOKEN=your_qa_bot_token_here
 QA_TARGET_BOT_USERNAME=your_target_bot_username_here
 ```
 
-
 ## 🎯 Key Features
 
 ### 💬 **Thread-Based Persistent Conversations**
+
 - Each Slack thread becomes a dedicated AI coding session
 - Full conversation history preserved across interactions
 - Resume work exactly where you left off
 
 ### 🏗️ **Kubernetes-Powered Architecture**
+
 - **Dispatcher-Worker Pattern**: Scalable, isolated execution
 - **Per-User Containers**: Each session gets dedicated resources
 - **5-Minute Sessions**: Focused, efficient coding sessions
 - **Auto-Scaling**: Handles multiple users simultaneously
 
-### 👤 **Individual GitHub Workspaces**  
+### 👤 **Individual GitHub Workspaces**
+
 - **Personal Repositories**: Each user gets `user-{username}` repository
 - **Automatic Git Operations**: Code commits and branch management
 - **GitHub.dev Integration**: Direct links to online code editor
 - **Pull Request Creation**: Easy code review workflow
 
 ### 🔄 **Real-Time Progress Streaming**
+
 - Live updates as Claude works on your code
 - Worker resource monitoring (CPU, memory, timeout)
 - Transparent execution with detailed progress logs
@@ -60,23 +63,28 @@ QA_TARGET_BOT_USERNAME=your_target_bot_username_here
 Choose your deployment approach:
 
 ### 🎯 **Option 1: Kubernetes (Recommended)**
+
 Full-featured deployment with per-user isolation and persistence
 
 **Benefits:**
-- ✅ Per-user containers and GitHub repositories  
+
+- ✅ Per-user containers and GitHub repositories
 - ✅ Thread-based conversation persistence via Kubernetes PVC
 - ✅ Horizontal scaling for large teams
 - ✅ Enterprise security and monitoring
 - ✅ Persistent volume-based session storage
 
 **Prerequisites:**
+
 - Kubernetes cluster (GKE, EKS, AKS, or local)
 - GitHub organization for user repositories
 
 ### 🐳 **Option 2: Docker (Development)**
+
 Simplified deployment using Docker containers with local workspace persistence
 
 **Benefits:**
+
 - ✅ Quick local development setup
 - ✅ Thread-based conversation persistence via local volumes
 - ✅ Per-user containers with isolated workspaces
@@ -84,6 +92,7 @@ Simplified deployment using Docker containers with local workspace persistence
 - ✅ Direct filesystem access for debugging
 
 **How Docker Deployment Works:**
+
 1. **Orchestrator** receives Slack events and creates Docker containers dynamically
 2. **Per-Thread Containers**: Each Slack conversation thread spawns a dedicated `peerbot-worker-{threadId}` container
 3. **Local Volume Mounting**: Host directory `./workspaces/{userId}/{threadId}/` is mounted to container's `/workspace`
@@ -92,6 +101,7 @@ Simplified deployment using Docker containers with local workspace persistence
 6. **Auto-Cleanup**: Idle containers are automatically stopped and removed after timeout
 
 **Container Lifecycle:**
+
 ```bash
 # Container creation
 docker run --name peerbot-worker-1756492073.980799 \
@@ -109,5 +119,6 @@ docker rm peerbot-worker-1756492073.980799
 ```
 
 **Prerequisites:**
+
 - Docker installed and running
 - PostgreSQL database accessible via `host.docker.internal` (macOS/Windows) or `localhost` (Linux)

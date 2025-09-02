@@ -130,20 +130,19 @@ export class SessionError extends Error {
     public sessionKey: string,
     public code: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "SessionError";
   }
 }
 
-
 export class WorkerError extends Error {
   constructor(
     public workerId: string,
     public operation: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "WorkerError";

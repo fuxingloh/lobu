@@ -10,7 +10,9 @@ import type { WorkerJobRequest } from "../types";
 /**
  * Factory for creating mock worker job requests
  */
-export function createMockWorkerJobRequest(overrides: Partial<WorkerJobRequest> = {}): WorkerJobRequest {
+export function createMockWorkerJobRequest(
+  overrides: Partial<WorkerJobRequest> = {},
+): WorkerJobRequest {
   return {
     sessionKey: "test-session-123",
     userId: "U123456789",
@@ -29,7 +31,6 @@ export function createMockWorkerJobRequest(overrides: Partial<WorkerJobRequest> 
     ...overrides,
   };
 }
-
 
 /**
  * Mock Slack app and event implementations
@@ -168,7 +169,6 @@ export function createMockSlackCommand(overrides: any = {}) {
   };
 }
 
-
 /**
  * Rate limiting test helpers
  */
@@ -181,7 +181,7 @@ export const rateLimitTestHelpers = {
       createMockWorkerJobRequest({
         userId,
         sessionKey: `rate-limit-test-${i}`,
-      })
+      }),
     );
   },
 
@@ -213,9 +213,11 @@ export const securityTestCases = {
 
   oversizedInputs: {
     longText: "a".repeat(10000),
-    deepObject: JSON.stringify({ nested: { very: { deep: { object: "value" } } } }),
+    deepObject: JSON.stringify({
+      nested: { very: { deep: { object: "value" } } },
+    }),
     manyFields: Object.fromEntries(
-      Array.from({ length: 1000 }, (_, i) => [`field${i}`, `value${i}`])
+      Array.from({ length: 1000 }, (_, i) => [`field${i}`, `value${i}`]),
     ),
   },
 };
@@ -269,14 +271,14 @@ export const asyncTestUtils = {
   async waitFor(
     condition: () => boolean | Promise<boolean>,
     timeout: number = 5000,
-    interval: number = 100
+    interval: number = 100,
   ): Promise<void> {
     const start = Date.now();
     while (Date.now() - start < timeout) {
       if (await condition()) {
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
     throw new Error(`Condition not met within ${timeout}ms`);
   },
@@ -285,7 +287,7 @@ export const asyncTestUtils = {
    * Create a delay
    */
   delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   },
 
   /**
@@ -293,17 +295,23 @@ export const asyncTestUtils = {
    */
   async testConcurrency<T>(
     tasks: (() => Promise<T>)[],
-    expectedResults?: T[]
+    expectedResults?: T[],
   ): Promise<T[]> {
-    const results = await Promise.allSettled(tasks.map(task => task()));
-    
+    const results = await Promise.allSettled(tasks.map((task) => task()));
+
     const fulfilled = results
-      .filter((result): result is PromiseFulfilledResult<T> => result.status === "fulfilled")
-      .map(result => result.value);
+      .filter(
+        (result): result is PromiseFulfilledResult<T> =>
+          result.status === "fulfilled",
+      )
+      .map((result) => result.value);
 
     const rejected = results
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map(result => result.reason);
+      .filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      )
+      .map((result) => result.reason);
 
     if (rejected.length > 0) {
       console.warn(`${rejected.length} tasks failed:`, rejected);
@@ -340,10 +348,16 @@ export function setupMockEnvironment() {
  * Test data generators
  */
 export const generators = {
-  randomUserId: () => `U${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-  randomChannelId: () => `C${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-  randomTeamId: () => `T${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-  randomMessageTs: () => `${Date.now()}.${Math.random().toString().substr(2, 6)}`,
-  randomJobName: () => `claude-worker-test-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-  randomSessionKey: () => `test-session-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
+  randomUserId: () =>
+    `U${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+  randomChannelId: () =>
+    `C${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+  randomTeamId: () =>
+    `T${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+  randomMessageTs: () =>
+    `${Date.now()}.${Math.random().toString().substr(2, 6)}`,
+  randomJobName: () =>
+    `claude-worker-test-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+  randomSessionKey: () =>
+    `test-session-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
 };

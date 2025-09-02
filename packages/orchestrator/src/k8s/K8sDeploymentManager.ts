@@ -1,13 +1,16 @@
-import * as k8s from '@kubernetes/client-node';
-import { BaseDeploymentManager, DeploymentInfo } from '../base/BaseDeploymentManager';
-import { K8sSecretManager } from './K8sSecretManager';
-import { 
-  OrchestratorConfig, 
-  SimpleDeployment, 
+import * as k8s from "@kubernetes/client-node";
+import {
+  BaseDeploymentManager,
+  DeploymentInfo,
+} from "../base/BaseDeploymentManager";
+import { K8sSecretManager } from "./K8sSecretManager";
+import {
+  OrchestratorConfig,
+  SimpleDeployment,
   OrchestratorError,
-  ErrorCode 
-} from '../types';
-import { DatabasePool } from '../db-connection-pool';
+  ErrorCode,
+} from "../types";
+import { DatabasePool } from "../db-connection-pool";
 
 export class K8sDeploymentManager extends BaseDeploymentManager {
   private appsV1Api: k8s.AppsV1Api;
@@ -29,31 +32,32 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       } else {
         kc.loadFromDefault();
       }
-      
+
       // For development environments, disable TLS verification to avoid certificate issues
-      if (process.env.NODE_ENV === 'development' || 
-          process.env.KUBERNETES_SERVICE_HOST?.includes('127.0.0.1') ||
-          process.env.KUBERNETES_SERVICE_HOST?.includes('192.168') ||
-          process.env.KUBERNETES_SERVICE_HOST?.includes('localhost')) {
+      if (
+        process.env.NODE_ENV === "development" ||
+        process.env.KUBERNETES_SERVICE_HOST?.includes("127.0.0.1") ||
+        process.env.KUBERNETES_SERVICE_HOST?.includes("192.168") ||
+        process.env.KUBERNETES_SERVICE_HOST?.includes("localhost")
+      ) {
         const cluster = kc.getCurrentCluster();
         if (cluster && cluster.skipTLSVerify !== true) {
           (cluster as any).skipTLSVerify = true;
         }
       }
-      
     } catch (error) {
-      console.error('❌ Failed to load Kubernetes config:', error);
+      console.error("❌ Failed to load Kubernetes config:", error);
       throw new OrchestratorError(
         ErrorCode.DEPLOYMENT_CREATE_FAILED,
         `Failed to initialize Kubernetes client: ${error instanceof Error ? error.message : String(error)}`,
         { error },
-        true
+        true,
       );
     }
-    
+
     this.appsV1Api = kc.makeApiClient(k8s.AppsV1Api);
     this.coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
-    
+
     // Pass the K8s API to the secret manager
     (this.secretManager as K8sSecretManager).setCoreV1Api(this.coreV1Api);
   }
@@ -66,26 +70,29 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         undefined,
         undefined,
         undefined,
-        'app.kubernetes.io/component=worker'
+        "app.kubernetes.io/component=worker",
       );
 
       const now = Date.now();
       const idleThresholdMinutes = this.config.worker.idleCleanupMinutes;
 
       return (k8sDeployments.body.items || []).map((deployment: any) => {
-        const deploymentName = deployment.metadata?.name || '';
-        const deploymentId = deploymentName.replace('peerbot-worker-', '');
-        
+        const deploymentName = deployment.metadata?.name || "";
+        const deploymentId = deploymentName.replace("peerbot-worker-", "");
+
         // Get last activity from annotations or fallback to creation time
-        const lastActivityStr = deployment.metadata?.annotations?.['peerbot.io/last-activity'] ||
-                               deployment.metadata?.annotations?.['peerbot.io/created'] ||
-                               deployment.metadata?.creationTimestamp;
-        
-        const lastActivity = lastActivityStr ? new Date(lastActivityStr) : new Date();
+        const lastActivityStr =
+          deployment.metadata?.annotations?.["peerbot.io/last-activity"] ||
+          deployment.metadata?.annotations?.["peerbot.io/created"] ||
+          deployment.metadata?.creationTimestamp;
+
+        const lastActivity = lastActivityStr
+          ? new Date(lastActivityStr)
+          : new Date();
         const minutesIdle = (now - lastActivity.getTime()) / (1000 * 60);
         const daysSinceActivity = minutesIdle / (60 * 24);
         const replicas = deployment.spec?.replicas || 0;
-        
+
         return {
           deploymentName,
           deploymentId,
@@ -94,7 +101,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
           daysSinceActivity,
           replicas,
           isIdle: minutesIdle >= idleThresholdMinutes,
-          isVeryOld: daysSinceActivity >= 7
+          isVeryOld: daysSinceActivity >= 7,
         };
       });
     } catch (error) {
@@ -102,50 +109,56 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         ErrorCode.DEPLOYMENT_CREATE_FAILED,
         `Failed to list deployments: ${error instanceof Error ? error.message : String(error)}`,
         { error },
-        true
+        true,
       );
     }
   }
 
-  private async ensurePersistentVolume(deploymentName: string, userId: string): Promise<void> {
-    const threadId = deploymentName.replace('peerbot-worker-', '').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+  private async ensurePersistentVolume(
+    deploymentName: string,
+    userId: string,
+  ): Promise<void> {
+    const threadId = deploymentName
+      .replace("peerbot-worker-", "")
+      .replace(/[^a-zA-Z0-9]/g, "-")
+      .toLowerCase();
     const pvcName = `peerbot-thread-workspace-${threadId}`;
-    
+
     try {
       // Check if PVC already exists
       await this.coreV1Api.readNamespacedPersistentVolumeClaim(
         pvcName,
-        this.config.kubernetes.namespace
+        this.config.kubernetes.namespace,
       );
     } catch (error: any) {
       if (error.statusCode === 404) {
         // PVC doesn't exist, create it
         const pvc = {
-          apiVersion: 'v1',
-          kind: 'PersistentVolumeClaim',
+          apiVersion: "v1",
+          kind: "PersistentVolumeClaim",
           metadata: {
             name: pvcName,
             namespace: this.config.kubernetes.namespace,
             labels: {
-              'app.kubernetes.io/name': 'peerbot',
-              'app.kubernetes.io/component': 'thread-workspace',
-              'peerbot.io/user-id': userId,
-              'peerbot.io/thread-id': threadId
-            }
+              "app.kubernetes.io/name": "peerbot",
+              "app.kubernetes.io/component": "thread-workspace",
+              "peerbot.io/user-id": userId,
+              "peerbot.io/thread-id": threadId,
+            },
           },
           spec: {
-            accessModes: ['ReadWriteOnce'],
+            accessModes: ["ReadWriteOnce"],
             resources: {
               requests: {
-                storage: '10Gi'
-              }
-            }
-          }
+                storage: "10Gi",
+              },
+            },
+          },
         };
-        
+
         await this.coreV1Api.createNamespacedPersistentVolumeClaim(
           this.config.kubernetes.namespace,
-          pvc
+          pvc,
         );
       } else {
         throw error;
@@ -153,135 +166,169 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
     }
   }
 
-  async createDeployment(deploymentName: string, username: string, userId: string, messageData?: any): Promise<void> {
+  async createDeployment(
+    deploymentName: string,
+    username: string,
+    userId: string,
+    messageData?: any,
+  ): Promise<void> {
     // Ensure the thread has a persistent volume for data persistence across pod restarts
     await this.ensurePersistentVolume(deploymentName, userId);
-    
+
     const deployment: SimpleDeployment = {
-      apiVersion: 'apps/v1',
-      kind: 'Deployment',
+      apiVersion: "apps/v1",
+      kind: "Deployment",
       metadata: {
         name: deploymentName,
         namespace: this.config.kubernetes.namespace,
         labels: {
-          'app.kubernetes.io/name': 'peerbot',
-          'app.kubernetes.io/component': 'worker',
-          'peerbot/managed-by': 'orchestrator'
-        }
+          "app.kubernetes.io/name": "peerbot",
+          "app.kubernetes.io/component": "worker",
+          "peerbot/managed-by": "orchestrator",
+        },
       },
       spec: {
         replicas: 1,
         selector: {
           matchLabels: {
-            'app.kubernetes.io/name': 'peerbot',
-            'app.kubernetes.io/component': 'worker'
-          }
+            "app.kubernetes.io/name": "peerbot",
+            "app.kubernetes.io/component": "worker",
+          },
         },
         template: {
           metadata: {
             annotations: {
               // Add Slack thread link for visibility
-              ...(messageData?.channelId && messageData?.threadId ? {
-                'thread_url': `https://app.slack.com/client/${messageData?.platformMetadata?.teamId || 'unknown'}/${messageData.channelId}/thread/${messageData.threadId}`
-              } : {}),
+              ...(messageData?.channelId && messageData?.threadId
+                ? {
+                    thread_url: `https://app.slack.com/client/${messageData?.platformMetadata?.teamId || "unknown"}/${messageData.channelId}/thread/${messageData.threadId}`,
+                  }
+                : {}),
               // Add Slack user profile link
-              ...(messageData?.platformUserId && messageData?.platformMetadata?.teamId ? {
-                'user_url': `https://app.slack.com/team/${messageData.platformMetadata.teamId}/${messageData.platformUserId}`
-              } : {}),
-              'peerbot.io/created': new Date().toISOString()
+              ...(messageData?.platformUserId &&
+              messageData?.platformMetadata?.teamId
+                ? {
+                    user_url: `https://app.slack.com/team/${messageData.platformMetadata.teamId}/${messageData.platformUserId}`,
+                  }
+                : {}),
+              "peerbot.io/created": new Date().toISOString(),
             },
             labels: {
-              'app.kubernetes.io/name': 'peerbot',
-              'app.kubernetes.io/component': 'worker'
-            }
+              "app.kubernetes.io/name": "peerbot",
+              "app.kubernetes.io/component": "worker",
+            },
           },
           spec: {
-            serviceAccountName: 'peerbot-worker',
-            containers: [{
-              name: 'worker',
-              image: `${this.config.worker.image.repository}:${this.config.worker.image.tag}`,
-              imagePullPolicy: this.config.worker.image.pullPolicy || 'Always',
-              env: [
-                // User-specific database connection from secret
-                {
-                  name: 'PEERBOT_DATABASE_URL',
-                  valueFrom: {
-                    secretKeyRef: {
-                      name: `peerbot-user-secret-${username.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
-                      key: 'PEERBOT_DATABASE_URL'
-                    }
-                  }
+            serviceAccountName: "peerbot-worker",
+            containers: [
+              {
+                name: "worker",
+                image: `${this.config.worker.image.repository}:${this.config.worker.image.tag}`,
+                imagePullPolicy:
+                  this.config.worker.image.pullPolicy || "Always",
+                env: [
+                  // User-specific database connection from secret
+                  {
+                    name: "PEERBOT_DATABASE_URL",
+                    valueFrom: {
+                      secretKeyRef: {
+                        name: `peerbot-user-secret-${username.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}`,
+                        key: "PEERBOT_DATABASE_URL",
+                      },
+                    },
+                  },
+                  // Common environment variables from base class (excluding secrets)
+                  ...Object.entries(
+                    this.generateEnvironmentVariables(
+                      username,
+                      userId,
+                      deploymentName,
+                      messageData,
+                      false,
+                    ),
+                  ).map(([key, value]) => ({
+                    name: key,
+                    value: value,
+                  })),
+                  // Set BUILD_MODE=dev in development mode for hot reload
+                  ...(process.env.NODE_ENV === "development"
+                    ? [
+                        {
+                          name: "BUILD_MODE",
+                          value: "dev",
+                        },
+                      ]
+                    : []),
+                  // K8s-specific secrets that can't be handled in base class
+                  {
+                    name: "GITHUB_TOKEN",
+                    valueFrom: {
+                      secretKeyRef: {
+                        name: "peerbot-secrets",
+                        key: "github-token",
+                      },
+                    },
+                  },
+                  {
+                    name: "CLAUDE_CODE_OAUTH_TOKEN",
+                    valueFrom: {
+                      secretKeyRef: {
+                        name: "peerbot-secrets",
+                        key: "claude-code-oauth-token",
+                      },
+                    },
+                  },
+                ],
+                resources: {
+                  requests: this.config.worker.resources.requests,
+                  limits: this.config.worker.resources.limits,
                 },
-                // Common environment variables from base class (excluding secrets)
-                ...Object.entries(this.generateEnvironmentVariables(username, userId, deploymentName, messageData, false)).map(([key, value]) => ({
-                  name: key,
-                  value: value
-                })),
-                // Set BUILD_MODE=dev in development mode for hot reload
-                ...(process.env.NODE_ENV === 'development' ? [{
-                  name: 'BUILD_MODE',
-                  value: 'dev'
-                }] : []),
-                // K8s-specific secrets that can't be handled in base class
-                {
-                  name: 'GITHUB_TOKEN',
-                  valueFrom: {
-                    secretKeyRef: {
-                      name: 'peerbot-secrets',
-                      key: 'github-token'
-                    }
-                  }
-                },
-                {
-                  name: 'CLAUDE_CODE_OAUTH_TOKEN',
-                  valueFrom: {
-                    secretKeyRef: {
-                      name: 'peerbot-secrets',
-                      key: 'claude-code-oauth-token'
-                    }
-                  }
-                }
-              ],
-              resources: {
-                requests: this.config.worker.resources.requests,
-                limits: this.config.worker.resources.limits
+                volumeMounts: [
+                  {
+                    name: "workspace",
+                    mountPath: "/workspace",
+                  },
+                ],
               },
-              volumeMounts: [
-                {
-                  name: 'workspace',
-                  mountPath: '/workspace'
-                }
-              ]
-            }],
+            ],
             volumes: [
               {
-                name: 'workspace',
+                name: "workspace",
                 persistentVolumeClaim: {
-                  claimName: `peerbot-thread-workspace-${deploymentName.replace('peerbot-worker-', '').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`
-                }
+                  claimName: `peerbot-thread-workspace-${deploymentName
+                    .replace("peerbot-worker-", "")
+                    .replace(/[^a-zA-Z0-9]/g, "-")
+                    .toLowerCase()}`,
+                },
               },
-            ]
-          }
-        }
-      }
+            ],
+          },
+        },
+      },
     };
 
-    await this.appsV1Api.createNamespacedDeployment(this.config.kubernetes.namespace, deployment);
+    await this.appsV1Api.createNamespacedDeployment(
+      this.config.kubernetes.namespace,
+      deployment,
+    );
   }
 
-  async scaleDeployment(deploymentName: string, replicas: number): Promise<void> {
+  async scaleDeployment(
+    deploymentName: string,
+    replicas: number,
+  ): Promise<void> {
     try {
       const deployment = await this.appsV1Api.readNamespacedDeployment(
         deploymentName,
-        this.config.kubernetes.namespace
+        this.config.kubernetes.namespace,
       );
-      
+
       if (deployment.body.spec?.replicas !== replicas) {
         deployment.body.spec!.replicas = replicas;
         await this.appsV1Api.patchNamespacedDeployment(
           deploymentName,
           this.config.kubernetes.namespace,
-          deployment.body
+          deployment.body,
         );
       }
     } catch (error) {
@@ -289,47 +336,56 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         ErrorCode.DEPLOYMENT_SCALE_FAILED,
         `Failed to scale deployment ${deploymentName}: ${error instanceof Error ? error.message : String(error)}`,
         { deploymentName, replicas, error },
-        true
+        true,
       );
     }
   }
 
   async deleteDeployment(deploymentId: string): Promise<void> {
     const deploymentName = `peerbot-worker-${deploymentId}`;
-    
+
     // Delete the deployment
     try {
       await this.appsV1Api.deleteNamespacedDeployment(
         deploymentName,
-        this.config.kubernetes.namespace
+        this.config.kubernetes.namespace,
       );
       console.log(`✅ Deleted deployment: ${deploymentName}`);
     } catch (error: any) {
       if (error.statusCode === 404) {
-        console.log(`⚠️  Deployment ${deploymentName} not found (already deleted)`);
+        console.log(
+          `⚠️  Deployment ${deploymentName} not found (already deleted)`,
+        );
       } else {
         throw error;
       }
     }
 
-    // Delete associated PVC if it exists (Note: We should NOT delete user PVCs automatically 
+    // Delete associated PVC if it exists (Note: We should NOT delete user PVCs automatically
     // as they contain user data across multiple threads - they should only be deleted manually)
     // const pvcName = `peerbot-user-workspace-${deploymentId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`;
-    console.log(`ℹ️  User PVC preserved for future threads (not auto-deleted): peerbot-user-workspace-${deploymentId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`)
+    console.log(
+      `ℹ️  User PVC preserved for future threads (not auto-deleted): peerbot-user-workspace-${deploymentId.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}`,
+    );
 
     // Delete associated secret if it exists
     try {
-      const secretName = `peerbot-user-secret-${deploymentId.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`;
+      const secretName = `peerbot-user-secret-${deploymentId.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}`;
       await this.coreV1Api.deleteNamespacedSecret(
         secretName,
-        this.config.kubernetes.namespace
+        this.config.kubernetes.namespace,
       );
       console.log(`✅ Deleted secret: ${secretName}`);
     } catch (error: any) {
       if (error.statusCode === 404) {
-        console.log(`⚠️  Secret for ${deploymentName} not found (already deleted)`);
+        console.log(
+          `⚠️  Secret for ${deploymentName} not found (already deleted)`,
+        );
       } else {
-        console.log(`⚠️  Failed to delete secret for ${deploymentName}:`, error.message);
+        console.log(
+          `⚠️  Failed to delete secret for ${deploymentName}:`,
+          error.message,
+        );
       }
     }
   }
@@ -340,19 +396,21 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       const patch = {
         metadata: {
           annotations: {
-            'peerbot.io/last-activity': timestamp
-          }
-        }
+            "peerbot.io/last-activity": timestamp,
+          },
+        },
       };
 
       await this.appsV1Api.patchNamespacedDeployment(
         deploymentName,
         this.config.kubernetes.namespace,
-        patch
+        patch,
       );
-      
     } catch (error) {
-      console.error(`❌ Failed to update activity for deployment ${deploymentName}:`, error instanceof Error ? error.message : String(error));
+      console.error(
+        `❌ Failed to update activity for deployment ${deploymentName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       // Don't throw - activity tracking should not block message processing
     }
   }

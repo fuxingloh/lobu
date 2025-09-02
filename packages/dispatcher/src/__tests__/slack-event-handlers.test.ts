@@ -119,13 +119,16 @@ describe("Slack Event Handlers", () => {
     });
 
     it("should extract clean prompt from mention", () => {
-      const messageText = "<@U987654> help me debug this function\n\n```js\nfunction test() {\n  return 'hello';\n}\n```";
+      const messageText =
+        "<@U987654> help me debug this function\n\n```js\nfunction test() {\n  return 'hello';\n}\n```";
       const botUserId = "U987654";
-      
+
       // Clean the prompt by removing mention
       const cleanPrompt = messageText.replace(`<@${botUserId}>`, "").trim();
-      
-      expect(cleanPrompt).toBe("help me debug this function\n\n```js\nfunction test() {\n  return 'hello';\n}\n```");
+
+      expect(cleanPrompt).toBe(
+        "help me debug this function\n\n```js\nfunction test() {\n  return 'hello';\n}\n```",
+      );
     });
   });
 
@@ -184,11 +187,14 @@ describe("Slack Event Handlers", () => {
 
       // Simulate help command
       await mockAck();
-      
-      const helpText = "Claude Commands:\n• `/claude <prompt>` - Start a new task\n• `/claude status` - Show active jobs\n• `/claude help` - Show this help";
+
+      const helpText =
+        "Claude Commands:\n• `/claude <prompt>` - Start a new task\n• `/claude status` - Show active jobs\n• `/claude help` - Show this help";
       await mockRespond(helpText);
 
-      expect(mockRespond).toHaveBeenCalledWith(expect.stringContaining("Claude Commands:"));
+      expect(mockRespond).toHaveBeenCalledWith(
+        expect.stringContaining("Claude Commands:"),
+      );
     });
   });
 
@@ -237,8 +243,10 @@ describe("Slack Event Handlers", () => {
       // Simulate modal submission
       await mockAck();
 
-      const modelSelection = mockView.state.values.config_block.model_select.selected_option.value;
-      const temperature = mockView.state.values.config_block.temperature_input.value;
+      const modelSelection =
+        mockView.state.values.config_block.model_select.selected_option.value;
+      const temperature =
+        mockView.state.values.config_block.temperature_input.value;
 
       expect(modelSelection).toBe("claude-3-sonnet");
       expect(temperature).toBe("0.7");
@@ -260,7 +268,9 @@ describe("Slack Event Handlers", () => {
 
     it("should handle rate limiting", async () => {
       const mockJobManager = {
-        createWorkerJob: jest.fn().mockRejectedValue(new Error("Rate limit exceeded")),
+        createWorkerJob: jest
+          .fn()
+          .mockRejectedValue(new Error("Rate limit exceeded")),
       };
 
       const mockRespond = jest.fn();
@@ -269,18 +279,22 @@ describe("Slack Event Handlers", () => {
         await mockJobManager.createWorkerJob({});
       } catch (error) {
         if (error.message.includes("Rate limit exceeded")) {
-          await mockRespond("You've reached the rate limit. Please wait before starting another task.");
+          await mockRespond(
+            "You've reached the rate limit. Please wait before starting another task.",
+          );
         }
       }
 
       expect(mockRespond).toHaveBeenCalledWith(
-        "You've reached the rate limit. Please wait before starting another task."
+        "You've reached the rate limit. Please wait before starting another task.",
       );
     });
 
     it("should handle job creation failures", async () => {
       const mockJobManager = {
-        createWorkerJob: jest.fn().mockRejectedValue(new Error("Kubernetes error")),
+        createWorkerJob: jest
+          .fn()
+          .mockRejectedValue(new Error("Kubernetes error")),
       };
 
       const mockRespond = jest.fn();
@@ -288,11 +302,13 @@ describe("Slack Event Handlers", () => {
       try {
         await mockJobManager.createWorkerJob({});
       } catch (error) {
-        await mockRespond("Failed to start Claude session. Please try again later.");
+        await mockRespond(
+          "Failed to start Claude session. Please try again later.",
+        );
       }
 
       expect(mockRespond).toHaveBeenCalledWith(
-        "Failed to start Claude session. Please try again later."
+        "Failed to start Claude session. Please try again later.",
       );
     });
   });
@@ -322,11 +338,13 @@ describe("Slack Event Handlers", () => {
         }),
       };
 
-      const sessionExists = await mockSessionManager.sessionExists(existingSessionKey);
+      const sessionExists =
+        await mockSessionManager.sessionExists(existingSessionKey);
       expect(sessionExists).toBe(true);
 
       if (sessionExists) {
-        const recoveredSession = await mockSessionManager.recoverSession(existingSessionKey);
+        const recoveredSession =
+          await mockSessionManager.recoverSession(existingSessionKey);
         expect(recoveredSession.sessionKey).toBe(existingSessionKey);
       }
     });

@@ -46,6 +46,7 @@ When using `--json` mode, the script returns structured data:
 ```
 
 **Response Fields:**
+
 - `success`: Boolean indicating if the test passed
 - `channel`: Slack channel ID where the message was sent
 - `thread_ts`: Thread timestamp (use this for continuing conversations)
@@ -62,6 +63,7 @@ When using `--json` mode, the script returns structured data:
 ## Advanced Thread Continuation with Bash Pipes
 
 ### Single-line thread continuation:
+
 ```bash
 # Start a task and immediately continue in the same thread
 ./slack-qa-bot.js --json "Create a React component" | jq -r .thread_ts | xargs -I {} ./slack-qa-bot.js --thread-ts {} "Add TypeScript types to it"
@@ -75,15 +77,16 @@ When using `--json` mode, the script returns structured data:
 ```
 
 ### Interactive thread continuation with response analysis:
+
 ```bash
 # Analyze bot response and continue based on content
 analyze_and_continue() {
   local response=$(./slack-qa-bot.js --json --wait-for-response "$1")
   local thread_ts=$(echo "$response" | jq -r .thread_ts)
   local bot_text=$(echo "$response" | jq -r .response.text)
-  
+
   echo "Bot responded: $bot_text"
-  
+
   # Continue based on response content
   if echo "$bot_text" | grep -q "error\|failed"; then
     echo "Bot encountered an issue, asking for clarification..."
@@ -98,20 +101,21 @@ analyze_and_continue "Create a Python function to calculate fibonacci"
 ```
 
 ### Thread continuation with response validation:
+
 ```bash
 # Function to validate bot response and retry if needed
 validate_and_retry() {
   local prompt="$1"
   local max_attempts=3
   local attempt=1
-  
+
   while [ $attempt -le $max_attempts ]; do
     echo "Attempt $attempt: $prompt"
-    
+
     local result=$(./slack-qa-bot.js --json --wait-for-response --timeout 30 "$prompt")
     local success=$(echo "$result" | jq -r .success)
     local thread_ts=$(echo "$result" | jq -r .thread_ts)
-    
+
     if [ "$success" = "true" ]; then
       local response_text=$(echo "$result" | jq -r .response.text)
       echo "Success: $response_text"
@@ -122,7 +126,7 @@ validate_and_retry() {
       attempt=$((attempt + 1))
     fi
   done
-  
+
   echo "All attempts failed"
   return 1
 }
@@ -134,22 +138,23 @@ fi
 ```
 
 ### Parallel thread processing with synchronization:
+
 ```bash
 # Process multiple threads in parallel, then synchronize
 process_parallel_threads() {
   local threads=()
   local tasks=("Create API endpoint" "Write documentation" "Add error handling")
-  
+
   # Start multiple threads in parallel
   for task in "${tasks[@]}"; do
     thread_ts=$(./slack-qa-bot.js --json "$task" | jq -r .thread_ts)
     threads+=("$thread_ts")
     echo "Started thread $thread_ts for: $task"
   done
-  
+
   # Wait for all to complete and continue each
   sleep 45  # Allow time for processing
-  
+
   for i in "${!threads[@]}"; do
     local thread="${threads[$i]}"
     local task="${tasks[$i]}"
@@ -194,14 +199,14 @@ test_url_generation() {
   local response=$(./slack-qa-bot.js --json --wait-for-response "Generate a demo URL for a React app deployment")
   local thread_ts=$(echo "$response" | jq -r .thread_ts)
   local bot_text=$(echo "$response" | jq -r .response.text)
-  
+
   # Extract peerbot.ai URLs from response
   local peerbot_urls=$(echo "$bot_text" | grep -o "https://[^.]*\.peerbot\.ai[^[:space:]]*" | head -5)
-  
+
   if [ -n "$peerbot_urls" ]; then
     echo "Found peerbot.ai URLs:"
     echo "$peerbot_urls"
-    
+
     # Test each URL
     while IFS= read -r url; do
       echo "Testing URL: $url"
@@ -214,7 +219,7 @@ test_url_generation() {
   else
     echo "No peerbot.ai URLs found in response"
   fi
-  
+
   return 0
 }
 

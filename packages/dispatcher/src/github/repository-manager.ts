@@ -2,10 +2,7 @@
 
 import { Octokit } from "@octokit/rest";
 import logger from "../logger";
-import type { 
-  GitHubConfig,
-  UserRepository
-} from "../types";
+import type { GitHubConfig, UserRepository } from "../types";
 
 // Define custom error class
 class GitHubRepositoryError extends Error {
@@ -13,10 +10,10 @@ class GitHubRepositoryError extends Error {
     public operation: string,
     public username: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
-    this.name = 'GitHubRepositoryError';
+    this.name = "GitHubRepositoryError";
   }
 }
 
@@ -27,7 +24,7 @@ export class GitHubRepositoryManager {
 
   constructor(config: GitHubConfig) {
     this.config = config;
-    
+
     this.octokit = new Octokit({
       auth: config.token,
     });
@@ -43,9 +40,9 @@ export class GitHubRepositoryManager {
       if (match && match[2]) {
         return match[2]; // Return repository name
       }
-      return 'unknown-repo';
+      return "unknown-repo";
     } catch (error) {
-      return 'unknown-repo';
+      return "unknown-repo";
     }
   }
 
@@ -61,12 +58,14 @@ export class GitHubRepositoryManager {
           username,
           repositoryName: this.extractRepoNameFromUrl(this.config.repository),
           repositoryUrl: this.config.repository,
-          cloneUrl: this.config.repository.replace('github.com', 'github.com'),
+          cloneUrl: this.config.repository.replace("github.com", "github.com"),
           createdAt: Date.now(),
           lastUsed: Date.now(),
         };
 
-        logger.info(`Using repository override for user ${username}: ${repository.repositoryUrl}`);
+        logger.info(
+          `Using repository override for user ${username}: ${repository.repositoryUrl}`,
+        );
         return repository;
       }
 
@@ -79,18 +78,18 @@ export class GitHubRepositoryManager {
       }
 
       const repositoryName = username; // Repository name matches username
-      
+
       // Check if repository exists
       let repository: UserRepository | undefined;
-      
+
       // Determine the owner(s) to check
       const possibleOwners: string[] = [];
-      
+
       if (this.config.organization && this.config.organization.trim() !== "") {
         // If organization is specified, check there first
         possibleOwners.push(this.config.organization);
       }
-      
+
       // Always add authenticated user as fallback
       try {
         const authUser = await this.octokit.rest.users.getAuthenticated();
@@ -98,7 +97,7 @@ export class GitHubRepositoryManager {
           possibleOwners.push(authUser.data.login);
         }
       } catch (e) {
-        logger.warn('Could not get authenticated user:', e);
+        logger.warn("Could not get authenticated user:", e);
       }
 
       let foundRepo = false;
@@ -108,7 +107,7 @@ export class GitHubRepositoryManager {
             owner: owner,
             repo: repositoryName,
           });
-          
+
           // Repository exists, create repository info
           repository = {
             username,
@@ -118,11 +117,12 @@ export class GitHubRepositoryManager {
             createdAt: new Date(repoResponse.data.created_at).getTime(),
             lastUsed: Date.now(),
           };
-          
-          logger.info(`Found existing repository for user ${username} under ${owner}: ${repository.repositoryUrl}`);
+
+          logger.info(
+            `Found existing repository for user ${username} under ${owner}: ${repository.repositoryUrl}`,
+          );
           foundRepo = true;
           break;
-          
         } catch (error: any) {
           if (error.status !== 404) {
             throw error;
@@ -130,7 +130,7 @@ export class GitHubRepositoryManager {
           // Continue to next owner
         }
       }
-      
+
       if (!foundRepo) {
         // Repository doesn't exist anywhere, create it
         repository = await this.createUserRepository(username);
@@ -141,15 +141,16 @@ export class GitHubRepositoryManager {
         this.repositories.set(username, repository);
         return repository;
       } else {
-        throw new Error(`Failed to find or create repository for user ${username}`);
+        throw new Error(
+          `Failed to find or create repository for user ${username}`,
+        );
       }
-
     } catch (error) {
       throw new GitHubRepositoryError(
         "ensureUserRepository",
         username,
         `Failed to ensure repository for user ${username}`,
-        error as Error
+        error as Error,
       );
     }
   }
@@ -157,15 +158,17 @@ export class GitHubRepositoryManager {
   /**
    * Create a new user repository
    */
-  private async createUserRepository(username: string): Promise<UserRepository> {
+  private async createUserRepository(
+    username: string,
+  ): Promise<UserRepository> {
     try {
       const repositoryName = username;
-      
+
       logger.info(`Creating repository for user ${username}...`);
-      
+
       // Try to create repository in organization first, fallback to authenticated user
       let repoResponse;
-      
+
       if (this.config.organization && this.config.organization.trim() !== "") {
         try {
           // Try to create in organization first
@@ -181,45 +184,53 @@ export class GitHubRepositoryManager {
             gitignore_template: "Node",
             license_template: "mit",
           });
-          logger.info(`Created repository for user ${username} in organization ${this.config.organization}`);
+          logger.info(
+            `Created repository for user ${username} in organization ${this.config.organization}`,
+          );
         } catch (orgError: any) {
           if (orgError.status === 404) {
-            logger.info(`Organization ${this.config.organization} not found, creating repository for authenticated user...`);
-            repoResponse = await this.octokit.rest.repos.createForAuthenticatedUser({
-              name: repositoryName,
-              description: `Personal workspace for ${username} - Peerbot`,
-              private: false,
-              has_issues: true,
-              has_projects: false,
-              has_wiki: false,
-              auto_init: true,
-              gitignore_template: "Node",
-              license_template: "mit",
-            });
+            logger.info(
+              `Organization ${this.config.organization} not found, creating repository for authenticated user...`,
+            );
+            repoResponse =
+              await this.octokit.rest.repos.createForAuthenticatedUser({
+                name: repositoryName,
+                description: `Personal workspace for ${username} - Peerbot`,
+                private: false,
+                has_issues: true,
+                has_projects: false,
+                has_wiki: false,
+                auto_init: true,
+                gitignore_template: "Node",
+                license_template: "mit",
+              });
           } else {
             throw orgError;
           }
         }
       } else {
         // No organization specified, create for authenticated user
-        logger.info(`No organization specified, creating repository for authenticated user...`);
-        repoResponse = await this.octokit.rest.repos.createForAuthenticatedUser({
-          name: repositoryName,
-          description: `Personal workspace for ${username} - Peerbot`,
-          private: false,
-          has_issues: true,
-          has_projects: false,
-          has_wiki: false,
-          auto_init: true,
-          gitignore_template: "Node",
-          license_template: "mit",
-        });
+        logger.info(
+          `No organization specified, creating repository for authenticated user...`,
+        );
+        repoResponse = await this.octokit.rest.repos.createForAuthenticatedUser(
+          {
+            name: repositoryName,
+            description: `Personal workspace for ${username} - Peerbot`,
+            private: false,
+            has_issues: true,
+            has_projects: false,
+            has_wiki: false,
+            auto_init: true,
+            gitignore_template: "Node",
+            license_template: "mit",
+          },
+        );
       }
 
-      
       // Use the actual owner from the response
       const owner = repoResponse.data.owner.login;
-      
+
       await this.octokit.rest.repos.createOrUpdateFileContents({
         owner: owner,
         repo: repositoryName,
@@ -240,16 +251,17 @@ export class GitHubRepositoryManager {
         lastUsed: Date.now(),
       };
 
-      logger.info(`Created repository for user ${username}: ${repository.repositoryUrl}`);
-      
-      return repository;
+      logger.info(
+        `Created repository for user ${username}: ${repository.repositoryUrl}`,
+      );
 
+      return repository;
     } catch (error) {
       throw new GitHubRepositoryError(
         "createUserRepository",
         username,
         `Failed to create repository for user ${username}`,
-        error as Error
+        error as Error,
       );
     }
   }
@@ -257,23 +269,30 @@ export class GitHubRepositoryManager {
   /**
    * Create initial directory structure
    */
-  private async createInitialStructure(owner: string, repositoryName: string): Promise<void> {
+  private async createInitialStructure(
+    owner: string,
+    repositoryName: string,
+  ): Promise<void> {
     const directories = [
       {
         path: "projects/examples/.gitkeep",
-        content: "# Example projects directory\n\nThis directory will contain example projects created by Claude.",
+        content:
+          "# Example projects directory\n\nThis directory will contain example projects created by Claude.",
       },
       {
-        path: "scripts/.gitkeep", 
-        content: "# Scripts directory\n\nThis directory will contain utility scripts.",
+        path: "scripts/.gitkeep",
+        content:
+          "# Scripts directory\n\nThis directory will contain utility scripts.",
       },
       {
         path: "docs/.gitkeep",
-        content: "# Documentation directory\n\nThis directory will contain project documentation.",
+        content:
+          "# Documentation directory\n\nThis directory will contain project documentation.",
       },
       {
         path: "workspace/.gitkeep",
-        content: "# Temporary workspace\n\nThis directory is used for temporary files during Claude sessions.",
+        content:
+          "# Temporary workspace\n\nThis directory is used for temporary files during Claude sessions.",
       },
     ];
 
@@ -283,7 +302,7 @@ export class GitHubRepositoryManager {
           owner: owner,
           repo: repositoryName,
           path: dir.path,
-          message: `Create ${dir.path.split('/')[0]} directory`,
+          message: `Create ${dir.path.split("/")[0]} directory`,
           content: Buffer.from(dir.content).toString("base64"),
         });
       } catch (error) {
@@ -299,32 +318,35 @@ export class GitHubRepositoryManager {
     return this.repositories.get(username) || null;
   }
 
-
-
-
-
-
-
   /**
    * Fetch README.md content from a GitHub repository
    */
-  async fetchReadmeContent(owner: string, repo: string): Promise<string | null> {
+  async fetchReadmeContent(
+    owner: string,
+    repo: string,
+  ): Promise<string | null> {
     try {
       logger.info(`Fetching README.md from ${owner}/${repo}...`);
-      
+
       const response = await this.octokit.rest.repos.getContent({
         owner,
         repo,
-        path: 'README.md',
+        path: "README.md",
       });
 
-      if ('content' in response.data && response.data.content) {
-        const content = Buffer.from(response.data.content, 'base64').toString('utf8');
-        logger.info(`Successfully fetched README.md from ${owner}/${repo} (${content.length} characters)`);
+      if ("content" in response.data && response.data.content) {
+        const content = Buffer.from(response.data.content, "base64").toString(
+          "utf8",
+        );
+        logger.info(
+          `Successfully fetched README.md from ${owner}/${repo} (${content.length} characters)`,
+        );
         return content;
       }
-      
-      logger.warn(`README.md found but no content available for ${owner}/${repo}`);
+
+      logger.warn(
+        `README.md found but no content available for ${owner}/${repo}`,
+      );
       return null;
     } catch (error: any) {
       if (error.status === 404) {

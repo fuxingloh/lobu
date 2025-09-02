@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { describe, it, expect, beforeEach, afterEach, mock, jest } from "bun:test";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  mock,
+  jest,
+} from "bun:test";
 jest.mock = mock.module;
 
 // Mock core-runner since worker depends on it
@@ -37,7 +45,9 @@ describe("Worker Main", () => {
     // Mock Slack client
     mockSlackClient = {
       chat: {
-        postMessage: jest.fn().mockResolvedValue({ ok: true, ts: "1234567890.123456" }),
+        postMessage: jest
+          .fn()
+          .mockResolvedValue({ ok: true, ts: "1234567890.123456" }),
         update: jest.fn().mockResolvedValue({ ok: true }),
       },
       conversations: {
@@ -94,7 +104,10 @@ describe("Worker Main", () => {
     });
 
     it("should decode base64 user prompt", () => {
-      const decodedPrompt = Buffer.from(process.env.USER_PROMPT!, "base64").toString("utf-8");
+      const decodedPrompt = Buffer.from(
+        process.env.USER_PROMPT!,
+        "base64",
+      ).toString("utf-8");
       expect(decodedPrompt).toBe("Help me debug this code");
     });
 
@@ -126,10 +139,12 @@ describe("Worker Main", () => {
     });
 
     it("should handle workspace creation failures", async () => {
-      mockWorkspaceSetup.createWorkspace.mockRejectedValue(new Error("Disk full"));
+      mockWorkspaceSetup.createWorkspace.mockRejectedValue(
+        new Error("Disk full"),
+      );
 
       await expect(
-        mockWorkspaceSetup.createWorkspace("U123456789")
+        mockWorkspaceSetup.createWorkspace("U123456789"),
       ).rejects.toThrow("Disk full");
     });
   });
@@ -144,7 +159,9 @@ describe("Worker Main", () => {
 
       await mockSlackClient.chat.postMessage(progressMessage);
 
-      expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(progressMessage);
+      expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(
+        progressMessage,
+      );
     });
 
     it("should update progress during execution", async () => {
@@ -163,7 +180,9 @@ describe("Worker Main", () => {
         });
       }
 
-      expect(mockSlackClient.chat.update).toHaveBeenCalledTimes(progressUpdates.length);
+      expect(mockSlackClient.chat.update).toHaveBeenCalledTimes(
+        progressUpdates.length,
+      );
     });
 
     it("should handle progress update failures", async () => {
@@ -213,7 +232,7 @@ describe("Worker Main", () => {
               type: "context",
             }),
           ]),
-        })
+        }),
       );
     });
   });
@@ -223,9 +242,15 @@ describe("Worker Main", () => {
       const repoUrl = process.env.REPOSITORY_URL!;
       const workspaceDir = "/workspace/user-123";
 
-      const clonedPath = await mockWorkspaceSetup.cloneRepository(repoUrl, workspaceDir);
+      const clonedPath = await mockWorkspaceSetup.cloneRepository(
+        repoUrl,
+        workspaceDir,
+      );
 
-      expect(mockWorkspaceSetup.cloneRepository).toHaveBeenCalledWith(repoUrl, workspaceDir);
+      expect(mockWorkspaceSetup.cloneRepository).toHaveBeenCalledWith(
+        repoUrl,
+        workspaceDir,
+      );
       expect(clonedPath).toBe("/workspace/user-123/repo");
     });
 
@@ -236,7 +261,7 @@ describe("Worker Main", () => {
       // Mock authenticated clone
       const authenticatedUrl = privateRepoUrl.replace(
         "https://",
-        `https://token:${githubToken}@`
+        `https://token:${githubToken}@`,
       );
 
       expect(authenticatedUrl).toContain(githubToken);
@@ -244,11 +269,14 @@ describe("Worker Main", () => {
 
     it("should handle repository clone failures", async () => {
       mockWorkspaceSetup.cloneRepository.mockRejectedValue(
-        new Error("Repository not found")
+        new Error("Repository not found"),
       );
 
       await expect(
-        mockWorkspaceSetup.cloneRepository("https://github.com/nonexistent/repo", "/workspace")
+        mockWorkspaceSetup.cloneRepository(
+          "https://github.com/nonexistent/repo",
+          "/workspace",
+        ),
       ).rejects.toThrow("Repository not found");
     });
 
@@ -267,12 +295,16 @@ describe("Worker Main", () => {
       ];
 
       for (const url of validUrls) {
-        const isValid = url.match(/^(https:\/\/github\.com\/|git@github\.com:)/);
+        const isValid = url.match(
+          /^(https:\/\/github\.com\/|git@github\.com:)/,
+        );
         expect(isValid).toBeTruthy();
       }
 
       for (const url of invalidUrls) {
-        const isValid = url.match(/^(https:\/\/github\.com\/|git@github\.com:)/);
+        const isValid = url.match(
+          /^(https:\/\/github\.com\/|git@github\.com:)/,
+        );
         expect(isValid).toBeFalsy();
       }
     });
@@ -280,22 +312,31 @@ describe("Worker Main", () => {
 
   describe("Claude Execution", () => {
     it("should execute Claude prompt in workspace", async () => {
-      const userPrompt = Buffer.from(process.env.USER_PROMPT!, "base64").toString("utf-8");
+      const userPrompt = Buffer.from(
+        process.env.USER_PROMPT!,
+        "base64",
+      ).toString("utf-8");
       const workspaceDir = "/workspace/user-123/repo";
 
-      const response = await mockSessionRunner.executePrompt(userPrompt, workspaceDir);
+      const response = await mockSessionRunner.executePrompt(
+        userPrompt,
+        workspaceDir,
+      );
 
-      expect(mockSessionRunner.executePrompt).toHaveBeenCalledWith(userPrompt, workspaceDir);
+      expect(mockSessionRunner.executePrompt).toHaveBeenCalledWith(
+        userPrompt,
+        workspaceDir,
+      );
       expect(response).toBe("Claude response");
     });
 
     it("should handle Claude execution failures", async () => {
       mockSessionRunner.executePrompt.mockRejectedValue(
-        new Error("Claude API rate limit exceeded")
+        new Error("Claude API rate limit exceeded"),
       );
 
       await expect(
-        mockSessionRunner.executePrompt("test prompt", "/workspace")
+        mockSessionRunner.executePrompt("test prompt", "/workspace"),
       ).rejects.toThrow("Claude API rate limit exceeded");
     });
 
@@ -309,12 +350,16 @@ describe("Worker Main", () => {
         repositoryUrl: process.env.REPOSITORY_URL,
       };
 
-      await mockSessionRunner.executePrompt("test", "/workspace", executionContext);
+      await mockSessionRunner.executePrompt(
+        "test",
+        "/workspace",
+        executionContext,
+      );
 
       expect(mockSessionRunner.executePrompt).toHaveBeenCalledWith(
         "test",
         "/workspace",
-        expect.objectContaining(executionContext)
+        expect.objectContaining(executionContext),
       );
     });
 
@@ -326,22 +371,23 @@ describe("Worker Main", () => {
 
       if (isRecoveryMode) {
         // Should attempt to recover previous session
-        await mockSessionRunner.executePrompt("continue", "/workspace", { 
-          recoveryMode: true 
+        await mockSessionRunner.executePrompt("continue", "/workspace", {
+          recoveryMode: true,
         });
       }
 
       expect(mockSessionRunner.executePrompt).toHaveBeenCalledWith(
         "continue",
         "/workspace",
-        expect.objectContaining({ recoveryMode: true })
+        expect.objectContaining({ recoveryMode: true }),
       );
     });
   });
 
   describe("Result Processing", () => {
     it("should send final response to Slack", async () => {
-      const claudeResponse = "I've analyzed your code and found several improvements...";
+      const claudeResponse =
+        "I've analyzed your code and found several improvements...";
 
       const finalMessage = {
         channel: process.env.SLACK_RESPONSE_CHANNEL,
@@ -368,7 +414,7 @@ describe("Worker Main", () => {
               type: "section",
             }),
           ]),
-        })
+        }),
       );
     });
 
@@ -376,9 +422,10 @@ describe("Worker Main", () => {
       const longResponse = "x".repeat(10000);
       const maxLength = 3000;
 
-      const truncatedResponse = longResponse.length > maxLength
-        ? longResponse.substring(0, maxLength) + "... (truncated)"
-        : longResponse;
+      const truncatedResponse =
+        longResponse.length > maxLength
+          ? longResponse.substring(0, maxLength) + "... (truncated)"
+          : longResponse;
 
       expect(truncatedResponse.length).toBeLessThanOrEqual(maxLength + 20);
       expect(truncatedResponse).toContain("(truncated)");
@@ -442,7 +489,7 @@ This should resolve the issue.`;
       expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.stringContaining("❌"),
-        })
+        }),
       );
     });
 
@@ -457,10 +504,12 @@ This should resolve the issue.`;
 
       for (const error of errors) {
         let errorType = "unknown";
-        
+
         if (error.message.includes("Rate limit")) errorType = "rate_limit";
-        else if (error.message.includes("Repository")) errorType = "repository_error";
-        else if (error.message.includes("Workspace")) errorType = "workspace_error";
+        else if (error.message.includes("Repository"))
+          errorType = "repository_error";
+        else if (error.message.includes("Workspace"))
+          errorType = "workspace_error";
         else if (error.message.includes("Claude")) errorType = "claude_error";
 
         expect(errorType).toBe(error.type);
@@ -483,12 +532,15 @@ This should resolve the issue.`;
 
       for (let i = 0; i < maxRetries; i++) {
         try {
-          await mockSlackClient.chat.postMessage({ channel: "C123", text: "test" });
+          await mockSlackClient.chat.postMessage({
+            channel: "C123",
+            text: "test",
+          });
           break;
         } catch (error) {
           lastError = error;
           if (i === maxRetries - 1) throw error;
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -500,7 +552,9 @@ This should resolve the issue.`;
     it("should clean up workspace on completion", async () => {
       await mockWorkspaceSetup.cleanup("/workspace/user-123");
 
-      expect(mockWorkspaceSetup.cleanup).toHaveBeenCalledWith("/workspace/user-123");
+      expect(mockWorkspaceSetup.cleanup).toHaveBeenCalledWith(
+        "/workspace/user-123",
+      );
     });
 
     it("should clean up session resources", async () => {

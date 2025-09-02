@@ -15,11 +15,13 @@ Before starting, ensure you have the following installed:
 ## Testing the Bot
 
 After setup, test the bot with:
+
 ```bash
 ./slack-qa-bot.js "hello world"
 ```
 
 Or with a specific task:
+
 ```bash
 ./slack-qa-bot.js "create a Python hello world script and commit it" --timeout 30
 ```
@@ -67,6 +69,7 @@ kubectl get events -n peerbot --sort-by=.metadata.creationTimestamp
 ## Clean Up
 
 To stop and clean up all resources:
+
 ```bash
 # Stop development server (Ctrl+C in the terminal running make dev)
 

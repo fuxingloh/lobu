@@ -26,25 +26,25 @@ export class QueuePersistentClaudeWorker {
   constructor(userId: string, targetThreadId?: string) {
     this.userId = userId;
     this.targetThreadId = targetThreadId;
-    
+
     // Load initial configuration from environment
     // this.config = this.loadConfigFromEnv();
-    
+
     // Get deployment name from environment
     const deploymentName = process.env.DEPLOYMENT_NAME;
     if (!deploymentName) {
-      throw new Error('DEPLOYMENT_NAME environment variable is required');
+      throw new Error("DEPLOYMENT_NAME environment variable is required");
     }
-    
+
     // Initialize queue consumer with thread-specific routing
     const connectionString = this.buildConnectionString();
     this.queueConsumer = new WorkerQueueConsumer(
       connectionString,
       this.userId,
       deploymentName,
-      this.targetThreadId
+      this.targetThreadId,
     );
-    
+
     logger.info(`🚀 Starting Queue-based Persistent Claude Worker`);
     logger.info(`- User ID: ${this.userId}`);
     logger.info(`- Deployment: ${deploymentName}`);
@@ -57,21 +57,18 @@ export class QueuePersistentClaudeWorker {
     // Use PEERBOT_DATABASE_URL from environment (required)
     const connectionString = process.env.PEERBOT_DATABASE_URL;
     if (!connectionString) {
-      throw new Error('PEERBOT_DATABASE_URL environment variable is required');
+      throw new Error("PEERBOT_DATABASE_URL environment variable is required");
     }
     return connectionString;
   }
-
 
   async start(): Promise<void> {
     try {
       // Start queue consumer (this will handle message processing)
       await this.queueConsumer.start();
-  
-      
+
       this.isInitialized = true;
       logger.info(`✅ Queue-based persistent worker started successfully`);
-      
     } catch (error) {
       logger.error("Failed to start queue-based persistent worker:", error);
       process.exit(1);
@@ -90,20 +87,19 @@ export class QueuePersistentClaudeWorker {
    */
   private async shutdown(): Promise<void> {
     logger.info(`Shutting down queue-based persistent worker...`);
-    
+
     try {
       // Stop queue consumer
       await this.queueConsumer.stop();
-      
+
       // Cleanup current worker if processing
       if (this.worker) {
         await this.worker.cleanup();
       }
-      
     } catch (error) {
       logger.error("Error during shutdown:", error);
     }
-    
+
     process.exit(0);
   }
 
@@ -131,15 +127,18 @@ async function main() {
     // Get user ID from environment - required for worker
     const userId = process.env.USER_ID;
     const targetThreadId = process.env.TARGET_THREAD_ID; // Optional
-    
+
     if (!userId) {
       logger.error("❌ USER_ID environment variable is required");
       process.exit(1);
     }
-    
-    const persistentWorker = new QueuePersistentClaudeWorker(userId, targetThreadId);
+
+    const persistentWorker = new QueuePersistentClaudeWorker(
+      userId,
+      targetThreadId,
+    );
     await persistentWorker.start();
-    
+
     // Setup graceful shutdown
     process.on("SIGTERM", async () => {
       logger.info("Received SIGTERM, shutting down gracefully...");
@@ -152,10 +151,9 @@ async function main() {
       await persistentWorker.stop();
       process.exit(0);
     });
-    
+
     // Keep the process running
     await new Promise(() => {}); // Run forever
-    
   } catch (error) {
     logger.error("❌ Queue-based persistent worker failed:", error);
     process.exit(1);

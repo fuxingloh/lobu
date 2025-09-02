@@ -19,7 +19,6 @@ export interface SlackConfig {
   allowPrivateChannels?: boolean;
 }
 
-
 export interface GitHubConfig {
   token: string;
   organization: string;
@@ -96,7 +95,13 @@ export interface ThreadSession {
   repositoryUrl: string;
   agentSessionId?: string; // Agent session ID for resumption
   lastActivity: number;
-  status: "pending" | "starting" | "running" | "completed" | "error" | "timeout";
+  status:
+    | "pending"
+    | "starting"
+    | "running"
+    | "completed"
+    | "error"
+    | "timeout";
   createdAt: number;
   botResponseTs?: string; // Bot's response message timestamp for updates
   messageReactions?: Map<string, string>; // Track reactions per message (messageTs -> reaction)
@@ -111,26 +116,24 @@ export interface UserRepository {
   lastUsed: number;
 }
 
-
 // Error types
 export class DispatcherError extends Error {
   constructor(
     public operation: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "DispatcherError";
   }
 }
 
-
 export class GitHubRepositoryError extends Error {
   constructor(
     public operation: string,
     public username: string,
     message: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
     this.name = "GitHubRepositoryError";

@@ -65,16 +65,23 @@ class ProcessManager {
     await writeFile(infoPath, JSON.stringify(info, null, 2));
   }
 
-
   private getLogPath(id: string): string {
     return path.join(this.logsDir, `${id}.log`);
   }
 
-  async startProcess(id: string, command: string, description: string, port?: number, isRestart: boolean = false): Promise<ProcessInfo> {
+  async startProcess(
+    id: string,
+    command: string,
+    description: string,
+    port?: number,
+    isRestart: boolean = false,
+  ): Promise<ProcessInfo> {
     if (this.processes.has(id)) {
       const existing = this.processes.get(id)!;
       if (existing.status === "running" && existing.pid) {
-        throw new Error(`Process ${id} is already running with PID ${existing.pid}`);
+        throw new Error(
+          `Process ${id} is already running with PID ${existing.pid}`,
+        );
       }
     }
 
@@ -93,19 +100,19 @@ class ProcessManager {
     };
 
     const logPath = this.getLogPath(id);
-    const logStream = await import("fs").then(fs => 
-      fs.createWriteStream(logPath, { flags: "a" })
+    const logStream = await import("fs").then((fs) =>
+      fs.createWriteStream(logPath, { flags: "a" }),
     );
 
     // Determine the working directory - use workspace if available
     const workingDir = process.env.WORKSPACE_DIR || process.cwd();
-    
+
     logStream.write(`Process ${id} starting at ${info.startedAt}\n`);
     logStream.write(`Command: ${command}\n`);
     logStream.write(`Working Directory: ${workingDir}\n`);
     logStream.write(`Description: ${description}\n`);
     logStream.write("---\n");
-    
+
     // Log to worker console
     console.log(`[Process Manager] Starting process ${id}: ${description}`);
     console.log(`[Process Manager] Command: ${command}`);
@@ -139,16 +146,24 @@ class ProcessManager {
       info.completedAt = new Date().toISOString();
       delete info.process;
 
-      logStream.write(`\nProcess ${id} exited with code ${code} at ${info.completedAt}\n`);
+      logStream.write(
+        `\nProcess ${id} exited with code ${code} at ${info.completedAt}\n`,
+      );
       logStream.end();
-      
+
       // Log to worker console
       console.log(`[Process Manager] Process ${id} exited with code ${code}`);
 
       await this.saveProcessInfo(info);
 
-      if (this.autoRestart && info.status === "failed" && info.restartCount < 5) {
-        console.error(`[Process Manager] Process ${id} failed, attempting restart...`);
+      if (
+        this.autoRestart &&
+        info.status === "failed" &&
+        info.restartCount < 5
+      ) {
+        console.error(
+          `[Process Manager] Process ${id} failed, attempting restart...`,
+        );
         setTimeout(() => this.restartProcess(id), 5000);
       }
     });
@@ -161,19 +176,27 @@ class ProcessManager {
     if (port && !info.tunnelUrl) {
       this.startTunnel(id, port, 0);
     } else if (port && info.tunnelUrl) {
-      console.log(`[Process Manager] Reusing existing tunnel URL for ${id}: ${info.tunnelUrl}`);
+      console.log(
+        `[Process Manager] Reusing existing tunnel URL for ${id}: ${info.tunnelUrl}`,
+      );
     }
 
     return info;
   }
 
-  private async startTunnel(id: string, port: number, retryCount: number = 0): Promise<void> {
+  private async startTunnel(
+    id: string,
+    port: number,
+    retryCount: number = 0,
+  ): Promise<void> {
     const info = this.processes.get(id);
     if (!info) return;
 
     // Skip if we already have a working tunnel
     if (info.tunnelUrl && info.tunnelProcess) {
-      console.log(`[MCP Process Manager] Tunnel already exists for ${id}: ${info.tunnelUrl}`);
+      console.log(
+        `[MCP Process Manager] Tunnel already exists for ${id}: ${info.tunnelUrl}`,
+      );
       return;
     }
 
@@ -181,29 +204,43 @@ class ProcessManager {
     if (retryCount > 0) {
       // Start with 30s, then 60s, then 120s
       const delay = Math.min(30000 * Math.pow(2, retryCount - 1), 120000);
-      console.error(`[MCP Process Manager] Cloudflare rate limit detected. Waiting ${delay/1000}s before retry attempt ${retryCount + 1} for tunnel`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      console.error(
+        `[MCP Process Manager] Cloudflare rate limit detected. Waiting ${delay / 1000}s before retry attempt ${retryCount + 1} for tunnel`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
     const tunnelLogPath = path.join(this.logsDir, `${id}-tunnel.log`);
-    const tunnelLogStream = await import("fs").then(fs => 
-      fs.createWriteStream(tunnelLogPath, { flags: "a" })
+    const tunnelLogStream = await import("fs").then((fs) =>
+      fs.createWriteStream(tunnelLogPath, { flags: "a" }),
     );
 
-    tunnelLogStream.write(`Starting cloudflared tunnel for port ${port} at ${new Date().toISOString()} (attempt ${retryCount + 1})\n`);
-    
-    // Log to worker console (use stderr so it appears in pod logs)
-    console.error(`[MCP Process Manager] Starting cloudflared tunnel for process ${id} on port ${port} (attempt ${retryCount + 1})`);
+    tunnelLogStream.write(
+      `Starting cloudflared tunnel for port ${port} at ${new Date().toISOString()} (attempt ${retryCount + 1})\n`,
+    );
 
-    const tunnelChild = spawn("cloudflared", ["tunnel", "--url", `http://localhost:${port}`], {
-      detached: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    // Log to worker console (use stderr so it appears in pod logs)
+    console.error(
+      `[MCP Process Manager] Starting cloudflared tunnel for process ${id} on port ${port} (attempt ${retryCount + 1})`,
+    );
+
+    const tunnelChild = spawn(
+      "cloudflared",
+      ["tunnel", "--url", `http://localhost:${port}`],
+      {
+        detached: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
 
     // Handle spawn errors
-    tunnelChild.on('error', (err) => {
-      console.error(`[Process Manager] Failed to spawn cloudflared: ${err.message}`);
-      tunnelLogStream.write(`ERROR: Failed to spawn cloudflared: ${err.message}\n`);
+    tunnelChild.on("error", (err) => {
+      console.error(
+        `[Process Manager] Failed to spawn cloudflared: ${err.message}`,
+      );
+      tunnelLogStream.write(
+        `ERROR: Failed to spawn cloudflared: ${err.message}\n`,
+      );
       info.tunnelUrl = undefined;
       delete info.tunnelProcess;
     });
@@ -214,9 +251,11 @@ class ProcessManager {
     let urlExtracted = false;
     const extractTimeout = setTimeout(() => {
       if (!urlExtracted) {
-        tunnelLogStream.write("Failed to extract tunnel URL within 15 seconds\n");
+        tunnelLogStream.write(
+          "Failed to extract tunnel URL within 15 seconds\n",
+        );
         console.error(`Failed to extract tunnel URL for process ${id}`);
-        
+
         // Kill the tunnel process if URL extraction fails
         if (info.tunnelProcess) {
           try {
@@ -231,40 +270,61 @@ class ProcessManager {
     }, 15000);
 
     let rateLimitDetected = false;
-    
+
     const extractUrl = (data: Buffer) => {
       const output = data.toString();
       tunnelLogStream.write(output);
-      
+
       // Log extraction attempt to tunnel log
-      if (output.includes('trycloudflare.com')) {
-        tunnelLogStream.write(`\n[MCP] Found trycloudflare.com in output, attempting extraction...\n`);
+      if (output.includes("trycloudflare.com")) {
+        tunnelLogStream.write(
+          `\n[MCP] Found trycloudflare.com in output, attempting extraction...\n`,
+        );
       }
-      
+
       // Log cloudflared output to console for debugging (use stderr so it appears in pod logs)
-      console.error(`[MCP Process Manager - Cloudflared Output] ${output.trim()}`);
-      
+      console.error(
+        `[MCP Process Manager - Cloudflared Output] ${output.trim()}`,
+      );
+
       // Check for rate limiting error
-      if (output.includes('429 Too Many Requests') || output.includes('error code: 1015')) {
+      if (
+        output.includes("429 Too Many Requests") ||
+        output.includes("error code: 1015")
+      ) {
         rateLimitDetected = true;
-        tunnelLogStream.write(`\n[MCP] Rate limit detected (429 Too Many Requests)\n`);
-        console.error(`[MCP Process Manager] Cloudflare rate limit detected (429 Too Many Requests)`);
+        tunnelLogStream.write(
+          `\n[MCP] Rate limit detected (429 Too Many Requests)\n`,
+        );
+        console.error(
+          `[MCP Process Manager] Cloudflare rate limit detected (429 Too Many Requests)`,
+        );
       }
-      
+
       // Look for the trycloudflare.com URL in the output
       // The most reliable approach is to just look for the URL pattern anywhere in the output
-      const urlMatch = output.match(/https?:\/\/([a-z0-9-]+)\.trycloudflare\.com/i);
+      const urlMatch = output.match(
+        /https?:\/\/([a-z0-9-]+)\.trycloudflare\.com/i,
+      );
       if (urlMatch && !urlExtracted) {
         urlExtracted = true;
         clearTimeout(extractTimeout);
         const prefix = urlMatch[1];
         info.tunnelUrl = `https://${prefix}.peerbot.ai`;
-        tunnelLogStream.write(`\n[MCP] Successfully extracted URL: ${urlMatch[0]}\n`);
-        tunnelLogStream.write(`[MCP] Converted to peerbot.ai: ${info.tunnelUrl}\n`);
-        console.error(`[MCP Process Manager - Tunnel ${id}] Established: ${info.tunnelUrl}`);
-        console.error(`[MCP Process Manager - Tunnel ${id}] Original cloudflared URL: ${urlMatch[0]}`);
+        tunnelLogStream.write(
+          `\n[MCP] Successfully extracted URL: ${urlMatch[0]}\n`,
+        );
+        tunnelLogStream.write(
+          `[MCP] Converted to peerbot.ai: ${info.tunnelUrl}\n`,
+        );
+        console.error(
+          `[MCP Process Manager - Tunnel ${id}] Established: ${info.tunnelUrl}`,
+        );
+        console.error(
+          `[MCP Process Manager - Tunnel ${id}] Original cloudflared URL: ${urlMatch[0]}`,
+        );
         this.saveProcessInfo(info);
-      } else if (output.includes('trycloudflare.com') && urlExtracted) {
+      } else if (output.includes("trycloudflare.com") && urlExtracted) {
         tunnelLogStream.write(`\n[MCP] URL already extracted, skipping\n`);
       }
     };
@@ -274,31 +334,43 @@ class ProcessManager {
 
     tunnelChild.on("exit", (code, signal) => {
       clearTimeout(extractTimeout);
-      tunnelLogStream.write(`\nTunnel process exited with code ${code} at ${new Date().toISOString()}\n`);
+      tunnelLogStream.write(
+        `\nTunnel process exited with code ${code} at ${new Date().toISOString()}\n`,
+      );
       tunnelLogStream.end();
-      
+
       // Log exit details for debugging
-      console.error(`[MCP Process Manager] Cloudflared exited with code ${code}, signal: ${signal}`);
-      
+      console.error(
+        `[MCP Process Manager] Cloudflared exited with code ${code}, signal: ${signal}`,
+      );
+
       if (info.tunnelProcess === tunnelChild) {
         delete info.tunnelProcess;
         info.tunnelUrl = undefined;
         this.saveProcessInfo(info);
-        
+
         // Retry if failed and haven't extracted URL, up to 3 attempts
         // Use longer delays if rate limited
         if (code !== 0 && !urlExtracted && retryCount < 2) {
           if (rateLimitDetected) {
-            console.error(`[MCP Process Manager] Cloudflared hit rate limit - will retry with longer backoff (attempt ${retryCount + 2}/3)`);
+            console.error(
+              `[MCP Process Manager] Cloudflared hit rate limit - will retry with longer backoff (attempt ${retryCount + 2}/3)`,
+            );
           } else {
-            console.error(`[MCP Process Manager] Cloudflared failed with exit code ${code} - retrying tunnel (attempt ${retryCount + 2}/3)`);
+            console.error(
+              `[MCP Process Manager] Cloudflared failed with exit code ${code} - retrying tunnel (attempt ${retryCount + 2}/3)`,
+            );
           }
           this.startTunnel(id, port, retryCount + 1);
         } else if (code !== 0 && !urlExtracted) {
           if (rateLimitDetected) {
-            console.error(`[MCP Process Manager] Cloudflared rate limited after ${retryCount + 1} attempts - consider using alternative tunnel solution`);
+            console.error(
+              `[MCP Process Manager] Cloudflared rate limited after ${retryCount + 1} attempts - consider using alternative tunnel solution`,
+            );
           } else {
-            console.error(`[MCP Process Manager] Cloudflared failed after ${retryCount + 1} attempts - tunnel not established`);
+            console.error(
+              `[MCP Process Manager] Cloudflared failed after ${retryCount + 1} attempts - tunnel not established`,
+            );
           }
         }
       }
@@ -307,8 +379,11 @@ class ProcessManager {
     tunnelChild.on("error", (error) => {
       clearTimeout(extractTimeout);
       tunnelLogStream.write(`Tunnel process error: ${error.message}\n`);
-      console.error(`Failed to start cloudflared tunnel for process ${id}:`, error);
-      
+      console.error(
+        `Failed to start cloudflared tunnel for process ${id}:`,
+        error,
+      );
+
       if (!urlExtracted) {
         urlExtracted = true;
         info.tunnelUrl = undefined;
@@ -341,7 +416,7 @@ class ProcessManager {
       }
 
       process.kill(info.pid, "SIGTERM");
-      
+
       // Give process time to terminate gracefully
       setTimeout(() => {
         try {
@@ -354,7 +429,7 @@ class ProcessManager {
       info.status = "killed";
       info.completedAt = new Date().toISOString();
       delete info.process;
-      
+
       await this.saveProcessInfo(info);
     } catch (error) {
       throw new Error(`Failed to kill process ${id}: ${error}`);
@@ -376,7 +451,7 @@ class ProcessManager {
       try {
         process.kill(info.pid, "SIGTERM");
         // Give process time to terminate gracefully
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         try {
           process.kill(info.pid!, "SIGKILL");
         } catch (e) {
@@ -388,12 +463,18 @@ class ProcessManager {
     }
 
     info.restartCount++;
-    
+
     // Restore tunnel information before restarting
     info.tunnelUrl = preservedTunnelUrl;
     info.tunnelProcess = preservedTunnelProcess;
-    
-    return this.startProcess(id, info.command, info.description, info.port, true);
+
+    return this.startProcess(
+      id,
+      info.command,
+      info.description,
+      info.port,
+      true,
+    );
   }
 
   getStatus(id?: string): ProcessInfo | ProcessInfo[] | null {
@@ -475,12 +556,15 @@ server.tool(
     id: z.string().describe("Unique identifier for the process"),
     command: z.string().describe("Command to execute"),
     description: z.string().describe("Description of what this process does"),
-    port: z.number().optional().describe("Optional port to expose via cloudflared tunnel"),
+    port: z
+      .number()
+      .optional()
+      .describe("Optional port to expose via cloudflared tunnel"),
   },
   async ({ id, command, description, port }) => {
     try {
       const info = await manager.startProcess(id, command, description, port);
-      
+
       // If port is specified, wait for tunnel URL and verify service health
       if (port) {
         let tunnelUrl: string | undefined;
@@ -488,49 +572,57 @@ server.tool(
         let healthCheckAttempts = 0;
         const maxHealthChecks = 15; // 15 attempts, 2 seconds each = 30 seconds total
         const healthCheckInterval = 2000; // 2 seconds between checks
-        
-        console.error(`[MCP Process Manager] Waiting for service on port ${port} to be ready...`);
-        
+
+        console.error(
+          `[MCP Process Manager] Waiting for service on port ${port} to be ready...`,
+        );
+
         // Health check loop - verify the service is actually responding
         while (!serviceHealthy && healthCheckAttempts < maxHealthChecks) {
           healthCheckAttempts++;
-          
+
           // Check if we have a tunnel URL yet
           const updatedInfo = manager.getStatus(id) as ProcessInfo | null;
           tunnelUrl = updatedInfo?.tunnelUrl;
-          
+
           // Try to make an HTTP request to the local service
           try {
             const response = await fetch(`http://localhost:${port}/`, {
-              method: 'GET',
+              method: "GET",
               signal: AbortSignal.timeout(1500), // 1.5 second timeout for each request
             });
-            
+
             // Any response (even error codes) means the service is running
             if (response.status) {
               serviceHealthy = true;
-              console.error(`[MCP Process Manager] Service on port ${port} is healthy (status: ${response.status})`);
+              console.error(
+                `[MCP Process Manager] Service on port ${port} is healthy (status: ${response.status})`,
+              );
               break;
             }
           } catch (error: any) {
             // Service not ready yet
             if (healthCheckAttempts % 5 === 0) {
-              console.error(`[MCP Process Manager] Service not ready on port ${port} (attempt ${healthCheckAttempts}/${maxHealthChecks})`);
+              console.error(
+                `[MCP Process Manager] Service not ready on port ${port} (attempt ${healthCheckAttempts}/${maxHealthChecks})`,
+              );
             }
           }
-          
+
           // Wait before next check
-          await new Promise(resolve => setTimeout(resolve, healthCheckInterval));
+          await new Promise((resolve) =>
+            setTimeout(resolve, healthCheckInterval),
+          );
         }
-        
+
         // Final check for tunnel URL if service is healthy
         if (serviceHealthy && !tunnelUrl) {
           // Give tunnel a bit more time to establish
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 5000));
           const finalInfo = manager.getStatus(id) as ProcessInfo | null;
           tunnelUrl = finalInfo?.tunnelUrl;
         }
-        
+
         if (serviceHealthy && tunnelUrl) {
           // Success - both service and tunnel are working
           return {
@@ -545,7 +637,10 @@ server.tool(
           // Service is running but tunnel failed - get tunnel logs
           let tunnelLogs = "";
           try {
-            const tunnelLogPath = path.join("/tmp/claude-logs", `${id}-tunnel.log`);
+            const tunnelLogPath = path.join(
+              "/tmp/claude-logs",
+              `${id}-tunnel.log`,
+            );
             if (existsSync(tunnelLogPath)) {
               tunnelLogs = await readFile(tunnelLogPath, "utf-8");
               const lines = tunnelLogs.split("\n");
@@ -554,7 +649,7 @@ server.tool(
           } catch (e) {
             // Tunnel log may not exist
           }
-          
+
           return {
             content: [
               {
@@ -568,7 +663,10 @@ server.tool(
           const processLogs = await manager.getLogs(id, 50);
           let tunnelLogs = "";
           try {
-            const tunnelLogPath = path.join("/tmp/claude-logs", `${id}-tunnel.log`);
+            const tunnelLogPath = path.join(
+              "/tmp/claude-logs",
+              `${id}-tunnel.log`,
+            );
             if (existsSync(tunnelLogPath)) {
               tunnelLogs = await readFile(tunnelLogPath, "utf-8");
               const lines = tunnelLogs.split("\n");
@@ -577,26 +675,26 @@ server.tool(
           } catch (e) {
             // Tunnel log may not exist
           }
-          
+
           // Stop the failed process and tunnel
           try {
             await manager.stopProcess(id);
           } catch (e) {
             // Process may have already stopped
           }
-          
+
           return {
             content: [
               {
                 type: "text",
-                text: `❌ Service failed to respond on port ${port} after ${maxHealthChecks * healthCheckInterval / 1000} seconds\n\n**Process Logs:**\n\`\`\`\n${processLogs}\n\`\`\`${tunnelLogs ? `\n\n**Tunnel Logs:**\n\`\`\`\n${tunnelLogs}\n\`\`\`` : ""}`,
+                text: `❌ Service failed to respond on port ${port} after ${(maxHealthChecks * healthCheckInterval) / 1000} seconds\n\n**Process Logs:**\n\`\`\`\n${processLogs}\n\`\`\`${tunnelLogs ? `\n\n**Tunnel Logs:**\n\`\`\`\n${tunnelLogs}\n\`\`\`` : ""}`,
               },
             ],
             isError: true,
           };
         }
       }
-      
+
       return {
         content: [
           {
@@ -616,7 +714,7 @@ server.tool(
         isError: true,
       };
     }
-  }
+  },
 );
 
 server.tool(
@@ -647,7 +745,7 @@ server.tool(
         isError: true,
       };
     }
-  }
+  },
 );
 
 server.tool(
@@ -678,7 +776,7 @@ server.tool(
         isError: true,
       };
     }
-  }
+  },
 );
 
 server.tool(
@@ -708,9 +806,9 @@ server.tool(
           `${p.id}: ${p.status}${p.pid ? ` (PID: ${p.pid})` : ""}
   Description: ${p.description}
   Started: ${p.startedAt}${p.completedAt ? `\n  Completed: ${p.completedAt}` : ""}${
-            p.exitCode !== undefined ? `\n  Exit code: ${p.exitCode}` : ""
-          }${p.port ? `\n  Port: ${p.port}` : ""}${p.tunnelUrl ? `\n  Tunnel URL: ${p.tunnelUrl}` : ""}
-  Restart count: ${p.restartCount}`
+    p.exitCode !== undefined ? `\n  Exit code: ${p.exitCode}` : ""
+  }${p.port ? `\n  Port: ${p.port}` : ""}${p.tunnelUrl ? `\n  Tunnel URL: ${p.tunnelUrl}` : ""}
+  Restart count: ${p.restartCount}`,
       )
       .join("\n\n");
 
@@ -722,7 +820,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 server.tool(
@@ -730,7 +828,11 @@ server.tool(
   "Get logs from a process",
   {
     id: z.string().describe("Process ID"),
-    lines: z.number().optional().default(50).describe("Number of lines to retrieve"),
+    lines: z
+      .number()
+      .optional()
+      .default(50)
+      .describe("Number of lines to retrieve"),
   },
   async ({ id, lines }) => {
     const logs = await manager.getLogs(id, lines);
@@ -742,7 +844,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 // Process monitoring is enabled by default with 30 second interval
@@ -764,7 +866,7 @@ server.resource(
         },
       ],
     };
-  }
+  },
 );
 
 server.resource(
@@ -784,7 +886,7 @@ server.resource(
         },
       ],
     };
-  }
+  },
 );
 
 server.resource(
@@ -804,72 +906,74 @@ server.resource(
         },
       ],
     };
-  }
+  },
 );
 
 // Start HTTP server
 async function main() {
-  const port = parseInt(process.env.MCP_PROCESS_MANAGER_PORT || '3001');
-  
-  const express = await import('express');
-  const cors = await import('cors');
-  
+  const port = parseInt(process.env.MCP_PROCESS_MANAGER_PORT || "3001");
+
+  const express = await import("express");
+  const cors = await import("cors");
+
   const app = express.default();
-  
+
   // Add CORS middleware
-  app.use(cors.default({
-    origin: '*',
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type'],
-    exposedHeaders: ['Mcp-Session-Id'],
-  }));
-  
+  app.use(
+    cors.default({
+      origin: "*",
+      methods: ["GET", "POST"],
+      allowedHeaders: ["Content-Type"],
+      exposedHeaders: ["Mcp-Session-Id"],
+    }),
+  );
+
   app.use(express.default.json());
-  
+
   // Store transports for SSE sessions
   const transports: Record<string, SSEServerTransport> = {};
-  
+
   // SSE endpoint for establishing connections
-  app.get('/sse', async (_req, res) => {
-    const transport = new SSEServerTransport('/messages', res);
+  app.get("/sse", async (_req, res) => {
+    const transport = new SSEServerTransport("/messages", res);
     transports[transport.sessionId] = transport;
-    
+
     res.on("close", () => {
       delete transports[transport.sessionId];
     });
-    
+
     await server.connect(transport);
   });
-  
+
   // Message endpoint for client requests
-  app.post('/messages', async (req, res) => {
+  app.post("/messages", async (req, res) => {
     const sessionId = req.query.sessionId as string;
     const transport = transports[sessionId];
     if (transport) {
       await transport.handlePostMessage(req, res, req.body);
     } else {
-      res.status(400).send('No transport found for sessionId');
+      res.status(400).send("No transport found for sessionId");
     }
   });
-  
+
   const httpServer = app.listen(port, () => {
     console.error(`[Process Manager MCP] HTTP server started on port ${port}`);
   });
-  
-  return { 
-    port, 
+
+  return {
+    port,
     server,
     httpServer,
     close: async () => {
       httpServer.close();
-      Object.values(transports).forEach(transport => {
+      Object.values(transports).forEach((transport) => {
         try {
           transport.close?.();
         } catch (e) {
           // Ignore close errors
         }
       });
-    }
+    },
   };
 }
 
@@ -877,7 +981,11 @@ async function main() {
 export { main as startProcessManagerServer };
 
 // Only run directly if this file is executed directly
-if (typeof process !== 'undefined' && process.argv[1] && process.argv[1].endsWith('process-manager-server.ts')) {
+if (
+  typeof process !== "undefined" &&
+  process.argv[1] &&
+  process.argv[1].endsWith("process-manager-server.ts")
+) {
   main().catch((error) => {
     console.error("[Process Manager MCP] Fatal error:", error);
     process.exit(1);

@@ -5,17 +5,20 @@ This DevContainer provides a complete development environment for the Peerbot wi
 ## Features
 
 ### 🤖 Claude Code Integration
+
 - **Claude Code CLI**: Pre-installed globally for AI-powered development
 - **MCP Server**: Process management server configured and ready
 - **Custom Instructions**: Tailored for Slack bot development
 
 ### 🛠️ Development Tools
+
 - **Bun**: Fast JavaScript/TypeScript runtime and package manager
 - **Node.js 18**: For compatibility and npm packages
 - **TypeScript**: Full TypeScript support with proper configurations
 - **Git & GitHub CLI**: Version control and PR management
 
 ### ☸️ Kubernetes Stack
+
 - **kubectl**: Kubernetes command-line tool
 - **Helm**: Kubernetes package manager
 - **Docker**: Container build and deployment tools
@@ -23,12 +26,14 @@ This DevContainer provides a complete development environment for the Peerbot wi
 - **Docker-in-Docker**: Build and run containers within the devcontainer
 
 ### 📊 Database & Monitoring
+
 - **PostgreSQL Client**: Database interaction tools
 - **Redis Tools**: Cache management utilities
 
 ## Getting Started
 
 ### 1. Prerequisites
+
 - VS Code with Remote-Containers extension
 - Docker Desktop or equivalent
 - Environment variables in `.env` file
@@ -47,6 +52,7 @@ This DevContainer provides a complete development environment for the Peerbot wi
 ### 3. Environment Setup
 
 Create a `.env` file with your credentials:
+
 ```bash
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
@@ -68,6 +74,7 @@ make dev
 ## Available Commands
 
 ### Shortcuts
+
 - `k` → kubectl
 - `kp` → kubectl get pods
 - `kl` → kubectl logs
@@ -79,6 +86,7 @@ make dev
 - `dps` → docker ps
 
 ### Testing
+
 ```bash
 # Test the bot with a message
 ./slack-qa-bot.js "Hello, test message"
@@ -88,6 +96,7 @@ make dev
 ```
 
 ### Development
+
 ```bash
 # Build all packages
 bun run build:all
@@ -103,15 +112,15 @@ bun test
 
 The following ports are automatically forwarded:
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 3000 | Slack App | Main application endpoint |
-| 3001 | Dispatcher (Docker) | Development server |
-| 3002 | Dispatcher Service | Service endpoint |
-| 5432 | PostgreSQL Internal | Database internal port |
-| 5433 | PostgreSQL Forwarded | Database external access |
-| 8080 | Health Check | Liveness/readiness probes |
-| 8081 | Orchestrator | Worker orchestration service |
+| Port | Service              | Description                  |
+| ---- | -------------------- | ---------------------------- |
+| 3000 | Slack App            | Main application endpoint    |
+| 3001 | Dispatcher (Docker)  | Development server           |
+| 3002 | Dispatcher Service   | Service endpoint             |
+| 5432 | PostgreSQL Internal  | Database internal port       |
+| 5433 | PostgreSQL Forwarded | Database external access     |
+| 8080 | Health Check         | Liveness/readiness probes    |
+| 8081 | Orchestrator         | Worker orchestration service |
 
 ## MCP Process Manager
 
@@ -126,21 +135,25 @@ The MCP (Model Context Protocol) server is automatically configured for Claude C
 ## Troubleshooting
 
 ### Container won't start
+
 - Check Docker Desktop is running
 - Ensure you have enough disk space (needs ~10GB)
 - Try rebuilding: "Dev Containers: Rebuild Container"
 
 ### Kubernetes not working
+
 - The devcontainer uses Docker-in-Docker by default
 - For k3s, you may need to increase Docker memory to 4GB+
 - Check kubectl config: `kubectl config view`
 
 ### Dependencies not installing
+
 - Clear Bun cache: `bun pm cache rm`
 - Remove node_modules: `rm -rf node_modules packages/*/node_modules`
 - Reinstall: `bun install`
 
 ### MCP server not detected
+
 - Check config exists: `cat ~/.claude/settings.mcp.json`
 - Restart Claude Code CLI
 - Verify server is built: `ls packages/worker/dist/mcp/`
@@ -148,6 +161,7 @@ The MCP (Model Context Protocol) server is automatically configured for Claude C
 ## VS Code Extensions
 
 The following extensions are automatically installed:
+
 - Docker
 - Kubernetes Tools
 - ESLint

@@ -44,9 +44,9 @@ export class QueueIntegration {
   private workspaceManager?: any; // WorkspaceManager dependency
   private claudeSessionId?: string; // Claude session ID
 
-  constructor(config: { 
+  constructor(config: {
     databaseUrl: string;
-    responseChannel?: string; 
+    responseChannel?: string;
     responseTs?: string;
     messageId?: string;
     botResponseTs?: string;
@@ -55,27 +55,36 @@ export class QueueIntegration {
   }) {
     this.pgBoss = new PgBoss(config.databaseUrl);
     this.workspaceManager = config.workspaceManager;
-    
+
     // Get response location from config or environment
-    this.responseChannel = config.responseChannel || process.env.SLACK_RESPONSE_CHANNEL!;
-    this.responseTs = config.responseTs || process.env.INITIAL_SLACK_RESPONSE_TS || process.env.SLACK_RESPONSE_TS!;
-    this.messageId = config.messageId || process.env.INITIAL_SLACK_MESSAGE_ID || process.env.SLACK_MESSAGE_ID!;
+    this.responseChannel =
+      config.responseChannel || process.env.SLACK_RESPONSE_CHANNEL!;
+    this.responseTs =
+      config.responseTs ||
+      process.env.INITIAL_SLACK_RESPONSE_TS ||
+      process.env.SLACK_RESPONSE_TS!;
+    this.messageId =
+      config.messageId ||
+      process.env.INITIAL_SLACK_MESSAGE_ID ||
+      process.env.SLACK_MESSAGE_ID!;
     this.botResponseTs = config.botResponseTs || process.env.BOT_RESPONSE_TS; // Bot's response message timestamp from config or env
     this.claudeSessionId = config.claudeSessionId; // Claude session ID
-    
+
     // Get deployment name from environment for stop button
     this.deploymentName = process.env.DEPLOYMENT_NAME;
-    
+
     // Validate required values
     if (!this.responseChannel || !this.responseTs || !this.messageId) {
       const error = new Error(
-        `Missing required response location - channel: "${this.responseChannel}", ts: "${this.responseTs}", messageId: "${this.messageId}"`
+        `Missing required response location - channel: "${this.responseChannel}", ts: "${this.responseTs}", messageId: "${this.messageId}"`,
       );
       logger.error(`QueueIntegration initialization failed: ${error.message}`);
       throw error;
     }
-    
-    logger.info(`QueueIntegration initialized - channel: ${this.responseChannel}, ts: ${this.responseTs}, messageId: ${this.messageId}, claudeSessionId: ${this.claudeSessionId || 'undefined'}`);
+
+    logger.info(
+      `QueueIntegration initialized - channel: ${this.responseChannel}, ts: ${this.responseTs}, messageId: ${this.messageId}, claudeSessionId: ${this.claudeSessionId || "undefined"}`,
+    );
   }
 
   /**
@@ -85,9 +94,9 @@ export class QueueIntegration {
     try {
       await this.pgBoss.start();
       this.isConnected = true;
-      
+
       // Create the thread_response queue if it doesn't exist
-      await this.pgBoss.createQueue('thread_response');
+      await this.pgBoss.createQueue("thread_response");
       logger.info("✅ Queue integration started successfully");
     } catch (error) {
       logger.error("Failed to start queue integration:", error);
@@ -116,10 +125,12 @@ export class QueueIntegration {
     try {
       // Ensure we always have content to update with
       if (!content || content.trim() === "") {
-        logger.warn("updateProgress called with empty content, using default message");
+        logger.warn(
+          "updateProgress called with empty content, using default message",
+        );
         content = "✅ Task completed";
       }
-      
+
       // Rate limiting: don't update more than once every 2 seconds
       const now = Date.now();
       if (now - this.lastUpdateTime < 2000) {
@@ -131,7 +142,6 @@ export class QueueIntegration {
 
       await this.performUpdate(content);
       this.lastUpdateTime = now;
-
     } catch (error) {
       logger.error("Failed to send progress update to queue:", error);
       // Don't throw - worker should continue even if queue updates fail
@@ -145,16 +155,18 @@ export class QueueIntegration {
     try {
       // Handle both string and object data
       let dataToCheck: string;
-      
+
       if (typeof data === "string" && data.trim()) {
         dataToCheck = data;
       } else if (typeof data === "object") {
         dataToCheck = JSON.stringify(data);
-        logger.info(`📊 StreamProgress received object data: ${dataToCheck.substring(0, 200)}...`);
+        logger.info(
+          `📊 StreamProgress received object data: ${dataToCheck.substring(0, 200)}...`,
+        );
       } else {
         return;
       }
-      
+
       // Priority 1: TodoWrite updates (full todo list refresh)
       const todoData = this.extractTodoList(dataToCheck);
       if (todoData) {
@@ -163,7 +175,7 @@ export class QueueIntegration {
         await this.updateProgressWithTodos();
         return;
       }
-      
+
       // Priority 2: Tool execution tracking (between todo updates)
       const toolExecution = this.extractToolExecution(dataToCheck);
       if (toolExecution && toolExecution !== this.currentToolExecution) {
@@ -175,12 +187,14 @@ export class QueueIntegration {
           logger.info(`📝 Updating progress with todos + tool execution`);
           await this.updateProgressWithTodos();
         } else {
-          logger.info(`🔧 Showing tool execution without todos: ${toolExecution}`);
+          logger.info(
+            `🔧 Showing tool execution without todos: ${toolExecution}`,
+          );
           await this.updateProgress(toolExecution);
         }
         return;
       }
-      
+
       // Priority 3: Regular content streaming
       if (typeof data === "string") {
         await this.updateProgress(data);
@@ -206,7 +220,7 @@ export class QueueIntegration {
       // Wait for rate limit, then send the latest update
       const delay = Math.max(0, 2000 - (Date.now() - this.lastUpdateTime));
       if (delay > 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
       // Get the latest update from queue
@@ -217,7 +231,6 @@ export class QueueIntegration {
         await this.performUpdate(latestUpdate);
         this.lastUpdateTime = Date.now();
       }
-
     } finally {
       this.isProcessingQueue = false;
     }
@@ -235,21 +248,26 @@ export class QueueIntegration {
 
       // Check repository status
       const status = await this.workspaceManager.getRepositoryStatus();
-      
+
       // Show Edit button if either:
       // 1. There are pending changes, OR
       // 2. We're on a session branch (claude/*) which means work was done
-      const isSessionBranch = status.branch && status.branch.startsWith('claude/');
-      
+      const isSessionBranch =
+        status.branch && status.branch.startsWith("claude/");
+
       if (status.hasChanges || isSessionBranch) {
         return status.branch;
       } else {
-        logger.debug(`Git branch ${status.branch} has no changes and is not a session branch, skipping Edit button`);
+        logger.debug(
+          `Git branch ${status.branch} has no changes and is not a session branch, skipping Edit button`,
+        );
         return undefined;
       }
-      
     } catch (error) {
-      logger.warn('Could not get git branch status from workspace manager:', error);
+      logger.warn(
+        "Could not get git branch status from workspace manager:",
+        error,
+      );
       return this.getFallbackGitBranch();
     }
   }
@@ -260,44 +278,49 @@ export class QueueIntegration {
   private getFallbackGitBranch(): string | undefined {
     try {
       // Use the workspace directory if USER_ID is available, otherwise fall back to process.cwd()
-      const workspaceDir = process.env.USER_ID ? `/workspace/${process.env.USER_ID}` : process.cwd();
-      
-      const branch = execSync('git branch --show-current', { 
-        encoding: 'utf-8',
-        cwd: workspaceDir
+      const workspaceDir = process.env.USER_ID
+        ? `/workspace/${process.env.USER_ID}`
+        : process.cwd();
+
+      const branch = execSync("git branch --show-current", {
+        encoding: "utf-8",
+        cwd: workspaceDir,
       }).trim();
-      
+
       if (!branch) {
         return undefined;
       }
-      
+
       // Show Edit button if either:
-      // 1. The branch has commits, OR  
+      // 1. The branch has commits, OR
       // 2. It's a session branch (claude/*) which indicates work was done
-      const isSessionBranch = branch.startsWith('claude/');
-      
+      const isSessionBranch = branch.startsWith("claude/");
+
       try {
-        execSync('git log -1 --oneline', {
-          encoding: 'utf-8',
+        execSync("git log -1 --oneline", {
+          encoding: "utf-8",
           cwd: workspaceDir,
-          stdio: 'pipe' // Suppress output
+          stdio: "pipe", // Suppress output
         });
-        
+
         // Branch has commits
-        logger.info(`Git branch: ${branch} (hasCommits: true, isSessionBranch: ${isSessionBranch})`);
+        logger.info(
+          `Git branch: ${branch} (hasCommits: true, isSessionBranch: ${isSessionBranch})`,
+        );
         return branch;
       } catch (logError) {
         // No commits yet, but still show Edit button for session branches
         if (isSessionBranch) {
           return branch;
         } else {
-          logger.debug(`Git branch ${branch} has no commits and is not a session branch, skipping Edit button`);
+          logger.debug(
+            `Git branch ${branch} has no commits and is not a session branch, skipping Edit button`,
+          );
           return undefined;
         }
       }
-      
     } catch (error) {
-      logger.warn('Could not get current git branch:', error);
+      logger.warn("Could not get current git branch:", error);
       return undefined;
     }
   }
@@ -317,33 +340,36 @@ export class QueueIntegration {
         logger.warn("performUpdate called with empty content, using fallback");
         content = "✅ Task completed";
       }
-      
+
       const payload: ThreadResponsePayload = {
         messageId: this.messageId,
         channelId: this.responseChannel,
         threadTs: this.responseTs,
-        userId: process.env.USER_ID || 'unknown',
+        userId: process.env.USER_ID || "unknown",
         content: content,
         isDone: false, // Agent is still running
         timestamp: Date.now(),
         originalMessageTs: this.messageId, // User's original message for reactions - no fallback to avoid stuck values
         gitBranch: await this.getCurrentGitBranch(), // Current git branch for Edit button URLs
         botResponseTs: this.botResponseTs, // Bot's response message for updates
-        claudeSessionId: this.claudeSessionId // Claude session ID for tracking bot messages
+        claudeSessionId: this.claudeSessionId, // Claude session ID for tracking bot messages
       };
-      
-      logger.info(`Sending thread_response with claudeSessionId: ${payload.claudeSessionId || 'undefined'}`);
+
+      logger.info(
+        `Sending thread_response with claudeSessionId: ${payload.claudeSessionId || "undefined"}`,
+      );
 
       // Send to thread_response queue
-      const jobId = await this.pgBoss.send('thread_response', payload, {
+      const jobId = await this.pgBoss.send("thread_response", payload, {
         priority: 0,
         retryLimit: 3,
         retryDelay: 5,
         expireInHours: 1,
       });
-      
-      logger.info(`Sent progress update to queue with job id: ${jobId}, claudeSessionId: ${payload.claudeSessionId}`);
 
+      logger.info(
+        `Sent progress update to queue with job id: ${jobId}, claudeSessionId: ${payload.claudeSessionId}`,
+      );
     } catch (error: any) {
       logger.error("Failed to send update to thread_response queue:", error);
       throw error;
@@ -363,7 +389,6 @@ export class QueueIntegration {
       } else {
         await this.updateProgress("💭 Peerbot is thinking...");
       }
-
     } catch (error) {
       logger.error("Failed to send typing indicator:", error);
     }
@@ -383,25 +408,24 @@ export class QueueIntegration {
         messageId: this.messageId,
         channelId: this.responseChannel,
         threadTs: this.responseTs,
-        userId: process.env.USER_ID || 'unknown',
+        userId: process.env.USER_ID || "unknown",
         content: finalMessage,
         isDone: true, // Agent is done
         timestamp: Date.now(),
         originalMessageTs: this.messageId, // User's original message for reactions - no fallback to avoid stuck values
         gitBranch: await this.getCurrentGitBranch(), // Current git branch for Edit button URLs
         botResponseTs: this.botResponseTs, // Bot's response message for updates
-        claudeSessionId: this.claudeSessionId // Claude session ID for tracking bot messages
+        claudeSessionId: this.claudeSessionId, // Claude session ID for tracking bot messages
       };
 
-      const jobId = await this.pgBoss.send('thread_response', payload, {
+      const jobId = await this.pgBoss.send("thread_response", payload, {
         priority: 1, // Higher priority for completion signals
         retryLimit: 5,
         retryDelay: 5,
         expireInHours: 1,
       });
-      
-      logger.info(`Sent completion signal to queue with job id: ${jobId}`);
 
+      logger.info(`Sent completion signal to queue with job id: ${jobId}`);
     } catch (error: any) {
       logger.error("Failed to send completion signal to queue:", error);
       throw error;
@@ -420,83 +444,98 @@ export class QueueIntegration {
     try {
       // Create detailed error message including stack trace and error type
       let detailedError = `${error.message}`;
-      
+
       // Add error type if it's not a generic Error
-      if (error.constructor.name !== 'Error') {
+      if (error.constructor.name !== "Error") {
         detailedError = `${error.constructor.name}: ${detailedError}`;
       }
-      
+
       // Add stack trace for better debugging (first few lines)
       if (error.stack) {
-        const stackLines = error.stack.split('\n').slice(1, 4); // Get first 3 stack lines
+        const stackLines = error.stack.split("\n").slice(1, 4); // Get first 3 stack lines
         if (stackLines.length > 0) {
-          detailedError += `\n\nStack trace:\n${stackLines.map(line => line.trim()).join('\n')}`;
+          detailedError += `\n\nStack trace:\n${stackLines.map((line) => line.trim()).join("\n")}`;
         }
       }
-      
+
       // Check for common error patterns and add specific context
-      if (error.message.includes('Permission denied') || error.message.includes('EACCES')) {
-        detailedError += '\n\n💡 This appears to be a permission error. Check file/directory permissions or authentication.';
-      } else if (error.message.includes('git')) {
-        detailedError += '\n\n💡 This appears to be a Git-related error. Check repository access, credentials, or branch state.';
-      } else if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
-        detailedError += '\n\n💡 This appears to be a timeout error. The operation may need more time or there could be a network issue.';
+      if (
+        error.message.includes("Permission denied") ||
+        error.message.includes("EACCES")
+      ) {
+        detailedError +=
+          "\n\n💡 This appears to be a permission error. Check file/directory permissions or authentication.";
+      } else if (error.message.includes("git")) {
+        detailedError +=
+          "\n\n💡 This appears to be a Git-related error. Check repository access, credentials, or branch state.";
+      } else if (
+        error.message.includes("timeout") ||
+        error.message.includes("ETIMEDOUT")
+      ) {
+        detailedError +=
+          "\n\n💡 This appears to be a timeout error. The operation may need more time or there could be a network issue.";
       }
 
       const payload: ThreadResponsePayload = {
         messageId: this.messageId,
         channelId: this.responseChannel,
         threadTs: this.responseTs,
-        userId: process.env.USER_ID || 'unknown',
+        userId: process.env.USER_ID || "unknown",
         error: detailedError,
         isDone: true, // Agent is done due to error
         timestamp: Date.now(),
         originalMessageTs: this.messageId, // User's original message for reactions - no fallback to avoid stuck values
         gitBranch: await this.getCurrentGitBranch(), // Current git branch for Edit button URLs
         botResponseTs: this.botResponseTs, // Bot's response message for updates
-        claudeSessionId: this.claudeSessionId // Claude session ID for tracking bot messages
+        claudeSessionId: this.claudeSessionId, // Claude session ID for tracking bot messages
       };
 
-      const jobId = await this.pgBoss.send('thread_response', payload, {
+      const jobId = await this.pgBoss.send("thread_response", payload, {
         priority: 1, // Higher priority for error signals
         retryLimit: 5,
         retryDelay: 5,
         expireInHours: 1,
       });
-      
-      logger.info(`Sent error signal to queue with job id: ${jobId}`);
 
+      logger.info(`Sent error signal to queue with job id: ${jobId}`);
     } catch (sendError: any) {
       logger.error("Failed to send error signal to queue:", sendError);
       // Don't throw here - we're already handling an error
     }
   }
 
-
-
   /**
    * Extract todo list from Claude's JSON output
    */
   private extractTodoList(data: string): TodoItem[] | null {
     try {
-      const lines = data.split('\n');
+      const lines = data.split("\n");
       for (const line of lines) {
-        if (line.trim().startsWith('{')) {
+        if (line.trim().startsWith("{")) {
           const parsed = JSON.parse(line);
-          
+
           // Check if this is a tool_use for TodoWrite
           if (parsed.type === "assistant" && parsed.message?.content) {
             for (const content of parsed.message.content) {
-              if (content.type === "tool_use" && content.name === "TodoWrite" && content.input?.todos) {
+              if (
+                content.type === "tool_use" &&
+                content.name === "TodoWrite" &&
+                content.input?.todos
+              ) {
                 return content.input.todos;
               }
             }
           }
-          
+
           // Check if this is a tool_result from TodoWrite
           if (parsed.type === "user" && parsed.message?.content) {
             for (const content of parsed.message.content) {
-              if (content.type === "tool_result" && content.content?.includes("Todos have been modified successfully")) {
+              if (
+                content.type === "tool_result" &&
+                content.content?.includes(
+                  "Todos have been modified successfully",
+                )
+              ) {
                 // Try to extract todos from previous context
                 return null; // Let the assistant message handle this
               }
@@ -515,11 +554,11 @@ export class QueueIntegration {
    */
   private extractToolExecution(data: string): string | null {
     try {
-      const lines = data.split('\n');
+      const lines = data.split("\n");
       for (const line of lines) {
-        if (line.trim().startsWith('{')) {
+        if (line.trim().startsWith("{")) {
           const parsed = JSON.parse(line);
-          
+
           // Detect tool usage
           if (parsed.type === "assistant" && parsed.message?.content) {
             for (const content of parsed.message.content) {
@@ -542,7 +581,7 @@ export class QueueIntegration {
   private formatToolExecution(toolUse: any): string {
     const toolName = toolUse.name;
     const params = toolUse.input || {};
-    
+
     switch (toolName) {
       case "Write":
         return `✏️ **Writing file:** \`${params.file_path}\``;
@@ -550,7 +589,7 @@ export class QueueIntegration {
         return `✏️ **Editing file:** \`${params.file_path}\``;
       case "Bash":
         const command = params.command || params.description || "command";
-        return `🔧 **Running:** \`${command.length > 50 ? command.substring(0, 50) + '...' : command}\``;
+        return `🔧 **Running:** \`${command.length > 50 ? command.substring(0, 50) + "..." : command}\``;
       case "Read":
         return `📖 **Reading file:** \`${params.file_path}\``;
       case "Grep":
@@ -579,21 +618,21 @@ export class QueueIntegration {
    * Format todo list for display
    */
   private formatTodoList(todos: TodoItem[]): string {
-    const todoLines = todos.map(todo => {
+    const todoLines = todos.map((todo) => {
       const checkbox = todo.status === "completed" ? "☑️" : "☐";
-      if(todo.status === "in_progress") {
+      if (todo.status === "in_progress") {
         return `🪚 *${todo.content}*`;
       }
       return `${checkbox} ${todo.content}`;
     });
 
-    let content = `📝 **Task Progress**\n\n${todoLines.join('\n')}`;
-    
+    let content = `📝 **Task Progress**\n\n${todoLines.join("\n")}`;
+
     // Add current tool execution if available
     if (this.currentToolExecution) {
       content += `\n\n${this.currentToolExecution}`;
     }
-    
+
     return content;
   }
 
@@ -621,7 +660,7 @@ export class QueueIntegration {
   cleanup(): void {
     // Hide stop button before cleanup
     this.hideStopButton();
-    
+
     // Clear any pending updates
     this.updateQueue = [];
     this.isProcessingQueue = false;
