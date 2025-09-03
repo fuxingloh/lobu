@@ -40,7 +40,7 @@ export class QueueIntegration {
   private deploymentName?: string;
   private workspaceManager?: any; // WorkspaceManager dependency
   private claudeSessionId?: string; // Claude session ID
-  private stopButtonVisible = false;
+
 
   constructor(config: {
     databaseUrl: string;
@@ -639,7 +639,7 @@ export class QueueIntegration {
    * Called when Claude worker starts processing
    */
   showStopButton(): void {
-    this.stopButtonVisible = true;
+    // this.stopButtonVisible = true;
     logger.info("Stop button enabled for deployment:", this.deploymentName);
   }
 
@@ -648,7 +648,7 @@ export class QueueIntegration {
    * Called when Claude worker finishes or times out
    */
   hideStopButton(): void {
-    this.stopButtonVisible = false;
+    // this.stopButtonVisible = false;
     logger.info("Stop button disabled for deployment:", this.deploymentName);
   }
 
