@@ -4,7 +4,6 @@ import { type OrchestratorConfig, OrchestratorError } from "./types";
 export class DatabasePool {
   private pool: Pool;
 
-
   constructor(config: OrchestratorConfig["database"]) {
     this.pool = new Pool({
       connectionString: config.connectionString,

@@ -41,7 +41,6 @@ export class QueueIntegration {
   private workspaceManager?: any; // WorkspaceManager dependency
   private claudeSessionId?: string; // Claude session ID
 
-
   constructor(config: {
     databaseUrl: string;
     responseChannel?: string;
