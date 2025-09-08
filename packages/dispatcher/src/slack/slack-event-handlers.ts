@@ -22,10 +22,7 @@ import {
   handleExecutableCodeBlock,
   handleStopWorker,
 } from "./event-handlers/block-actions";
-import {
-  handleBlockkitFormSubmission,
-  handleRepositoryOverrideSubmission,
-} from "./event-handlers/form-handlers";
+import { handleBlockkitFormSubmission } from "./event-handlers/form-handlers";
 
 /**
  * Queue-based Slack event handlers that replace direct Kubernetes job creation
@@ -69,6 +66,7 @@ export class SlackEventHandlers {
     setupFileHandlers(this.app);
 
     // Handle app mentions
+    logger.info("Registering app_mention event handler");
     this.app.event("app_mention", async ({ event, client, say }) => {
       const handlerStartTime = Date.now();
       logger.info("=== APP_MENTION HANDLER TRIGGERED (QUEUE) ===");
@@ -144,6 +142,7 @@ export class SlackEventHandlers {
     // Handle direct messages
     this.app.message(async ({ message, client, say }) => {
       logger.info("=== MESSAGE HANDLER TRIGGERED (QUEUE) ===");
+      logger.debug(`Message type: ${(message as any).type}, subtype: ${(message as any).subtype}, channel: ${(message as any).channel}`);
 
       // Skip our own bot's messages
       const botUserId = this.config.slack.botUserId;
@@ -228,18 +227,6 @@ export class SlackEventHandlers {
           ? JSON.parse(view.private_metadata)
           : {};
 
-        // Handle repository override modal specifically
-        if (view.callback_id === "repository_override_modal") {
-          await handleRepositoryOverrideSubmission(
-            userId,
-            view,
-            client,
-            this.getOrCreateUserMapping.bind(this),
-            this.updateAppHome.bind(this),
-            this.repositoryCache
-          );
-          return;
-        }
 
         // Handle blockkit form modal submissions
         if (view.callback_id === "blockkit_form_modal") {
@@ -707,6 +694,81 @@ export class SlackEventHandlers {
     }, 60000);
   }
 
+  private async handleGitHubPullRequestAction(
+    actionId: string,
+    userId: string,
+    channelId: string,
+    messageTs: string,
+    body: any,
+    client: any
+  ): Promise<void> {
+    logger.info(`Handling GitHub PR action: ${actionId}`);
+    
+    try {
+      // Extract the PR details from the button's value
+      const action = (body as any).actions?.[0];
+      if (!action?.value) {
+        throw new Error("No PR data found in button");
+      }
+
+      const prData = JSON.parse(action.value);
+      const { prompt } = prData;
+      
+      // Create a context for the user request
+      const context: SlackContext = {
+        channelId,
+        userId,
+        userDisplayName: "Unknown User", // Will be fetched if needed
+        teamId: body.team?.id || "",
+        messageTs,
+        threadTs: messageTs,
+        text: prompt || "Cleanup and create a pull request for me",
+      };
+      
+      // Post the PR request as a user message to show intent
+      const formattedInput = prompt || "Cleanup and create a pull request for me";
+      
+      const inputMessage = await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: formattedInput,
+        blocks: [
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: `<@${userId}> clicked "🔀 Pull Request" button`,
+              },
+            ],
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: formattedInput,
+            },
+          },
+        ],
+      });
+      
+      // Update the context with the new message timestamp
+      context.messageTs = inputMessage.ts as string;
+      
+      // Handle the PR creation request
+      await this.handleUserRequest(context, formattedInput, client);
+      
+    } catch (error) {
+      logger.error(`Failed to handle GitHub PR action ${actionId}:`, error);
+      
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `❌ Failed to create pull request: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
+  }
+
   private async handleBlockAction(
     actionId: string,
     userId: string,
@@ -718,37 +780,6 @@ export class SlackEventHandlers {
     logger.info(`Handling block action: ${actionId}`);
 
     switch (actionId) {
-      case "open_repository_override_modal":
-        await client.views.open({
-          trigger_id: body.trigger_id,
-          view: {
-            type: "modal",
-            callback_id: "repository_override_modal",
-            private_metadata: JSON.stringify({
-              channel_id: channelId,
-              thread_ts: messageTs,
-            }),
-            title: { type: "plain_text", text: "Repository" },
-            submit: { type: "plain_text", text: "Save" },
-            close: { type: "plain_text", text: "Cancel" },
-            blocks: [
-              {
-                type: "input",
-                block_id: "repo_input",
-                label: { type: "plain_text", text: "Repository URL" },
-                element: {
-                  type: "plain_text_input",
-                  action_id: "repo_url",
-                  placeholder: {
-                    type: "plain_text",
-                    text: "https://github.com/user/repo",
-                  },
-                },
-              },
-            ],
-          },
-        });
-        break;
 
       default:
         // Handle blockkit form button clicks
@@ -786,6 +817,24 @@ export class SlackEventHandlers {
             messageTs,
             client
           );
+        }
+        // Handle GitHub Pull Request button clicks
+        else if (actionId.startsWith("github_pr_")) {
+          await this.handleGitHubPullRequestAction(
+            actionId,
+            userId,
+            channelId,
+            messageTs,
+            body,
+            client
+          );
+        }
+        // Handle GitHub Code button clicks (no action needed, just log)
+        else if (actionId.startsWith("github_code_")) {
+          logger.info(
+            `GitHub Code button clicked: ${actionId} by user ${userId}`
+          );
+          // URL buttons handle navigation automatically, no additional action needed
         } else {
           // Log unsupported actions but don't send messages to users
           logger.info(
@@ -828,14 +877,6 @@ export class SlackEventHandlers {
             text: {
               type: "mrkdwn",
               text: `*Current Repository:*\n<${repository.repositoryUrl}|${repository.repositoryName}>`,
-            },
-            accessory: {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "Change Repository",
-              },
-              action_id: "open_repository_override_modal",
             },
           },
           {

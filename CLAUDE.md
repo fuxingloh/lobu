@@ -1,13 +1,13 @@
 # CLAUDE.md
 
 - You MUST only do what has been asked; nothing more, nothing less.
-- You can check logs with docker to understand the recent behavior the user is asking for.
 - For comprehensive QA and E2E testing, see `.claude/commands/qa.md` for detailed testing procedures and examples. You can directly run `.claude/commands/test-e2e-slack-bot.sh "Your prompt"` if there is no specific testing asked, otherwise use `./slack-qa-bot.js` to test the bot.
+- When you make changes to worker code (`packages/worker/*`), run `make clean-workers` to ensure new workers use the updated code.
 - Anytime you make changes in the code, you MUST:
 
-1. Have the bot running via `make dev` running in the background for development that uses hot reload. If there is `peerbot.log` file in the project root, you can skip this step.
+1. Have the bot running via `make dev` running in the background for development. This uses Docker Compose with hot reload enabled when NODE_ENV=development.
 2. Run ./slack-qa-bot.js "Relevant prompt" --timeout [based on complexity change by default 10] and make sure it works properly. If the script fails (including getting stuck at "Starting environment setup"), you MUST fix it.
-3. Read the logs from `peerbot.log` to make sure it works properly in Docker mode.
+3. Check logs using `docker compose logs` or `make logs` to verify the bot works properly.
 
 - If you create ephemeral files, you MUST delete them when you're done with them.
 - Use Docker to build and run the Slack bot in development mode, K8S for production.
@@ -16,14 +16,23 @@
 - ALWAYS ignore `/dist/` directories when analyzing code - these contain compiled artifacts, not source
 - If you're referencing Slack threads or users in your response, add their direct links as well.
 
+## Development Mode
+
+- **Docker Compose**: Run `make dev` to start all services with hot reload enabled
+- **Logs**: View logs with `make logs` or `docker compose logs -f [service]`
+- **Hot Reload**: Source code changes are automatically detected when NODE_ENV=development
+- **Database**: PostgreSQL runs in Docker Compose, accessible on port 5432
+
 ## Deployment Instructions
 
-When making changes to the Slack bot: 2. **Docker images**: Make sure dev command is running in the background. Hot reload is enabled. 3. **Kubernetes deployment**: Apply changes with kubectl or restart deployments
+When making changes to the Slack bot:
+1. **Development**: Use `make dev` for Docker Compose with hot reload
+2. **Kubernetes deployment**: Use `make deploy` for production deployment
 
 ## Development Configuration
 
 - Rate limiting is disabled in local development
-- To manually rebuild worker image if needed: `docker build -f Dockerfile.worker -t claude-worker:latest .`
+- Worker image is built automatically when running `make dev`
 
 ## k3s Setup
 

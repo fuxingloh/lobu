@@ -358,7 +358,7 @@ export class ClaudeWorker {
    */
   private generateCustomInstructions(): string {
     try {
-      const templatePath = join(__dirname, "custom-instructions.md");
+      const templatePath = join(__dirname, "..", "custom-instructions.md");
       logger.debug(`[CUSTOM-INSTRUCTIONS] Loading from: ${templatePath}`);
 
       const template = fs.readFileSync(templatePath, "utf-8");

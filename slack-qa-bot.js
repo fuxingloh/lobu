@@ -4,39 +4,41 @@ const https = require("node:https");
 const path = require("node:path");
 
 // Load QA credentials to send as PeerQA
-// Check if --json or --quiet is in arguments to suppress dotenv output
-const quietMode =
-  process.argv.includes("--json") ||
-  process.argv.includes("--quiet") ||
-  process.argv.includes("-q");
-if (!quietMode) {
+// Check if --json is in arguments to suppress dotenv output
+const jsonMode = process.argv.includes("--json");
+if (!jsonMode) {
   console.log("🔧 Loading test configuration...");
 }
 
-// Temporarily redirect console.log for dotenv if in quiet mode
+// Temporarily redirect console.log for dotenv if in JSON mode
 const originalLog = console.log;
-if (quietMode) {
+if (jsonMode) {
   console.log = () => {
-    // Suppressed for quiet mode
+    // Suppressed for JSON mode
   };
 }
 require("dotenv").config({ path: path.join(__dirname, ".env") });
-if (quietMode) {
+if (jsonMode) {
   console.log = originalLog;
 }
 const QA_BOT_TOKEN = process.env.QA_SLACK_BOT_TOKEN;
 const TARGET_BOT_USERNAME = process.env.QA_TARGET_BOT_USERNAME;
+const QA_CHANNEL = process.env.QA_SLACK_CHANNEL || "C0952LTF7DG"; // Default to #peerbot-qa
 
 // Validate required environment variables
 if (!TARGET_BOT_USERNAME) {
-  console.error("❌ QA_TARGET_BOT_USERNAME environment variable is required");
-  console.error("Please set QA_TARGET_BOT_USERNAME in your .env file");
+  if (!jsonMode) {
+    console.error("❌ QA_TARGET_BOT_USERNAME environment variable is required");
+    console.error("Please set QA_TARGET_BOT_USERNAME in your .env file");
+  }
   process.exit(1);
 }
 
 if (!QA_BOT_TOKEN) {
-  console.error("❌ QA_SLACK_BOT_TOKEN environment variable is required");
-  console.error("Please set QA_SLACK_BOT_TOKEN in your .env file");
+  if (!jsonMode) {
+    console.error("❌ QA_SLACK_BOT_TOKEN environment variable is required");
+    console.error("Please set QA_SLACK_BOT_TOKEN in your .env file");
+  }
   process.exit(1);
 }
 
@@ -93,9 +95,9 @@ async function waitForBotResponse(
   channel,
   afterTimestamp,
   timeout = 30000,
-  quiet = false
+  jsonOutput = false
 ) {
-  if (!quiet) console.log("⏳ Waiting for bot response...");
+  if (!jsonOutput) console.log("⏳ Waiting for bot response...");
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
@@ -127,9 +129,9 @@ async function checkForAnyReaction(
   channel,
   timestamp,
   timeout = 10000,
-  quiet = false
+  jsonOutput = false
 ) {
-  if (!quiet)
+  if (!jsonOutput)
     console.log(
       "⏳ Checking for any reaction (cog=processing, checkmark=success)..."
     );
@@ -176,9 +178,9 @@ async function waitForSuccessReaction(
   channel,
   timestamp,
   timeout = 30000,
-  quiet = false
+  jsonOutput = false
 ) {
-  if (!quiet)
+  if (!jsonOutput)
     console.log("⏳ Waiting for success reaction (white_check_mark)...");
   const startTime = Date.now();
 
@@ -215,20 +217,21 @@ async function evaluateTestResult(
   testType = "Test",
   options = {}
 ) {
-  const { quiet = false, waitForResponse = false } = options;
+  const { jsonOutput = false, waitForResponse = false } = options;
 
-  // First, check for any reaction within 10 seconds
+  // First, check for any reaction within the specified timeout
+  const reactionTimeout = Math.min(timeout, 60000); // Cap at 60 seconds for initial reaction
   const initialReaction = await checkForAnyReaction(
     channel,
     messageTs,
-    10000,
-    quiet
+    reactionTimeout,
+    jsonOutput
   );
 
   if (initialReaction === "none") {
-    if (!quiet) {
+    if (!jsonOutput) {
       console.log(
-        "❌ No reaction from bot within 10 seconds - bot failed to acknowledge the message"
+        `❌ No reaction from bot within ${reactionTimeout/1000} seconds - bot failed to acknowledge the message`
       );
       console.log("\nTroubleshooting steps:");
       console.log(
@@ -255,21 +258,21 @@ async function evaluateTestResult(
     }
     return { success: false, error: "No acknowledgment from bot" };
   } else if (initialReaction === "success") {
-    if (!quiet)
+    if (!jsonOutput)
       console.log("✅ Bot immediately processed message (checkmark reaction)");
   } else if (initialReaction === "processing") {
-    if (!quiet) console.log("⚙️ Bot started processing (cog reaction detected)");
+    if (!jsonOutput) console.log("⚙️ Bot started processing (cog reaction detected)");
 
     // Wait for success reaction
     const hasSuccess = await waitForSuccessReaction(
       channel,
       messageTs,
       timeout,
-      quiet
+      jsonOutput
     );
 
     if (!hasSuccess) {
-      if (!quiet) {
+      if (!jsonOutput) {
         console.log(
           "❌ Bot started processing but never completed (no checkmark reaction)"
         );
@@ -298,14 +301,14 @@ async function evaluateTestResult(
       }
       return { success: false, error: "Bot processing incomplete" };
     } else {
-      if (!quiet)
+      if (!jsonOutput)
         console.log("✅ Bot completed processing (checkmark reaction added)");
     }
   }
 
   // At this point, we know the bot processed the message (has checkmark)
   // Always wait for response messages to include in result
-  let response = await waitForBotResponse(channel, messageTs, timeout, quiet);
+  let response = await waitForBotResponse(channel, messageTs, timeout, jsonOutput);
 
   // For JSON mode, still wait for response even if not explicitly requested
   if (!waitForResponse && !response) {
@@ -313,7 +316,7 @@ async function evaluateTestResult(
       channel,
       messageTs,
       Math.min(timeout, 10000),
-      true
+      jsonOutput
     ); // Quick check for JSON mode
   }
 
@@ -327,35 +330,37 @@ async function evaluateTestResult(
     !response[0].text.includes("✅");
 
   if (isStuckInSetup) {
-    console.log('❌ Bot is stuck in "Starting environment setup" message');
-    console.log("\n⚠️ Bot appears to be stuck during initialization");
-    console.log("\nTroubleshooting steps:");
-    console.log(
-      "1. Check worker pod status: kubectl get pods -n peerbot | grep claude-worker"
-    );
-    console.log(
-      "2. Check worker logs for errors: kubectl logs -n peerbot -l app.kubernetes.io/component=claude-worker --tail=100"
-    );
-    console.log(
-      "3. Check if worker has sufficient resources: kubectl describe pod -n peerbot -l app.kubernetes.io/component=claude-worker"
-    );
-    console.log(
-      '4. Check queue for stuck messages: kubectl logs -n peerbot -l app.kubernetes.io/component=dispatcher --tail=50 | grep "queue"'
-    );
-    console.log(
-      "5. Restart worker pods if necessary: kubectl rollout restart deployment/peerbot-claude-worker -n peerbot"
-    );
-    console.log(
-      "6. Check orchestrator logs: kubectl logs -n peerbot -l app.kubernetes.io/component=orchestrator --tail=50"
-    );
-    console.log(
-      "7. Verify PostgreSQL queue is accessible: kubectl exec -it -n peerbot deployment/peerbot-dispatcher -- nc -zv postgres-service 5432"
-    );
+    if (!jsonOutput) {
+      console.log('❌ Bot is stuck in "Starting environment setup" message');
+      console.log("\n⚠️ Bot appears to be stuck during initialization");
+      console.log("\nTroubleshooting steps:");
+      console.log(
+        "1. Check worker pod status: kubectl get pods -n peerbot | grep claude-worker"
+      );
+      console.log(
+        "2. Check worker logs for errors: kubectl logs -n peerbot -l app.kubernetes.io/component=claude-worker --tail=100"
+      );
+      console.log(
+        "3. Check if worker has sufficient resources: kubectl describe pod -n peerbot -l app.kubernetes.io/component=claude-worker"
+      );
+      console.log(
+        '4. Check queue for stuck messages: kubectl logs -n peerbot -l app.kubernetes.io/component=dispatcher --tail=50 | grep "queue"'
+      );
+      console.log(
+        "5. Restart worker pods if necessary: kubectl rollout restart deployment/peerbot-claude-worker -n peerbot"
+      );
+      console.log(
+        "6. Check orchestrator logs: kubectl logs -n peerbot -l app.kubernetes.io/component=orchestrator --tail=50"
+      );
+      console.log(
+        "7. Verify PostgreSQL queue is accessible: kubectl exec -it -n peerbot deployment/peerbot-dispatcher -- nc -zv postgres-service 5432"
+      );
+    }
     process.exit(1);
   }
 
   if (response && response.length > 0) {
-    if (!quiet) {
+    if (!jsonOutput) {
       console.log(`✅ Bot responded with message!`);
       console.log(`   Response: "${response[0].text?.substring(0, 200)}..."`);
 
@@ -376,7 +381,7 @@ async function evaluateTestResult(
     }
     return { success: true, response: response[0] };
   } else {
-    if (!quiet) {
+    if (!jsonOutput) {
       console.log("⚠️ Bot processed message but no response was sent");
       console.log(
         `\n⚠️ ${testType} PARTIALLY PASSED - Consider this a failure for automation purposes`
@@ -390,9 +395,9 @@ async function runTest(messages, timeout = 30000, options = {}) {
   const {
     jsonOutput = false,
     waitForResponse = false,
-    quiet = false,
     threadTs = null,
   } = options;
+  const quiet = jsonOutput; // JSON mode suppresses all output
   const isSingleMessage = messages.length === 1;
   const testType = isSingleMessage ? "Test" : "Multi-Message Test";
 
@@ -406,7 +411,7 @@ async function runTest(messages, timeout = 30000, options = {}) {
     console.log("");
   }
 
-  const targetChannel = "C0952LTF7DG"; // #peerbot-qa
+  const targetChannel = QA_CHANNEL; // Use from env or default
   let firstMessageTs = threadTs; // Use provided thread or null for new thread
 
   try {
@@ -474,7 +479,7 @@ async function runTest(messages, timeout = 30000, options = {}) {
       messageToCheck,
       timeout,
       testType,
-      { quiet, waitForResponse }
+      { jsonOutput, waitForResponse }
     );
 
     if (jsonOutput) {
@@ -523,7 +528,6 @@ let messages = [];
 let timeout = 30000; // default 30 seconds
 let jsonOutput = false;
 let waitForResponse = false;
-let quiet = false;
 let threadTs = null; // Thread timestamp to post to
 
 // Parse options
@@ -534,7 +538,6 @@ for (let i = 0; i < args.length; i++) {
     i--;
   } else if (args[i] === "--json") {
     jsonOutput = true;
-    quiet = true; // JSON mode implies quiet
     args.splice(i, 1);
     i--;
   } else if (args[i] === "--wait-for-response") {
@@ -545,10 +548,6 @@ for (let i = 0; i < args.length; i++) {
     threadTs = args[i + 1];
     args.splice(i, 2);
     i--;
-  } else if (args[i] === "--quiet" || args[i] === "-q") {
-    quiet = true;
-    args.splice(i, 1);
-    i--;
   } else if (args[i] === "--help" || args[i] === "-h") {
     console.log("Usage: slack-qa-bot.js [options] [message1] [message2] ...");
     console.log("");
@@ -557,7 +556,7 @@ for (let i = 0; i < args.length; i++) {
       "  --timeout <seconds>    Set timeout for bot response (default: 30)"
     );
     console.log(
-      "  --json                 Output JSON format (implies --quiet)"
+      "  --json                 Output JSON format (suppresses all other output)"
     );
     console.log(
       "  --wait-for-response    Wait for bot to fully respond before exiting"
@@ -565,7 +564,6 @@ for (let i = 0; i < args.length; i++) {
     console.log(
       "  --thread-ts <ts>       Post to existing thread by timestamp"
     );
-    console.log("  --quiet, -q            Suppress non-essential output");
     console.log("  --help, -h             Show this help message");
     console.log("");
     console.log("Examples:");
@@ -602,7 +600,7 @@ for (let i = 0; i < args.length; i++) {
 messages = args.filter((arg) => arg.trim().length > 0);
 
 if (messages.length > 0) {
-  runTest(messages, timeout, { jsonOutput, waitForResponse, quiet, threadTs });
+  runTest(messages, timeout, { jsonOutput, waitForResponse, threadTs });
 } else {
   // Run default tests
   runTest(
@@ -610,18 +608,17 @@ if (messages.length > 0) {
       "Create me a new project for my landing page of a Pet Store? It' is a fictionary app so be creating don't ask me. Project name is \"Pet Store {timestamp}\"",
     ],
     timeout,
-    { jsonOutput, waitForResponse, quiet }
+    { jsonOutput, waitForResponse }
   );
   runTest(["Create a button to add a new pet to the pet store"], timeout, {
     jsonOutput,
     waitForResponse,
-    quiet,
   });
   runTest(
     [
       "Create 5 tasks which will each return a random number and then you will sum all them.",
     ],
     timeout,
-    { jsonOutput, waitForResponse, quiet }
+    { jsonOutput, waitForResponse }
   );
 }

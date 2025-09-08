@@ -253,15 +253,11 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                     name: key,
                     value: value,
                   })),
-                  // Set BUILD_MODE=dev in development mode for hot reload
-                  ...(process.env.NODE_ENV === "development"
-                    ? [
-                        {
-                          name: "BUILD_MODE",
-                          value: "dev",
-                        },
-                      ]
-                    : []),
+                  // Pass NODE_ENV to worker pods
+                  {
+                    name: "NODE_ENV",
+                    value: process.env.NODE_ENV || "production",
+                  },
                   // K8s-specific secrets that can't be handled in base class
                   {
                     name: "GITHUB_TOKEN",

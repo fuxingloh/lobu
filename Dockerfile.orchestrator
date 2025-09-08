@@ -1,10 +1,13 @@
 # Dockerfile for Orchestrator - Force rebuild for simplified username Aug 26
 FROM oven/bun:1.2.9
 
-# Install required packages for Kubernetes client and curl for health checks
+# Install required packages for Kubernetes client, Docker CLI, and curl for health checks
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
+    gnupg \
+    lsb-release \
+    && curl -fsSL https://get.docker.com | sh - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dbmate for database migrations
@@ -50,12 +53,13 @@ RUN bun run build
 WORKDIR /app/packages/orchestrator
 RUN bun run build
 
-# Create non-root user
+# Create non-root user and add to docker group
 RUN addgroup --gid 1001 orchestrator && \
-    adduser --system --uid 1001 --ingroup orchestrator --home /home/orchestrator orchestrator
+    adduser --system --uid 1001 --ingroup orchestrator --home /home/orchestrator orchestrator && \
+    usermod -aG docker orchestrator || true
 
-# Switch to non-root user
-USER orchestrator
+# Note: We don't switch to non-root user yet because we need root for Docker access
+# USER orchestrator
 
 # Expose port
 EXPOSE 8080

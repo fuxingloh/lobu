@@ -1,26 +1,28 @@
 # Development Makefile for Peerbot
 
-.PHONY: help setup build compile dev test clean logs restart build-worker
+.PHONY: help setup build compile dev prod test clean logs restart deploy down
 
 # Default target
 help:
 	@echo "Available commands:"
 	@echo "  peerbot setup                              - Interactive setup for Slack bot development"
-	@echo "  peerbot dev                                - Start local development with Docker workers"
-	@echo "  peerbot build-worker                       - Build worker Docker image"
-	@echo "  peerbot deploy                             - Deploy using values-local.yaml if exists, else create it from .env"
-	@echo "  peerbot deploy --target=production         - Deploy using values-production.yaml"
-	@echo "  peerbot deploy --target=path/to/values.yaml - Deploy using custom values file path"
+	@echo "  peerbot dev                                - Start development with Docker Compose (hot reload)"
+	@echo "  peerbot prod                               - Start production with Docker Compose"
+	@echo "  peerbot down                               - Stop all services including dynamic workers"
+	@echo "  peerbot logs                               - View Docker Compose service logs"
+	@echo "  peerbot deploy                             - Deploy to K8s using values-local.yaml"
+	@echo "  peerbot deploy --target=production         - Deploy to K8s using values-production.yaml"
+	@echo "  peerbot deploy --target=path/to/values.yaml - Deploy to K8s using custom values file"
 	@echo "  peerbot test                               - Run test bot"
-	@echo "  peerbot clean                              - Stop services and clean up resources"
+	@echo "  peerbot clean                              - Stop all services and clean up all resources"
 
 # Interactive setup for development
 setup:
 	@echo "🚀 Starting PeerBot development setup..."
 	@./bin/setup-slack.sh
 
-# Start local development
-dev: build-worker
+# Start local development with Docker Compose
+dev:
 	@if [ ! -f .env ]; then \
 		echo "❌ .env file not found!"; \
 		echo ""; \
@@ -29,46 +31,16 @@ dev: build-worker
 		echo ""; \
 		exit 1; \
 	fi
-	@echo "🚀 Starting local development mode..."
+	@echo "🚀 Starting local development mode with Docker Compose..."
 	@echo "   This will:"
-	@echo "   - Build worker Docker image"
-	@echo "   - Start orchestrator and dispatcher with hot reload"
-	@echo "   - Use Docker containers for workers"
+	@echo "   - Build all services including worker image"
+	@echo "   - Start services with hot reload"
+	@echo "   - Start PostgreSQL database"
+	@echo "   - Mount source code for live changes"
 	@echo ""
-	@if grep -q "DEPLOYMENT_MODE=" .env 2>/dev/null; then \
-		DEPLOYMENT_MODE=$$(grep "DEPLOYMENT_MODE=" .env | cut -d'=' -f2); \
-		if [ "$$DEPLOYMENT_MODE" = "k8s" ]; then \
-			echo "Using Kubernetes mode (from .env)..."; \
-			./bin/setup-slack.sh k8s-only; \
-		else \
-			echo "Using Docker mode (from .env)..."; \
-			./bin/setup-slack.sh docker-only; \
-		fi \
-	else \
-		read -p "Do you want to setup Kubernetes configuration? (y/N): " setup_k8s; \
-		if [ "$$setup_k8s" = "y" ] || [ "$$setup_k8s" = "Y" ]; then \
-			echo "Setting up Kubernetes configuration..."; \
-			./bin/setup-slack.sh k8s-only; \
-		else \
-			echo "Using Docker mode..."; \
-			./bin/setup-slack.sh docker-only; \
-		fi \
-	fi
-	@export NODE_ENV=development && \
-		cd packages/orchestrator && bun run dev & \
-		cd packages/dispatcher && bun run dev
-
-
-# Build worker image for Docker mode
-build-worker:
-	@echo "🔨 Building worker Docker image..."
-	@if [ "$$NODE_ENV" = "development" ]; then \
-		echo "📦 Building development image with volume mounts..."; \
-		docker build -f Dockerfile.worker.dev -t peerbot-worker:latest .; \
-	else \
-		echo "📦 Building production image..."; \
-		docker build -f Dockerfile.worker -t peerbot-worker:latest .; \
-	fi
+	@echo "🔨 Building all services..."
+	@docker compose -f docker-compose.dev.yml build --no-cache worker
+	@docker compose -f docker-compose.dev.yml up --build dispatcher orchestrator postgres
 
 # Catch-all target to prevent errors when passing arguments
 %:
@@ -168,11 +140,60 @@ deploy:
 	@echo "  kubectl get pods -n peerbot"
 	@echo "  kubectl logs -f deployment/peerbot-dispatcher -n peerbot"
 
-# Clean up
+# Start production mode with Docker Compose
+prod:
+	@if [ ! -f .env ]; then \
+		echo "❌ .env file not found!"; \
+		echo ""; \
+		echo "Please run setup first:"; \
+		echo "  make setup"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "🚀 Starting production mode with Docker Compose..."
+	@echo "🔨 Building all services..."
+	@docker compose build --no-cache worker
+	@docker compose up --build -d dispatcher orchestrator postgres
+	@echo "✅ Services started in production mode"
+	@echo "   View logs with: make logs"
+
+# View logs from Docker Compose services
+logs:
+	@if docker compose -f docker-compose.dev.yml ps --services 2>/dev/null | grep -q .; then \
+		docker compose -f docker-compose.dev.yml logs -f; \
+	else \
+		docker compose logs -f; \
+	fi
+
+# Stop all services without removing volumes
+down:
+	@echo "🛑 Stopping all peerbot services and workers..."
+	@# Stop and remove all containers with the peerbot project label (includes dynamic workers)
+	@docker ps -q --filter "label=com.docker.compose.project=peerbot" | xargs -r docker stop 2>/dev/null || true
+	@docker ps -aq --filter "label=com.docker.compose.project=peerbot" | xargs -r docker rm 2>/dev/null || true
+	@# Use docker compose to clean up networks and remaining resources
+	@docker compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+	@docker compose down --remove-orphans 2>/dev/null || true
+	@echo "✅ All peerbot services stopped"
+
+# Clean up everything including volumes
 clean:
-	@echo "🧹 Cleaning up..."
-	@docker stop $(shell docker ps -q --filter "label=app.kubernetes.io/component=worker") 2>/dev/null || true
-	@docker rm $(shell docker ps -aq --filter "label=app.kubernetes.io/component=worker") 2>/dev/null || true
+	@echo "🧹 Cleaning up all peerbot resources..."
+	@# Stop and remove all containers with peerbot labels
+	@docker ps -q --filter "label=com.docker.compose.project=peerbot" | xargs -r docker stop 2>/dev/null || true
+	@docker ps -aq --filter "label=com.docker.compose.project=peerbot" | xargs -r docker rm 2>/dev/null || true
+	@docker ps -q --filter "label=app.kubernetes.io/component=worker" | xargs -r docker stop 2>/dev/null || true
+	@docker ps -aq --filter "label=app.kubernetes.io/component=worker" | xargs -r docker rm 2>/dev/null || true
+	@# Clean up with docker compose (including volumes)
+	@docker compose -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true
+	@docker compose down -v --remove-orphans 2>/dev/null || true
+	@# Clean up Kubernetes resources if they exist
 	@helm uninstall peerbot -n peerbot 2>/dev/null || true
 	@kubectl delete namespace peerbot 2>/dev/null || true
-	@echo "✅ Docker containers and K8s resources cleaned up"
+	@echo "✅ All Docker containers, volumes, and K8s resources cleaned up"
+
+clean-workers:
+	@echo "🧹 Removing all worker containers..."
+	@# Use xargs without -r flag for macOS compatibility
+	@docker ps -a --filter "label=app.kubernetes.io/component=worker" -q | xargs docker rm -f 2>/dev/null || true
+	@echo "✅ All worker containers removed. New workers will use updated code"

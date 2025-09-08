@@ -160,8 +160,8 @@ chmod +x /app/scripts/*.sh 2>/dev/null || true
 /app/packages/worker/scripts/setup-mcp-server.sh || echo "⚠️  MCP server setup failed or not found"
 
 # Check if we need to build (dev mode only)
-if [ "${BUILD_MODE}" = "dev" ]; then
-    echo "Building packages in dev mode..."
+if [ "${NODE_ENV}" = "development" ]; then
+    echo "Building packages in development mode..."
     cd /app/packages/shared && bun run build
     cd /app/packages/worker && bun run build
     chmod +x /app/packages/worker/dist/mcp/process-manager-server.mjs 2>/dev/null || true
@@ -169,5 +169,8 @@ fi
 
 # Start the worker process
 echo "🚀 Executing Claude Worker..."
-cd /app/packages/worker
+# Check if we're already in the worker directory
+if [ "$(pwd)" != "/app/packages/worker" ]; then
+    cd /app/packages/worker || { echo "❌ Failed to cd to /app/packages/worker"; exit 1; }
+fi
 exec bun run dist/src/index.js

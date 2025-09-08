@@ -478,7 +478,7 @@ export class QueueIntegration {
         threadTs: this.responseTs,
         userId: process.env.USER_ID || "unknown",
         error: detailedError,
-        isDone: true, // Agent is done due to error
+        isDone: false, // Don't mark as done when there's an error
         timestamp: Date.now(),
         originalMessageTs: this.messageId, // User's original message for reactions - no fallback to avoid stuck values
         gitBranch: await this.getCurrentGitBranch(), // Current git branch for Edit button URLs

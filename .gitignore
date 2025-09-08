@@ -21,6 +21,4 @@ packages/**/*.js.map
 packages/**/*.d.ts
 packages/**/*.d.ts.map
 
-
-peerbot.log
 workspaces/*

@@ -1,11 +1,11 @@
 FROM oven/bun:1.2.9
 
 # Build argument to control dev/prod behavior
-ARG BUILD_MODE=prod
+ARG NODE_ENV=production
 
 WORKDIR /app
 
-# Install runtime dependencies including Node.js, Python 3.12, uv, and Docker
+# Install runtime dependencies including Node.js, Python, uv, and Docker
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -18,19 +18,17 @@ RUN apt-get update && apt-get install -y \
     htop \
     net-tools \
     iputils-ping \
-    software-properties-common \
     gnupg \
     lsb-release \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.12 python3.12-venv python3.12-dev \
+    python3 \
+    python3-pip \
+    python3-venv \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
+    && curl -fsSL https://get.docker.com -o get-docker.sh \
+    && sh get-docker.sh \
+    && rm get-docker.sh \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /bin/bash /bin/sh
 
@@ -82,7 +80,7 @@ COPY scripts/ ./scripts/
 
 # For production mode, build during image creation
 # For dev mode, we'll build at startup to allow for live code changes
-RUN if [ "$BUILD_MODE" = "prod" ]; then \
+RUN if [ "$NODE_ENV" != "development" ]; then \
         echo "Building for production..."; \
         cd /app/packages/shared && bun run build; \
         cd /app/packages/worker && bun run build; \
@@ -124,7 +122,7 @@ USER claude
 # Set working directory to worker
 WORKDIR /app/packages/worker
 
-# Set the build mode as an environment variable
-ENV BUILD_MODE=${BUILD_MODE}
+# Set the NODE_ENV as an environment variable
+ENV NODE_ENV=${NODE_ENV}
 
 ENTRYPOINT ["/app/entrypoint.sh"]

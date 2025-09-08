@@ -90,10 +90,12 @@ export abstract class BaseDeploymentManager {
   async createWorkerDeployment(
     userId: string,
     threadId: string,
-    _teamId?: string,
     messageData?: any
   ): Promise<void> {
-    const deploymentName = `peerbot-worker-${threadId}`;
+    // Create a more readable deployment name using user ID and last 6 chars of thread ID
+    const shortThreadId = threadId.replace('.', '-').slice(-10); // Last 10 chars, replace dot with dash
+    const shortUserId = userId.toLowerCase().slice(0, 8); // First 8 chars of user ID
+    const deploymentName = `peerbot-worker-${shortUserId}-${shortThreadId}`;
 
     try {
       // Always ensure user credentials exist first
@@ -166,7 +168,6 @@ export abstract class BaseDeploymentManager {
     userEnvVars: Record<string, string> = {}
   ): { [key: string]: string } {
     const envVars: { [key: string]: string } = {
-      WORKER_MODE: "queue",
       USER_ID: userId,
       DEPLOYMENT_NAME: deploymentName,
       SESSION_KEY:
@@ -174,8 +175,7 @@ export abstract class BaseDeploymentManager {
       CHANNEL_ID: messageData?.channelId || "",
       REPOSITORY_URL:
         messageData?.platformMetadata?.repositoryUrl ||
-        process.env.GITHUB_REPOSITORY ||
-        "https://github.com/anthropics/claude-code-examples",
+        process.env.GITHUB_REPOSITORY,
       ORIGINAL_MESSAGE_TS:
         messageData?.platformMetadata?.originalMessageTs ||
         messageData?.messageId ||

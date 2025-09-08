@@ -29,7 +29,6 @@ Or with a specific task:
 ## Development Workflow
 
 1. **Make code changes** in `packages/` directories
-2. **Docker rebuilds** may be needed for changes (use `make build-worker`)
 3. **Test changes** with the test bot script
 4. **Check logs** with:
    ```bash

@@ -57,7 +57,7 @@ async function runPeerbot() {
   if (command === "help" || command === "--help" || command === "-h") {
     makeArgs = ["help"];
   } else if (
-    ["setup", "dev", "deploy", "test", "clean", "build-worker"].includes(
+    ["setup", "dev", "deploy", "test", "clean"s].includes(
       command,
     )
   ) {

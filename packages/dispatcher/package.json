@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "cd ../shared && bun run build && cd ../dispatcher && bun --watch src/index.ts",
+    "dev": "bun src/index.ts",
     "start": "cd ../shared && bun run build && cd ../dispatcher && bun src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

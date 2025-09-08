@@ -47,6 +47,10 @@ function processMarkdownAndBlockkit(content: string): {
       });
 
       if (metadata.action) {
+        console.log(
+          `[DEBUG] Found action block - language: ${language}, action: ${metadata.action}, show: ${metadata.show}`
+        );
+        
         if (metadata.show === false) {
           console.log(
             `[DEBUG] Skipping blockkit with show:false - action: ${metadata.action}`
@@ -59,29 +63,61 @@ function processMarkdownAndBlockkit(content: string): {
           const parsed = codeContent
             ? JSON.parse(codeContent.trim())
             : { blocks: [] };
+          const buttonValue = JSON.stringify({ blocks: parsed.blocks || [parsed] });
+          
+          // Always hide the code block from the message for blockkit
+          processedContent = processedContent.replace(fullMatch, "");
+          
+          // Skip the button entirely if value exceeds 2000 chars (Slack limit)
+          if (buttonValue.length > 2000) {
+            console.log(
+              `[DEBUG] Skipping blockkit button - exceeds 2000 char limit (${buttonValue.length} chars), action: ${metadata.action}`
+            );
+            continue;
+          }
+          
           const actionId = generateDeterministicActionId(
             codeContent + metadata.action + blockIndex,
             "blockkit_form"
           );
-          actionButtons.push({
+          const button = {
             type: "button",
             text: { type: "plain_text", text: metadata.action },
             action_id: actionId,
-            value: JSON.stringify({ blocks: parsed.blocks || [parsed] }),
-          });
-          processedContent = processedContent.replace(fullMatch, "");
+            value: buttonValue,
+          };
+          actionButtons.push(button);
+          console.log(
+            `[DEBUG] Added blockkit button - action: ${metadata.action}, actionId: ${actionId}`
+          );
         } else {
-          if (codeContent && codeContent.length <= 2000) {
+          if (codeContent) {
+            // Skip the button entirely if value exceeds 2000 chars (Slack limit)
+            if (codeContent.length > 2000) {
+              console.log(
+                `[DEBUG] Skipping ${language} button - exceeds 2000 char limit (${codeContent.length} chars), action: ${metadata.action}`
+              );
+              // Still hide the code block if show:false
+              if (metadata.show === false) {
+                processedContent = processedContent.replace(fullMatch, "");
+              }
+              continue;
+            }
+            
             const actionId = generateDeterministicActionId(
               codeContent + metadata.action + blockIndex,
               language
             );
-            actionButtons.push({
+            const button = {
               type: "button",
               text: { type: "plain_text", text: metadata.action },
-              action_id: actionId,
+              action_id: `${language}_${actionId}`,
               value: codeContent,
-            });
+            };
+            actionButtons.push(button);
+            console.log(
+              `[DEBUG] Added ${language} button - action: ${metadata.action}, actionId: ${language}_${actionId}`
+            );
           }
           if (metadata.show === false) {
             processedContent = processedContent.replace(fullMatch, "");
@@ -112,6 +148,9 @@ function processMarkdownAndBlockkit(content: string): {
   }
 
   if (actionButtons.length > 0) {
+    console.log(
+      `[DEBUG] Adding ${actionButtons.length} action buttons to blocks`
+    );
     if (blocks.length > 0) blocks.push({ type: "divider" });
     blocks.push({
       type: "actions",
@@ -119,6 +158,10 @@ function processMarkdownAndBlockkit(content: string): {
     });
   }
 
+  console.log(
+    `[DEBUG] processMarkdownAndBlockkit returning - text length: ${text?.length || 0}, blocks count: ${blocks.length}, action buttons: ${actionButtons.length}`
+  );
+  
   return { text, blocks };
 }
 
@@ -127,8 +170,23 @@ function processMarkdownAndBlockkit(content: string): {
  */
 class SlackRenderer extends marked.Renderer {
   heading(text: string, _level: number): string {
-    // Convert all headings to bold text with extra spacing
-    return `*${text}*\n\n`;
+    // Convert headings - preserve inline formatting like bold/italic
+    // Headers themselves are not automatically bold in Slack
+    
+    let processedText = text;
+    
+    // Convert markdown bold (**text**) to Slack bold (*text*)
+    processedText = processedText.replace(/\*\*(.+?)\*\*/g, '*$1*');
+    
+    // Convert markdown bold (__text__) to Slack bold (*text*)
+    processedText = processedText.replace(/__(.+?)__/g, '*$1*');
+    
+    // Convert markdown italic (*text*) to Slack italic (_text_)
+    // But be careful not to convert Slack bold markers we just added
+    processedText = processedText.replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '_$1_');
+    
+    // Add extra spacing after headers for visual separation
+    return `${processedText}\n\n`;
   }
 
   paragraph(text: string): string {
@@ -190,6 +248,21 @@ class SlackRenderer extends marked.Renderer {
 export function convertMarkdownToSlack(content: string): string {
   const renderer = new SlackRenderer();
 
+  // First, handle raw triple backtick code blocks that might not be properly formatted
+  // This handles cases where content has ```language\ncode\n``` format
+  let preprocessed = content.replace(
+    /```(\w*)\n?([\s\S]*?)```/g,
+    (match, lang, code) => {
+      // Convert to a format that marked can handle properly
+      if (code && code.trim()) {
+        // Use HTML pre/code tags that marked will process
+        const langAttr = lang ? ` class="language-${lang}"` : '';
+        return `<pre><code${langAttr}>${code.trim()}</code></pre>`;
+      }
+      return match;
+    }
+  );
+
   // Configure marked options
   marked.setOptions({
     renderer: renderer,
@@ -198,7 +271,7 @@ export function convertMarkdownToSlack(content: string): string {
   });
 
   try {
-    let processed = marked.parse(content) as string;
+    let processed = marked.parse(preprocessed) as string;
 
     // Clean up extra whitespace but preserve intentional line breaks
     processed = processed
@@ -206,6 +279,8 @@ export function convertMarkdownToSlack(content: string): string {
       .trim();
 
     // Handle code blocks specially - marked converts them to HTML, we need to convert back to Slack format
+    // Note: Slack doesn't support triple backtick code blocks in text fields, only in blocks
+    // So we'll convert code blocks to single-line code format for the text field
     processed = processed.replace(
       /<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g,
       (_match, _language, code) => {
@@ -217,7 +292,17 @@ export function convertMarkdownToSlack(content: string): string {
           .replace(/&quot;/g, '"')
           .replace(/&#39;/g, "'");
 
-        return `\`\`\`\n${decodedCode.trim()}\n\`\`\``;
+        // For Slack text field, use single backticks for inline code
+        // For multi-line code, we'll use indentation instead of backticks
+        // since Slack text fields don't support proper code blocks
+        const lines = decodedCode.trim().split('\n');
+        if (lines.length === 1) {
+          return `\`${lines[0]}\``;
+        } else {
+          // For multi-line code, use indentation (4 spaces) instead of backticks
+          // This preserves the code structure without causing issues with # symbols
+          return lines.map((line: string) => `    ${line}`).join('\n');
+        }
       }
     );
 
@@ -307,10 +392,33 @@ async function generateGitHubActionButtons(
     const repoUrl = repository.repositoryUrl;
     const repoPath = repoUrl.replace("https://github.com/", "");
 
-    logger.info(`Showing Edit button for branch: ${gitBranch}`);
+    logger.info(`Showing action buttons for branch: ${gitBranch}`);
+    
+    // Return action button elements instead of text links
     return [
-      `<https://github.com/${repoPath}/compare/main...${gitBranch}?quick_pull=1&labels=peerbot|🔀 Pull Request>`,
-      `<https://github.dev/${repoPath}/tree/${gitBranch}|Code>`,
+      {
+        type: "button",
+        text: { type: "plain_text", text: "🔀 Pull Request" },
+        action_id: generateDeterministicActionId(
+          `pr_${repoPath}_${gitBranch}`,
+          "github_pr"
+        ),
+        value: JSON.stringify({
+          action: "create_pr",
+          repo: repoPath,
+          branch: gitBranch,
+          prompt: "Cleanup and create a pull request for me"
+        })
+      },
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Code" },
+        url: `https://github.dev/${repoPath}/tree/${gitBranch}`,
+        action_id: generateDeterministicActionId(
+          `code_${repoPath}_${gitBranch}`,
+          "github_code"
+        )
+      }
     ];
   } catch (_error) {
     // Return undefined on error - this will result in no action buttons being added
@@ -445,7 +553,7 @@ export class ThreadResponseConsumer {
       }
 
       logger.info(
-        `Processing thread response job for message ${data.messageId}, originalMessageTs: ${data.originalMessageTs}, claudeSessionId: ${data.claudeSessionId}`
+        `Processing thread response job for message ${data.messageId}, originalMessageTs: ${data.originalMessageTs}, claudeSessionId: ${data.claudeSessionId}, botResponseTs: ${data.botResponseTs}`
       );
 
       // Create a session key to track bot messages per conversation
@@ -458,8 +566,9 @@ export class ThreadResponseConsumer {
       logger.info(`Using session key: ${sessionKey}`);
 
       // Check if we have a bot message for this Claude session
-      const existingBotMessageTs = this.sessionBotMessages.get(sessionKey);
-      const isFirstResponse = !existingBotMessageTs && !data.botResponseTs;
+      // First check if the worker provided a bot message timestamp
+      const existingBotMessageTs = data.botResponseTs || this.sessionBotMessages.get(sessionKey);
+      const isFirstResponse = !existingBotMessageTs;
       // Use originalMessageTs for reactions (the actual user message timestamp)
       const reactionTimestamp = data.originalMessageTs || data.messageId;
 
@@ -510,34 +619,25 @@ export class ThreadResponseConsumer {
 
         // Store the bot response timestamp for future updates
         if (isFirstResponse && newBotResponseTs) {
-          // Validate that the bot message timestamp is reasonable
-          // Timestamps should be close to the current time (within 1 minute)
-          const currentTime = Date.now() / 1000; // Convert to seconds
-          const messageTime = parseFloat(newBotResponseTs);
-
-          if (Math.abs(currentTime - messageTime) > 60) {
-            logger.warn(
-              `Suspicious bot message timestamp: ${newBotResponseTs} (current: ${currentTime})`
-            );
-          }
-
-          // Also validate it's in the same thread family (same integer part)
-          const threadBase = Math.floor(parseFloat(data.threadTs));
-          const messageBase = Math.floor(messageTime);
-
-          if (Math.abs(threadBase - messageBase) > 100) {
-            // Allow some variance
-            logger.error(
-              `Bot message ${newBotResponseTs} appears to be in wrong thread (expected near ${data.threadTs})`
-            );
-            // Don't store this mapping as it's likely wrong
-            return;
-          }
-
           logger.info(
             `Bot created first response with ts: ${newBotResponseTs}, storing for session ${sessionKey}`
           );
           this.sessionBotMessages.set(sessionKey, newBotResponseTs);
+          
+          // Also send the bot message timestamp back to the worker for future updates
+          // This ensures the worker can include it in subsequent thread_response messages
+          try {
+            if (data.claudeSessionId) {
+              await this.pgBoss.send('worker_metadata_update', {
+                claudeSessionId: data.claudeSessionId,
+                botResponseTs: newBotResponseTs,
+                channelId: data.channelId,
+                threadTs: data.threadTs
+              });
+            }
+          } catch (error) {
+            logger.debug(`Failed to send bot message timestamp to worker: ${error}`);
+          }
         }
       } else if (data.error) {
         // Pass the existing bot message timestamp for error updates
@@ -669,10 +769,16 @@ export class ThreadResponseConsumer {
 
     try {
       // Process markdown and blockkit content
+      console.log(
+        `[DEBUG] Processing content for Slack - content length: ${content?.length || 0}`
+      );
       const result = processMarkdownAndBlockkit(content);
+      console.log(
+        `[DEBUG] processMarkdownAndBlockkit result - blocks: ${result.blocks?.length || 0}, has actions: ${result.blocks?.some(b => b.type === 'actions')}`
+      );
 
-      // Get GitHub action links for this session
-      const githubActionLinks = await generateGitHubActionButtons(
+      // Get GitHub action buttons for this session
+      const githubActionButtons = await generateGitHubActionButtons(
         userId,
         data.gitBranch,
         this.userMappings,
@@ -680,21 +786,18 @@ export class ThreadResponseConsumer {
         this.slackClient
       );
 
-      // Add GitHub action links to the content
-      if (githubActionLinks && githubActionLinks.length > 0) {
-        const linksText = `\n\n${githubActionLinks.join(" | ")}`;
-        result.text = (result.text || content) + linksText;
-
-        // Also add to the last section block if it exists
-        const lastSectionBlock = result.blocks
-          .slice()
-          .reverse()
-          .find(
-            (block) => block.type === "section" && block.text?.type === "mrkdwn"
-          );
-        if (lastSectionBlock) {
-          lastSectionBlock.text.text += linksText;
+      // Add GitHub action buttons as a separate actions block
+      if (githubActionButtons && githubActionButtons.length > 0) {
+        // Add a divider before the GitHub actions if there are other blocks
+        if (result.blocks.length > 0) {
+          result.blocks.push({ type: "divider" });
         }
+        
+        // Add the GitHub action buttons as an actions block
+        result.blocks.push({
+          type: "actions",
+          elements: githubActionButtons
+        });
       }
 
       // Truncate text to Slack's limit (3000 chars for text field)
@@ -708,6 +811,15 @@ export class ThreadResponseConsumer {
       // Add blocks (always have at least one)
       const MAX_BLOCKS = 50;
       const blocks = result.blocks.slice(0, MAX_BLOCKS);
+      console.log(
+        `[DEBUG] Final blocks to send - count: ${blocks.length}, types: ${blocks.map(b => b.type).join(', ')}`
+      );
+      if (blocks.some(b => b.type === 'actions')) {
+        console.log(
+          `[DEBUG] Actions block elements:`,
+          blocks.find(b => b.type === 'actions')?.elements
+        );
+      }
 
       if (isFirstResponse) {
         // Create new message for first response
@@ -883,8 +995,8 @@ export class ThreadResponseConsumer {
         ],
       };
 
-      // Get GitHub action links for this session
-      const githubActionLinks = await generateGitHubActionButtons(
+      // Get GitHub action buttons for this session
+      const githubActionButtons = await generateGitHubActionButtons(
         userId,
         data.gitBranch,
         this.userMappings,
@@ -892,13 +1004,22 @@ export class ThreadResponseConsumer {
         this.slackClient
       );
 
-      // Add GitHub action links if available
-      if (githubActionLinks && githubActionLinks.length > 0) {
-        const linksText = `\n\n${githubActionLinks.join(" | ")}`;
-        errorResult.text = (errorResult.text || errorContent) + linksText;
-        if (errorResult.blocks[0]?.text) {
-          errorResult.blocks[0].text.text = errorContent + linksText;
-        }
+      // Add GitHub action buttons if available
+      if (githubActionButtons && githubActionButtons.length > 0) {
+        // Add a divider before the GitHub actions
+        errorResult.blocks.push({ 
+          type: "divider",
+          text: {
+            type: "mrkdwn",
+            text: " "
+          }
+        } as any);
+        
+        // Add the GitHub action buttons as an actions block
+        errorResult.blocks.push({
+          type: "actions",
+          elements: githubActionButtons
+        } as any);
       }
 
       if (isFirstResponse) {

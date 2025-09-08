@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # Build worker image that orchestrator will use
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        NODE_ENV: production
+    image: peerbot-worker:latest
+    # This service only builds the image, doesn't run continuously
+    command: echo "Worker image built successfully"
+    profiles:
+      - build-only
+
+  dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.dispatcher
+    image: peerbot-dispatcher:latest
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRESQL_PASSWORD:-password}@postgres:5432/peerbot?sslmode=disable
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-docker}
+    ports:
+      - "3000:3000"
+    networks:
+      - peerbot-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    image: peerbot-orchestrator:latest
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRESQL_PASSWORD:-password}@postgres:5432/peerbot?sslmode=disable
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-docker}
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      # Mount Docker socket
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "3001:3001"
+    networks:
+      - peerbot-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD:-password}
+      POSTGRES_DB: peerbot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - peerbot-network
+    restart: unless-stopped
+
+networks:
+  peerbot-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

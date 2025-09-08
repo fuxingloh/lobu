@@ -45,7 +45,8 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
 
       return containers.map((containerInfo: any) => {
         const deploymentName = containerInfo.Names[0]?.substring(1) || ""; // Remove leading '/'
-        const deploymentId = deploymentName.replace("peerbot-worker-", "");
+        // The deploymentId is now the full deployment name (includes user ID)
+        const deploymentId = deploymentName;
 
         // Get last activity from labels or fallback to creation time
         const lastActivityStr =
@@ -90,8 +91,15 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
     try {
       // Extract thread ID from deployment name for per-thread workspace isolation
       const threadId = deploymentName.replace("peerbot-worker-", "");
-      // Create workspace directory for this specific thread in project root (use absolute path)
-      const workspaceDir = `${path.join(process.cwd(), "..", "..")}/workspaces/${threadId}`;
+      
+      // For Docker mode, we need to use host paths for volume mounts
+      // The orchestrator is running inside Docker but needs to mount host directories
+      const isRunningInDocker = process.env.DEPLOYMENT_MODE === "docker";
+      const projectRoot = isRunningInDocker 
+        ? (process.env.HOST_PROJECT_PATH || "/app") // Use env var or fallback
+        : path.join(process.cwd(), "..", "..");
+      
+      const workspaceDir = `${projectRoot}/workspaces/${threadId}`;
 
       // Environment variables
       // Parse the DATABASE_URL to extract components and reconstruct with user credentials
@@ -126,6 +134,9 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         ),
       ];
 
+      // Get the Docker Compose project name from environment or use default
+      const composeProjectName = process.env.COMPOSE_PROJECT_NAME || "peerbot";
+      
       const createOptions: Docker.ContainerCreateOptions = {
         name: deploymentName,
         Image: `${this.config.worker.image.repository}:${this.config.worker.image.tag}`,
@@ -135,6 +146,10 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
           "app.kubernetes.io/component": "worker",
           "peerbot/managed-by": "orchestrator",
           "peerbot.io/created": new Date().toISOString(),
+          // Docker Compose labels to associate with the project
+          "com.docker.compose.project": composeProjectName,
+          "com.docker.compose.service": deploymentName, // Use unique service name
+          "com.docker.compose.oneoff": "False",
           // Add Slack thread link for visibility
           ...(messageData?.channelId && messageData?.threadId
             ? {
@@ -151,11 +166,11 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         },
         HostConfig: {
           Binds:
-            process.env.NODE_ENV === "development"
+            process.env.NODE_ENV === "development" && isRunningInDocker
               ? [
                   `${workspaceDir}:/workspace`,
-                  `${path.join(process.cwd(), "../../packages")}:/app/packages`,
-                  `${path.join(process.cwd(), "../../scripts")}:/app/scripts`,
+                  `${process.env.HOST_PROJECT_PATH}/packages:/app/packages`,
+                  `${process.env.HOST_PROJECT_PATH}/scripts:/app/scripts`,
                 ]
               : [`${workspaceDir}:/workspace`],
           RestartPolicy: {
@@ -166,9 +181,10 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
             this.config.worker.resources.limits.memory
           ),
           NanoCpus: this.parseCpuLimit(this.config.worker.resources.limits.cpu),
+          // Connect to the Docker Compose network
+          NetworkMode: `${composeProjectName}_peerbot-network`,
         },
         WorkingDir: "/workspace",
-        // NetworkMode: process.env.NODE_ENV === 'development' ? 'host' : 'bridge' // Removed due to type issues
       };
 
       const container = await this.docker.createContainer(createOptions);
@@ -211,7 +227,10 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
   }
 
   async deleteDeployment(deploymentId: string): Promise<void> {
-    const deploymentName = `peerbot-worker-${deploymentId}`;
+    // deploymentId should already be the full deployment name
+    const deploymentName = deploymentId.startsWith('peerbot-worker-') 
+      ? deploymentId 
+      : `peerbot-worker-${deploymentId}`;
 
     try {
       const container = this.docker.getContainer(deploymentName);
@@ -293,11 +312,11 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
     if (cpuStr.endsWith("m")) {
       // Millicores
       const millicores = parseInt(cpuStr.replace("m", ""), 10);
-      return (millicores / 1000) * 1000000000; // Convert to nanocores
+      return (millicores / 1000) * 1000000000;
     }
 
     // Assume whole cores
     const cores = parseFloat(cpuStr);
-    return cores * 1000000000; // Convert to nanocores
+    return cores * 1000000000;
   }
 }

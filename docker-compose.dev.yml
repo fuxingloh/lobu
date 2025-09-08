@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # Build worker image that orchestrator will use
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        NODE_ENV: development
+    image: peerbot-worker:latest
+    # This service only builds the image, doesn't run continuously
+    command: echo "Worker image built successfully"
+    profiles:
+      - build-only
+
+  dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.dispatcher
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:${POSTGRESQL_PASSWORD:-password}@postgres:5432/peerbot?sslmode=disable
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-docker}
+    volumes:
+      # Mount source code for hot reload
+      - ./packages:/app/packages:cached
+      - ./tsconfig.json:/app/tsconfig.json:cached
+      - ./package.json:/app/package.json:cached
+      # Use named volume for node_modules to avoid conflicts
+      - dispatcher_node_modules:/app/node_modules
+    working_dir: /app/packages/dispatcher
+    command: bun run dev
+    ports:
+      - "3000:3000"
+    networks:
+      - peerbot-network
+    depends_on:
+      - postgres
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:${POSTGRESQL_PASSWORD:-password}@postgres:5432/peerbot?sslmode=disable
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-docker}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      HOST_PROJECT_PATH: /Users/burakemre/Code/ai-experiments/peerbot
+    volumes:
+      # Mount source code for hot reload
+      - ./packages:/app/packages:cached
+      - ./tsconfig.json:/app/tsconfig.json:cached
+      - ./package.json:/app/package.json:cached
+      # Use named volume for node_modules to avoid conflicts
+      - orchestrator_node_modules:/app/node_modules
+      # Mount Docker socket for Docker mode (needs Docker Desktop running)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    working_dir: /app/packages/orchestrator
+    command: bun run dev
+    ports:
+      - "3001:3001"
+    networks:
+      - peerbot-network
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD:-password}
+      POSTGRES_DB: peerbot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - peerbot-network
+
+networks:
+  peerbot-network:
+    driver: bridge
+
+volumes:
+  dispatcher_node_modules:
+  orchestrator_node_modules:
+  postgres_data:

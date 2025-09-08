@@ -339,10 +339,13 @@ class PeerbotOrchestrator {
   }
 
   private setupIdleCleanup(): void {
-    // Run initial deployment reconciliation
-    this.deploymentManager.reconcileDeployments().catch((error) => {
-      console.error("❌ Initial deployment reconciliation failed:", error);
-    });
+    // Run initial deployment reconciliation after a short delay
+    // This prevents issues with immediate Docker API calls on startup
+    setTimeout(() => {
+      this.deploymentManager.reconcileDeployments().catch((error) => {
+        console.error("❌ Initial deployment reconciliation failed:", error);
+      });
+    }, 5000); // 5 second delay
 
     // Set up periodic cleanup every minute for more responsive cleanup
     this.cleanupInterval = setInterval(async () => {

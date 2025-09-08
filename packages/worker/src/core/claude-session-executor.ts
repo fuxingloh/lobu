@@ -225,19 +225,11 @@ export async function runClaudeWithProgress(
     pipeStream.destroy();
   });
 
-  // Use claude command directly - check for different possible paths
-  const claudeCommand =
-    process.env.CLAUDE_COMMAND ||
-    (process.env.NODE_ENV === "production" ? "node" : "claude");
+  // Use claude command directly - it's installed globally via npm
+  const claudeCommand = process.env.CLAUDE_COMMAND || "claude";
 
-  // Adjust args for Node.js execution
-  const claudeArgs =
-    claudeCommand === "node"
-      ? [
-          "/app/node_modules/@anthropic-ai/claude-code/cli.js",
-          ...config.claudeArgs,
-        ]
-      : config.claudeArgs;
+  // Use Claude args directly since we're using the global claude command
+  const claudeArgs = config.claudeArgs;
 
   const claudeProcess = spawn(claudeCommand, claudeArgs, {
     stdio: ["pipe", "pipe", "pipe"],

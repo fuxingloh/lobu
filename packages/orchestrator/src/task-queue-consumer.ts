@@ -113,7 +113,10 @@ export class QueueConsumer {
     );
 
     try {
-      const deploymentName = `peerbot-worker-${data.threadId}`;
+      // Create a more readable deployment name using user ID and last 6 chars of thread ID
+      const shortThreadId = data.threadId.replace('.', '-').slice(-10); // Last 10 chars, replace dot with dash
+      const shortUserId = data.userId.toLowerCase().slice(0, 8); // First 8 chars of user ID
+      const deploymentName = `peerbot-worker-${shortUserId}-${shortThreadId}`;
       const isNewThread = !data.routingMetadata?.targetThreadId; // New thread if no parent thread
       const teamId = data.platformMetadata?.teamId;
 
@@ -137,15 +140,15 @@ export class QueueConsumer {
             await this.deploymentManager.createWorkerDeployment(
               data.userId,
               data.threadId,
-              teamId,
               data
             );
           }
         );
         console.log(`✅ Created deployment: ${deploymentName}`);
 
-        // Reconcile deployments after creating new one
-        await this.deploymentManager.reconcileDeployments();
+        // Skip immediate reconciliation - let the periodic cleanup handle it
+        // This avoids potential issues with immediate Docker API calls
+        // await this.deploymentManager.reconcileDeployments();
       } else {
         // Existing thread - ensure deployment is scaled to 1
         console.log(
@@ -163,13 +166,13 @@ export class QueueConsumer {
           await this.deploymentManager.createWorkerDeployment(
             data.userId,
             data.threadId,
-            teamId,
             data
           );
           console.log(`✅ Recreated deployment: ${deploymentName}`);
 
-          // Reconcile deployments after recreating
-          await this.deploymentManager.reconcileDeployments();
+          // Skip immediate reconciliation - let the periodic cleanup handle it
+          // This avoids potential issues with immediate Docker API calls
+          // await this.deploymentManager.reconcileDeployments();
         }
       }
 
