@@ -309,36 +309,3 @@ Dispatcher exposes OAuth endpoints on port 8080:
 3. **Secure Redirects**: Validates redirect URLs
 4. **Session Isolation**: Each user's tokens isolated by user ID
 5. **Token Revocation**: Logout removes tokens from database
-
-### Development Setup
-
-For local development with GitHub OAuth:
-
-1. Create GitHub OAuth App at https://github.com/settings/developers
-2. Set Authorization callback URL to `http://localhost:8080/api/github/oauth/callback`
-3. Add credentials to `.env`:
-   ```
-   GITHUB_CLIENT_ID=Ov23xxxxx
-   GITHUB_CLIENT_SECRET=xxxxx
-   ```
-4. Use `INGRESS_URL=http://localhost:8080` for local testing
-
-### Hot Reload Configuration
-
-Development mode supports hot reload for rapid iteration:
-
-1. **Docker Compose Dev**: Uses `docker-compose.dev.yml` for development
-2. **Volume Mounts**: Source code mounted as volumes in containers
-3. **Bun Watch Mode**: Dispatcher runs with `bun --watch src/index.ts`
-4. **Auto Restart**: File changes trigger automatic service restart
-5. **NODE_ENV**: Set to `development` for dev features
-
-To enable hot reload:
-```bash
-make dev  # Uses docker-compose.dev.yml with volume mounts
-```
-
-Package.json configuration:
-```json
-"dev": "bun --watch src/index.ts"  // Enables file watching
-```

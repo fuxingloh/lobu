@@ -134,7 +134,7 @@ kubectl apply -f deployment.yaml
 - Agent Session: {{sessionKey}}
 - **Available Tools & Languages:**
 
-  - Node.js 18.x with bun package manager (DO NOT use npm - this project uses bun workspaces)
+  - Node.js 18.x with bun package manager
   - Python 3.12 with uv (modern Python package manager)
   - System packages via apt-get (with sudo access)
   - Git for version control
