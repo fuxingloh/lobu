@@ -35,6 +35,9 @@ module "kube-hetzner" {
   # * Your private key must be "ssh_private_key = null" when you want to use ssh-agent for a Yubikey-like device authentication or an SSH key-pair with a passphrase.
   # For more details on SSH see https://github.com/kube-hetzner/kube-hetzner/blob/master/docs/ssh.md
   ssh_private_key = file(fileexists("${path.module}/ssh_key") ? "${path.module}/ssh_key" : pathexpand("~/.ssh/id_ed25519"))
+  
+  # Note: SSH provisioners may fail when running from GitHub Actions due to network restrictions.
+  # The infrastructure will still be created successfully, but K3s installation may require manual setup.
   # You can add additional SSH public Keys to grant other team members root access to your cluster nodes.
   # ssh_additional_public_keys = []
 
