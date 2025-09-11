@@ -27,7 +27,11 @@ jobs:
       run: |
         helm uninstall peerbot -n peerbot || echo "Release not found"
         kubectl delete statefulset peerbot-postgresql -n peerbot --ignore-not-found=true
+        kubectl delete service peerbot-postgresql -n peerbot --ignore-not-found=true
+        kubectl delete service peerbot-postgresql-headless -n peerbot --ignore-not-found=true
         kubectl delete pvc -l app.kubernetes.io/name=postgresql -n peerbot --ignore-not-found=true
+        kubectl delete secret peerbot-postgresql -n peerbot --ignore-not-found=true
+        kubectl delete configmap peerbot-postgresql -n peerbot --ignore-not-found=true
         sleep 10
         
     - name: Install fresh release
