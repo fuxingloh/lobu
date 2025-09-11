@@ -323,11 +323,31 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       );
 
       if (deployment.body.spec?.replicas !== replicas) {
-        deployment.body.spec!.replicas = replicas;
+        // Use a proper JSON patch for scaling
+        const patch = [
+          {
+            op: 'replace',
+            path: '/spec/replicas',
+            value: replicas
+          }
+        ];
+        
+        const options = { 
+          headers: { 
+            'Content-Type': 'application/json-patch+json' 
+          } 
+        };
+        
         await this.appsV1Api.patchNamespacedDeployment(
           deploymentName,
           this.config.kubernetes.namespace,
-          deployment.body
+          patch,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          options
         );
       }
     } catch (error) {
@@ -399,11 +419,23 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
           },
         },
       };
+      
+      const options = { 
+        headers: { 
+          'Content-Type': 'application/strategic-merge-patch+json' 
+        } 
+      };
 
       await this.appsV1Api.patchNamespacedDeployment(
         deploymentName,
         this.config.kubernetes.namespace,
-        patch
+        patch,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        options
       );
     } catch (error) {
       console.error(
