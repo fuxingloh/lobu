@@ -12,15 +12,12 @@ jobs:
       run: |
         echo "${{ secrets.OVH_KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
         chmod 600 /tmp/kubeconfig
-      env:
-        KUBECONFIG: /tmp/kubeconfig
         
     - name: Delete PostgreSQL StatefulSet
       run: |
+        export KUBECONFIG=/tmp/kubeconfig
         kubectl delete statefulset peerbot-postgresql -n peerbot --ignore-not-found=true
         kubectl delete pvc -l app.kubernetes.io/name=postgresql -n peerbot --ignore-not-found=true
-      env:
-        KUBECONFIG: /tmp/kubeconfig
         
     - name: Wait for cleanup
       run: sleep 10
