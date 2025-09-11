@@ -92,10 +92,32 @@ export interface SimpleDeployment {
       };
       spec: {
         serviceAccountName?: string;
+        initContainers?: Array<{
+          name: string;
+          image: string;
+          command?: string[];
+          args?: string[];
+          securityContext?: {
+            runAsUser?: number;
+            runAsGroup?: number;
+            runAsNonRoot?: boolean;
+            readOnlyRootFilesystem?: boolean;
+          };
+          volumeMounts?: Array<{
+            name: string;
+            mountPath: string;
+          }>;
+        }>;
         containers: Array<{
           name: string;
           image: string;
           imagePullPolicy?: string;
+          securityContext?: {
+            runAsUser?: number;
+            runAsGroup?: number;
+            runAsNonRoot?: boolean;
+            readOnlyRootFilesystem?: boolean;
+          };
           env?: Array<{
             name: string;
             value?: string;
