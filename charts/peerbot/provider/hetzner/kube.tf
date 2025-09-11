@@ -325,13 +325,14 @@ module "kube-hetzner" {
   # however also introduce a single point of failure, so if you need high-availability on your
   # egress, you should consider other configurations.
   # 
-  # Keeping NAT router due to module constraint, but API will be publicly accessible via LB
-  nat_router = {
-    server_type = "cax11"
-    location    = "fsn1"
-    enable_sudo = false
-    labels      = {}
-  }
+  # NAT router commented out for now - version 2.17.4 doesn't support it
+  # Uncomment when upgrading to 2.18.x or newer
+  # nat_router = {
+  #   server_type = "cax11"
+  #   location    = "fsn1"
+  #   enable_sudo = false
+  #   labels      = {}
+  # }
 
 
   ### The following values are entirely optional (and can be removed from this if unused)
