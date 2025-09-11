@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write  # Need write to create releases
+  packages: write
 
 jobs:
   publish-helm-chart:
