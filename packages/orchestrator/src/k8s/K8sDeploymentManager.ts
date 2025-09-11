@@ -327,9 +327,9 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
             volumes: [
               {
                 name: "workspace",
-                persistentVolumeClaim: {
-                  // Use shared PVC for all workers instead of per-thread PVCs
-                  claimName: "peerbot-worker-pvc",
+                // Use ephemeral storage instead of PVC to avoid quota and multi-attach issues
+                emptyDir: {
+                  sizeLimit: "2Gi",
                 },
               },
             ],

@@ -153,7 +153,9 @@ export interface SimpleDeployment {
           persistentVolumeClaim?: {
             claimName: string;
           };
-          emptyDir?: {};
+          emptyDir?: {
+            sizeLimit?: string;
+          };
           hostPath?: {
             path: string;
             type?: string;
