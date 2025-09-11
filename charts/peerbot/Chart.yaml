@@ -19,6 +19,31 @@ maintainers:
     email: emrekabakci@gmail.com
 annotations:
   category: Communication
+  artifacthub.io/license: MIT
+  artifacthub.io/operator: "false"
+  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/images: |
+    - name: peerbot-dispatcher
+      image: ghcr.io/buremba/peerbot-dispatcher:latest
+    - name: peerbot-orchestrator  
+      image: ghcr.io/buremba/peerbot-orchestrator:latest
+    - name: peerbot-worker
+      image: ghcr.io/buremba/peerbot-worker:latest
+  artifacthub.io/links: |
+    - name: GitHub Repository
+      url: https://github.com/buremba/peerbot
+    - name: Documentation
+      url: https://github.com/buremba/peerbot#readme
+  artifacthub.io/recommendations: |
+    - url: https://artifacthub.io/packages/helm/bitnami/postgresql
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial Helm chart for Peerbot deployment
+    - kind: added  
+      description: Support for PostgreSQL dependency
+    - kind: added
+      description: Kubernetes deployment with persistent volumes
 dependencies:
   - name: postgresql
     version: "16.3.0"
