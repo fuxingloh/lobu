@@ -1,6 +1,14 @@
 name: Deploy to Kubernetes
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/**'
+      - 'charts/**'
+      - 'Dockerfile.*'
+      - '.github/workflows/deploy-community.yml'
   workflow_dispatch:
     inputs:
       branch:
