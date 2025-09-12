@@ -19,13 +19,11 @@ export interface ThreadMessagePayload {
   channelId: string;
   messageId: string;
   messageText: string;
-  agentSessionId?: string;
   platformMetadata: Record<string, any>;
   claudeOptions: Record<string, any>;
   // Routing metadata for thread-specific processing
   routingMetadata?: {
     targetThreadId: string;
-    agentSessionId: string;
     userId: string;
   };
 }
@@ -44,7 +42,22 @@ export class WorkerQueueConsumer {
   private deploymentName: string;
   private targetThreadId?: string;
   private messageQueue: QueuedMessage[] = [];
-  private lastSessionId: string | null = null; // Track last Claude session ID for resumption
+  private hasStartedSession = false; // Track if we've started a Claude session in this worker
+  
+  // Adaptive batching
+  // Max window timer (caps total wait time)
+  private collectionTimer: NodeJS.Timeout | null = null;
+  // Quiet-period timer (resets with each incoming message)
+  private collectionQuietTimer: NodeJS.Timeout | null = null;
+  private isFinalizingCollection: boolean = false;
+  private collectingMessages: QueuedMessage[] = [];
+  private lastActivityTime: number = 0;
+  // Unify collection windows to better capture quick follow-ups
+  // 5 seconds for initial and subsequent batches; idle threshold aligned
+  private idleThreshold = 5000; // 5 seconds idle before new collection window
+  private initialCollectionWindow = 5000; // 5 seconds for first batch
+  private subsequentCollectionWindow = 5000; // 5 seconds for subsequent batches after idle
+  private quietPeriodMs = 3000; // finalize after 3s of no new messages
 
   constructor(
     connectionString: string,
@@ -106,6 +119,21 @@ export class WorkerQueueConsumer {
   async stop(): Promise<void> {
     try {
       this.isRunning = false;
+
+      // Clear collection timer if active
+      if (this.collectionTimer) {
+        clearTimeout(this.collectionTimer);
+        this.collectionTimer = null;
+      }
+      if (this.collectionQuietTimer) {
+        clearTimeout(this.collectionQuietTimer);
+        this.collectionQuietTimer = null;
+      }
+      // Process any collected messages before stopping
+      if (this.collectingMessages.length > 0) {
+        this.messageQueue.push(...this.collectingMessages);
+        this.collectingMessages = [];
+      }
 
       // Cleanup current worker if processing
       if (this.currentWorker) {
@@ -197,23 +225,105 @@ export class WorkerQueueConsumer {
       return; // Skip this message - wrong user
     }
 
-    // Add message to queue
-    this.messageQueue.push({
+    const now = Date.now();
+    const timeSinceLastActivity = now - this.lastActivityTime;
+    const queuedMessage: QueuedMessage = {
       payload: actualData,
-      timestamp: Date.now(),
-    });
+      timestamp: now,
+    };
 
-    logger.info(
-      `Message queued. Queue length: ${this.messageQueue.length}, isProcessing: ${this.isProcessing}`
-    );
-
-    // If not currently processing, start sequential processing
-    if (!this.isProcessing) {
+    // Adaptive batching logic
+    if (this.collectionTimer) {
+      // Already collecting, add to collection
+      logger.info(
+        `Adding message to ongoing collection (${this.collectingMessages.length + 1} messages)`
+      );
+      this.collectingMessages.push(queuedMessage);
+      // Reset quiet period timer to wait for another quiet interval
+      const reset = (this as any)._resetQuietTimer as (() => void) | undefined;
+      if (reset) reset();
+    } else if (!this.hasStartedSession && !this.isProcessing) {
+      // Phase 1: No session yet and not processing, start initial collection window
+      logger.info(
+        `Starting initial ${this.initialCollectionWindow}ms collection window for first message`
+      );
+      this.startCollectionWindow(this.initialCollectionWindow, queuedMessage);
+    } else if (this.isProcessing) {
+      // Currently processing, queue for later
+      logger.info(`Queueing message for processing after current batch completes`);
+      this.messageQueue.push(queuedMessage);
+    } else if (timeSinceLastActivity > this.idleThreshold) {
+      // Phase 2a: Been idle, start new collection window  
+      logger.info(
+        `Starting ${this.subsequentCollectionWindow}ms collection window after ${timeSinceLastActivity}ms idle`
+      );
+      this.startCollectionWindow(this.subsequentCollectionWindow, queuedMessage);
+    } else {
+      // Phase 2b: Recent activity and not processing, process immediately
+      logger.info(
+        `Processing message immediately (${timeSinceLastActivity}ms since last activity)`
+      );
+      this.messageQueue.push(queuedMessage);
       await this.processQueueSequentially();
     }
 
-    // Message successfully queued - pgBoss job completes immediately
-    logger.info("Message successfully added to processing queue");
+    // Message successfully handled - pgBoss job completes immediately
+    logger.info("Message successfully handled");
+  }
+
+  /**
+   * Start a collection window for batching messages
+   */
+  private startCollectionWindow(duration: number, firstMessage: QueuedMessage): void {
+    this.collectingMessages = [firstMessage];
+
+    // Helper to finalize collection safely once
+    const finalizeCollection = async () => {
+      if (this.isFinalizingCollection) return;
+      this.isFinalizingCollection = true;
+
+      logger.info(
+        `Collection window ended (quiet or max), processing ${this.collectingMessages.length} message(s)`
+      );
+
+      // Move collected messages to main queue
+      this.messageQueue.push(...this.collectingMessages);
+      this.collectingMessages = [];
+
+      // Clear timers
+      if (this.collectionTimer) {
+        clearTimeout(this.collectionTimer);
+        this.collectionTimer = null;
+      }
+      if (this.collectionQuietTimer) {
+        clearTimeout(this.collectionQuietTimer);
+        this.collectionQuietTimer = null;
+      }
+
+      this.isFinalizingCollection = false;
+
+      // Process the batch
+      if (!this.isProcessing) {
+        await this.processQueueSequentially();
+      }
+    };
+
+    // Start max window timer (cap)
+    this.collectionTimer = setTimeout(finalizeCollection, duration);
+
+    // Quiet-timer scheduler that resets on each new message
+    const scheduleQuietTimer = () => {
+      if (this.collectionQuietTimer) {
+        clearTimeout(this.collectionQuietTimer);
+      }
+      this.collectionQuietTimer = setTimeout(finalizeCollection, this.quietPeriodMs);
+    };
+
+    // Initial quiet timer
+    scheduleQuietTimer();
+
+    // Store reset function for use on subsequent messages
+    (this as any)._resetQuietTimer = scheduleQuietTimer;
   }
 
   /**
@@ -229,37 +339,6 @@ export class WorkerQueueConsumer {
    */
   private payloadToWorkerConfig(payload: ThreadMessagePayload): WorkerConfig {
     const platformMetadata = payload.platformMetadata;
-
-    // Extract session ID info from claudeOptions for session continuity
-    let resumeSessionId: string | undefined;
-    let sessionId: string | undefined;
-    try {
-      if (payload.claudeOptions && typeof payload.claudeOptions === "object") {
-        resumeSessionId = (payload.claudeOptions as any).resumeSessionId;
-        sessionId = (payload.claudeOptions as any).sessionId;
-      } else if (typeof payload.claudeOptions === "string") {
-        const parsedOptions = JSON.parse(payload.claudeOptions);
-        resumeSessionId = parsedOptions.resumeSessionId;
-        sessionId = parsedOptions.sessionId;
-      }
-    } catch (error) {
-      logger.warn("Failed to extract session IDs from claudeOptions:", error);
-    }
-
-    // Log session info for debugging
-    if (resumeSessionId) {
-      logger.info(
-        `Resuming existing Claude session: ${resumeSessionId} for thread ${payload.threadId}`
-      );
-    } else if (sessionId) {
-      logger.info(
-        `Creating new Claude session: ${sessionId} for thread ${payload.threadId}`
-      );
-    } else {
-      logger.info(
-        `Starting Claude session without explicit ID for thread ${payload.threadId}`
-      );
-    }
 
     // Build Claude options with security restrictions from env vars (only if set)
     const claudeOptions = {
@@ -284,8 +363,9 @@ export class WorkerQueueConsumer {
           : {}),
     };
 
+    // Don't pass sessionId or resumeSessionId here - we'll handle it in processSingleMessage
     return {
-      sessionKey: payload.agentSessionId || `session-${payload.threadId}`,
+      sessionKey: `session-${payload.threadId}`,
       userId: payload.userId,
       channelId: payload.channelId,
       threadTs: payload.threadId,
@@ -296,8 +376,6 @@ export class WorkerQueueConsumer {
       slackResponseTs: platformMetadata.slackResponseTs || payload.messageId,
       botResponseTs: platformMetadata.botResponseTs, // Pass through bot response timestamp
       claudeOptions: JSON.stringify(claudeOptions),
-      sessionId: sessionId, // Pass through sessionId for new sessions
-      resumeSessionId: resumeSessionId, // Pass through resumeSessionId for session continuity
       workspace: {
         baseDirectory: "/workspace",
         githubToken: process.env.GITHUB_TOKEN!,
@@ -336,6 +414,7 @@ export class WorkerQueueConsumer {
    */
   private async processQueueSequentially(): Promise<void> {
     this.isProcessing = true;
+    this.lastActivityTime = Date.now(); // Track when we start processing
 
     try {
       while (this.messageQueue.length > 0) {
@@ -351,12 +430,14 @@ export class WorkerQueueConsumer {
         messagesToProcess.sort((a, b) => a.timestamp - b.timestamp);
 
         await this.processBatchedMessages(messagesToProcess);
+        this.lastActivityTime = Date.now(); // Update activity time after processing
       }
     } catch (error) {
       logger.error("Error during sequential message processing:", error);
       throw error;
     } finally {
       this.isProcessing = false;
+      this.lastActivityTime = Date.now(); // Update when we finish
     }
   }
 
@@ -390,17 +471,14 @@ export class WorkerQueueConsumer {
       .join("\n\n");
 
     // Create a modified payload with combined text
-    // Mark this as a batched message so it creates a new session (not resume)
+    // For batched messages, we should resume the existing session if available
     const batchedMessage: QueuedMessage = {
       timestamp: firstMessage.timestamp,
       payload: {
         ...firstMessage.payload,
         messageText: combinedPrompt,
-        // Add a flag to indicate this is a batched message (new session)
-        claudeOptions: {
-          ...firstMessage.payload.claudeOptions,
-          sessionId: firstMessage.payload.agentSessionId, // Use the UUID from agentSessionId for batch
-        },
+        // Don't force a new session - let processSingleMessage handle session resumption
+        claudeOptions: firstMessage.payload.claudeOptions,
       },
     };
 
@@ -423,38 +501,31 @@ export class WorkerQueueConsumer {
       // Convert to worker config
       const workerConfig = this.payloadToWorkerConfig(message.payload);
 
-      // Check if we should resume the last session or create a new one
-      // Priority: 1) Resume if we have lastSessionId, 2) Use agentSessionId for first message
-      if (this.lastSessionId) {
-        // We have a previous session - resume it
-        workerConfig.resumeSessionId = this.lastSessionId;
-        workerConfig.sessionId = undefined; // Let Claude generate a new session ID for the continuation
+      // Simple session management:
+      // - First message in thread: Create new session with UUID
+      // - Subsequent messages: Continue the existing session
+      if (!this.hasStartedSession) {
+        // First message in this worker - create a new Claude session
+        const crypto = require('crypto');
+        workerConfig.sessionId = crypto.randomUUID();
         logger.info(
-          `Resuming Claude session ${this.lastSessionId} for message ${message.payload.messageId}`
+          `Creating new Claude session ${workerConfig.sessionId} for first message in thread ${message.payload.threadId}`
         );
+        this.hasStartedSession = true;
       } else {
-        // First message in this worker - create a new session using the agentSessionId
-        workerConfig.sessionId =
-          message.payload.agentSessionId ||
-          workerConfig.sessionId ||
-          `session-${message.payload.messageId}`;
-        workerConfig.resumeSessionId = undefined;
+        // Subsequent message - continue the existing session
+        workerConfig.resumeSessionId = "continue"; // Special value to trigger --continue flag
         logger.info(
-          `Creating new Claude session ${workerConfig.sessionId} for message ${message.payload.messageId}`
+          `Continuing existing Claude session for message in thread ${message.payload.threadId}`
         );
       }
 
       // Create and execute worker
       this.currentWorker = new ClaudeWorker(workerConfig);
       await this.currentWorker.execute();
-
-      // Update lastSessionId after successful execution - use the actual session ID that was used
-      // If we resumed, keep the same lastSessionId; if new session, update it
-      if (workerConfig.sessionId) {
-        this.lastSessionId = workerConfig.sessionId;
-      }
+      
       logger.info(
-        `✅ Successfully processed message ${message.payload.messageId}, session ${this.lastSessionId || "none"} saved for potential resume`
+        `✅ Successfully processed message ${message.payload.messageId} in thread ${message.payload.threadId}`
       );
     } catch (error) {
       logger.error(

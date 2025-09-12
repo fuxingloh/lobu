@@ -113,70 +113,16 @@ export class QueueConsumer {
     );
 
     try {
-      // Create a more readable deployment name using user ID and last 6 chars of thread ID
-      const shortThreadId = data.threadId.replace('.', '-').slice(-10); // Last 10 chars, replace dot with dash
+      // For consistent worker naming, always use the targetThreadId if available, otherwise use threadId
+      // This ensures the first message and subsequent messages in a thread use the same worker
+      const effectiveThreadId = data.routingMetadata?.targetThreadId || data.threadId;
+      
+      // Create a more readable deployment name using user ID and last 10 chars of thread ID
+      const shortThreadId = effectiveThreadId.replace('.', '-').slice(-10); // Last 10 chars, replace dot with dash
       const shortUserId = data.userId.toLowerCase().slice(0, 8); // First 8 chars of user ID
       const deploymentName = `peerbot-worker-${shortUserId}-${shortThreadId}`;
-      const isNewThread = !data.routingMetadata?.targetThreadId; // New thread if no parent thread
-      const teamId = data.platformMetadata?.teamId;
 
-      if (isNewThread) {
-        // New thread - create deployment
-        console.log(
-          `New thread ${data.threadId} - creating deployment ${deploymentName}`
-        );
-
-        await Sentry.startSpan(
-          {
-            name: "orchestrator.create_worker_deployment",
-            op: "orchestrator.deployment_management",
-            attributes: {
-              "user.id": data.userId,
-              "thread.id": data.threadId,
-              "deployment.name": deploymentName,
-            },
-          },
-          async () => {
-            await this.deploymentManager.createWorkerDeployment(
-              data.userId,
-              data.threadId,
-              data
-            );
-          }
-        );
-        console.log(`✅ Created deployment: ${deploymentName}`);
-
-        // Skip immediate reconciliation - let the periodic cleanup handle it
-        // This avoids potential issues with immediate Docker API calls
-        // await this.deploymentManager.reconcileDeployments();
-      } else {
-        // Existing thread - ensure deployment is scaled to 1
-        console.log(
-          `Existing thread ${data.threadId} - ensuring deployment ${deploymentName} is running`
-        );
-
-        try {
-          await this.deploymentManager.scaleDeployment(deploymentName, 1);
-          console.log(`✅ Scaled deployment ${deploymentName} to 1`);
-        } catch (_error) {
-          // Deployment doesn't exist, recreate it
-          console.log(
-            `Deployment ${deploymentName} doesn't exist, recreating...`
-          );
-          await this.deploymentManager.createWorkerDeployment(
-            data.userId,
-            data.threadId,
-            data
-          );
-          console.log(`✅ Recreated deployment: ${deploymentName}`);
-
-          // Skip immediate reconciliation - let the periodic cleanup handle it
-          // This avoids potential issues with immediate Docker API calls
-          // await this.deploymentManager.reconcileDeployments();
-        }
-      }
-
-      // Send message to worker queue
+      // 1) Send to thread queue immediately (pgboss persists; worker will drain on attach)
       await Sentry.startSpan(
         {
           name: "orchestrator.send_to_worker_queue",
@@ -192,10 +138,58 @@ export class QueueConsumer {
         }
       );
 
-      // Update deployment activity annotation for simplified tracking
-      await this.deploymentManager.updateDeploymentActivity(deploymentName);
+      console.log(`✅ Enqueued message to thread queue for ${deploymentName}`);
 
-      console.log(`✅ Message job ${jobId} completed successfully`);
+      // 2) Ensure worker exists in the background (don’t block queue send)
+      (async () => {
+        try {
+          // Check if this is truly a new thread by looking for existing deployment
+          const existingDeployments = await this.deploymentManager.listDeployments();
+          const isNewThread = !existingDeployments.some(
+            (d) => d.deploymentName === deploymentName
+          );
+
+          if (isNewThread) {
+            console.log(
+              `New thread ${data.threadId} - creating deployment ${deploymentName}`
+            );
+            await this.deploymentManager.createWorkerDeployment(
+              data.userId,
+              data.threadId,
+              data
+            );
+            console.log(`✅ Created deployment: ${deploymentName}`);
+          } else {
+            console.log(
+              `Existing thread ${data.threadId} - ensuring worker ${deploymentName} exists`
+            );
+            try {
+              await this.deploymentManager.scaleDeployment(deploymentName, 1);
+              console.log(`✅ Scaled existing worker ${deploymentName} to 1`);
+            } catch (_error) {
+              console.log(
+                `Worker ${deploymentName} doesn't exist, creating it for thread ${data.threadId}`
+              );
+              await this.deploymentManager.createWorkerDeployment(
+                data.userId,
+                data.threadId,
+                data
+              );
+              console.log(`✅ Created worker: ${deploymentName}`);
+            }
+          }
+
+          // Update deployment activity annotation for simplified tracking
+          await this.deploymentManager.updateDeploymentActivity(deploymentName);
+        } catch (bgError) {
+          console.warn(
+            `⚠️  Background ensure worker failed for ${deploymentName}:`,
+            bgError instanceof Error ? bgError.message : String(bgError)
+          );
+        }
+      })();
+
+      console.log(`✅ Message job ${jobId} queued successfully`);
     } catch (error) {
       Sentry.captureException(error);
       console.error(`❌ Message job ${jobId} failed:`, error);

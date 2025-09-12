@@ -22,15 +22,19 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 echo "🔍 Environment variables provided by orchestrator:"
-echo "  - SESSION_KEY: ${SESSION_KEY:-not set}"
 echo "  - USER_ID: ${USER_ID:-not set}" 
 echo "  - CHANNEL_ID: ${CHANNEL_ID:-not set}"
 echo "  - REPOSITORY_URL: ${REPOSITORY_URL:-not set}"
 echo "  - DEPLOYMENT_NAME: ${DEPLOYMENT_NAME:-not set}"
 
 # Basic validation for critical variables
-if [[ -z "${SESSION_KEY:-}" ]]; then
-    echo "❌ Error: SESSION_KEY is required"
+if [[ -z "${USER_ID:-}" ]]; then
+    echo "❌ Error: USER_ID is required"
+    exit 1
+fi
+
+if [[ -z "${DEPLOYMENT_NAME:-}" ]]; then
+    echo "❌ Error: DEPLOYMENT_NAME is required"
     exit 1
 fi
 

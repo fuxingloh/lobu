@@ -396,6 +396,7 @@ async function runTest(messages, timeout = 30000, options = {}) {
     jsonOutput = false,
     waitForResponse = false,
     threadTs = null,
+    noWait = false,
   } = options;
   const quiet = jsonOutput; // JSON mode suppresses all output
   const isSingleMessage = messages.length === 1;
@@ -461,6 +462,23 @@ async function runTest(messages, timeout = 30000, options = {}) {
           );
         }
         console.log("");
+      }
+      
+      // If --no-wait flag is set, return immediately after first message
+      if (noWait && i === 0) {
+        const returnTs = threadTs || msg.ts;
+        if (jsonOutput) {
+          console.log(JSON.stringify({
+            success: true,
+            thread_ts: returnTs,
+            message_ts: msg.ts,
+            channel: targetChannel,
+          }));
+        } else {
+          console.log(`\nTo reply to this thread, use:`);
+          console.log(`./slack-qa-bot.js --thread-ts ${returnTs} "your reply"`);
+        }
+        process.exit(0);
       }
 
       // Wait a bit between messages
@@ -529,6 +547,7 @@ let timeout = 30000; // default 30 seconds
 let jsonOutput = false;
 let waitForResponse = false;
 let threadTs = null; // Thread timestamp to post to
+let noWait = false; // Skip waiting for bot reaction
 
 // Parse options
 for (let i = 0; i < args.length; i++) {
@@ -542,6 +561,10 @@ for (let i = 0; i < args.length; i++) {
     i--;
   } else if (args[i] === "--wait-for-response") {
     waitForResponse = true;
+    args.splice(i, 1);
+    i--;
+  } else if (args[i] === "--no-wait") {
+    noWait = true;
     args.splice(i, 1);
     i--;
   } else if (args[i] === "--thread-ts" && args[i + 1]) {
@@ -600,7 +623,7 @@ for (let i = 0; i < args.length; i++) {
 messages = args.filter((arg) => arg.trim().length > 0);
 
 if (messages.length > 0) {
-  runTest(messages, timeout, { jsonOutput, waitForResponse, threadTs });
+  runTest(messages, timeout, { jsonOutput, waitForResponse, threadTs, noWait });
 } else {
   // Run default tests
   runTest(

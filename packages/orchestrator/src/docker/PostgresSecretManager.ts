@@ -83,18 +83,8 @@ export class PostgresSecretManager extends BaseSecretManager {
 
       const userId = userResult.rows[0].id;
 
-      // Parse the DATABASE_URL to extract components and reconstruct with user credentials
-      const dbUrl = new URL(this.config.database.connectionString);
-      dbUrl.username = username;
-      dbUrl.password = password;
-
       // Store each credential as a separate row in user_environ
       const credentials = [
-        {
-          name: "PEERBOT_DATABASE_URL",
-          value: dbUrl.toString(),
-          type: "system",
-        },
         { name: "PEERBOT_DATABASE_USERNAME", value: username, type: "system" },
         { name: "PEERBOT_DATABASE_PASSWORD", value: password, type: "system" },
       ];

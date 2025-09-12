@@ -108,14 +108,22 @@ function prepareRunConfig(
 } {
   const claudeArgs = [...BASE_ARGS];
 
-  // Always use session management for persistence
-  if (options.resumeSessionId) {
-    // Resume existing session
+  // Session management: use --continue for resuming, --session-id for new sessions
+  if (options.resumeSessionId === "continue") {
+    // Special value to trigger --continue flag (no ID needed)
+    claudeArgs.push("--continue");
+    logger.info(`Continuing previous Claude session in workspace`);
+  } else if (options.resumeSessionId) {
+    // Resume specific session ID (for backwards compatibility)
     claudeArgs.push("--resume", options.resumeSessionId);
     logger.info(`Resuming Claude session: ${options.resumeSessionId}`);
+  } else if (options.sessionId) {
+    // Create new session with specific ID
+    claudeArgs.push("--session-id", options.sessionId);
+    logger.info(`Creating new Claude session: ${options.sessionId}`);
   } else {
-    // Create new session with specific ID for persistence
-    const sessionId = options.sessionId || randomUUID();
+    // Create new session with generated UUID
+    const sessionId = randomUUID();
     claudeArgs.push("--session-id", sessionId);
     logger.info(`Creating new Claude session: ${sessionId}`);
   }

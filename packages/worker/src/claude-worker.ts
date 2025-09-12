@@ -24,15 +24,17 @@ export class ClaudeWorker {
     this.sessionRunner = new ClaudeSessionRunner();
     this.workspaceManager = new WorkspaceManager(config.workspace);
 
-    // Initialize queue integration with database URL
-    const databaseUrl = process.env.PEERBOT_DATABASE_URL;
-    if (!databaseUrl) {
-      const error = new Error(
-        "PEERBOT_DATABASE_URL environment variable is required"
+    // Construct database URL from environment variables
+    if (!process.env.PEERBOT_DATABASE_HOST || 
+        !process.env.PEERBOT_DATABASE_PORT ||
+        !process.env.PEERBOT_DATABASE_USERNAME || 
+        !process.env.PEERBOT_DATABASE_PASSWORD) {
+      throw new Error(
+        "Database connection environment variables are required (PEERBOT_DATABASE_HOST, PEERBOT_DATABASE_PORT, PEERBOT_DATABASE_USERNAME, PEERBOT_DATABASE_PASSWORD)"
       );
-      logger.error("Failed to initialize QueueIntegration:", error);
-      throw error;
     }
+    
+    const databaseUrl = `postgresql://${process.env.PEERBOT_DATABASE_USERNAME}:${process.env.PEERBOT_DATABASE_PASSWORD}@${process.env.PEERBOT_DATABASE_HOST}:${process.env.PEERBOT_DATABASE_PORT}/peerbot`;
 
     this.queueIntegration = new QueueIntegration({
       databaseUrl: databaseUrl,
@@ -41,7 +43,9 @@ export class ClaudeWorker {
       messageId: config.slackResponseTs, // Always use the actual message timestamp from config
       botResponseTs: config.botResponseTs, // Pass bot response timestamp from config
       workspaceManager: this.workspaceManager,
-      claudeSessionId: config.sessionId || config.sessionKey, // Pass Claude session ID
+      // Only use actual session IDs, not the special "continue" value
+      claudeSessionId: config.sessionId || 
+        (config.resumeSessionId === "continue" ? undefined : config.resumeSessionId),
     });
   }
 
@@ -223,13 +227,15 @@ export class ClaudeWorker {
             context: sessionContext,
             options: {
               ...JSON.parse(this.config.claudeOptions),
-              // Use resumeSessionId for continuation, sessionId for new sessions
+              // Simple session management:
+              // - If resumeSessionId is set, it will trigger --continue
+              // - If sessionId is set, use it for new session
+              // - Otherwise let Claude generate one
               ...(this.config.resumeSessionId
                 ? { resumeSessionId: this.config.resumeSessionId }
-                : {}),
-              ...(this.config.sessionId && !this.config.resumeSessionId
-                ? { sessionId: this.config.sessionId }
-                : {}),
+                : this.config.sessionId
+                  ? { sessionId: this.config.sessionId }
+                  : {}),
             },
             onProgress: async (update) => {
               // Log timing for first output

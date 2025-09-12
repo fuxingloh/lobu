@@ -108,11 +108,9 @@ export class SlackDispatcher {
    */
   async start(): Promise<void> {
     try {
-      // Initialize Anthropic proxy if enabled (for both Socket and HTTP mode)
-      if (this.config.anthropicProxy?.enabled) {
-        this.anthropicProxy = createAnthropicProxy(this.config.anthropicProxy);
-        logger.info("✅ Anthropic proxy initialized");
-      }
+      // Initialize Anthropic proxy (always enabled for both Socket and HTTP mode)
+      this.anthropicProxy = createAnthropicProxy(this.config.anthropicProxy);
+      logger.info("✅ Anthropic proxy initialized");
 
       // Setup health endpoints will be called after event handlers are created
 
@@ -539,18 +537,15 @@ async function main() {
         retryDelay: parseInt(process.env.PGBOSS_RETRY_DELAY || "30", 10),
         expireInHours: parseInt(process.env.PGBOSS_EXPIRE_HOURS || "24", 10),
       },
-      // Anthropic proxy configuration (optional)
-      anthropicProxy:
-        process.env.ANTHROPIC_PROXY_ENABLED === "true"
-          ? {
-              enabled: true,
-              anthropicApiKey:
-                process.env.ANTHROPIC_API_KEY ||
-                process.env.CLAUDE_CODE_OAUTH_TOKEN!,
-              postgresConnectionString: process.env.DATABASE_URL!,
-              anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
-            }
-          : undefined,
+      // Anthropic proxy configuration (always enabled)
+      anthropicProxy: {
+        enabled: true,
+        anthropicApiKey:
+          process.env.ANTHROPIC_API_KEY ||
+          process.env.CLAUDE_CODE_OAUTH_TOKEN!,
+        postgresConnectionString: process.env.DATABASE_URL!,
+        anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
+      },
     };
 
     logger.info("Final config debug:", {

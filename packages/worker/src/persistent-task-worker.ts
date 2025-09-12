@@ -51,11 +51,17 @@ export class QueuePersistentClaudeWorker {
   }
 
   private buildConnectionString(): string {
-    // Use PEERBOT_DATABASE_URL from environment (required)
-    const connectionString = process.env.PEERBOT_DATABASE_URL;
-    if (!connectionString) {
-      throw new Error("PEERBOT_DATABASE_URL environment variable is required");
+    // Build connection string from environment variables
+    if (!process.env.PEERBOT_DATABASE_HOST || 
+        !process.env.PEERBOT_DATABASE_PORT ||
+        !process.env.PEERBOT_DATABASE_USERNAME || 
+        !process.env.PEERBOT_DATABASE_PASSWORD) {
+      throw new Error(
+        "Database connection environment variables are required (PEERBOT_DATABASE_HOST, PEERBOT_DATABASE_PORT, PEERBOT_DATABASE_USERNAME, PEERBOT_DATABASE_PASSWORD)"
+      );
     }
+    
+    const connectionString = `postgresql://${process.env.PEERBOT_DATABASE_USERNAME}:${process.env.PEERBOT_DATABASE_PASSWORD}@${process.env.PEERBOT_DATABASE_HOST}:${process.env.PEERBOT_DATABASE_PORT}/peerbot`;
     return connectionString;
   }
 

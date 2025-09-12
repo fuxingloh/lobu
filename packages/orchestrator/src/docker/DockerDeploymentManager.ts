@@ -102,18 +102,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
       const workspaceDir = `${projectRoot}/workspaces/${threadId}`;
 
       // Environment variables
-      // Parse the DATABASE_URL to extract components and reconstruct with user credentials
-      const dbUrl = new URL(this.config.database.connectionString);
-      dbUrl.username = username;
       const password = await this.getPasswordForUser(username);
-      dbUrl.password = password;
-
-      // On macOS/Windows, Docker containers need to use host.docker.internal instead of localhost
-      if (process.platform === "darwin" || process.platform === "win32") {
-        if (dbUrl.hostname === "localhost" || dbUrl.hostname === "127.0.0.1") {
-          dbUrl.hostname = "host.docker.internal";
-        }
-      }
 
       // Get common environment variables from base class
       const commonEnvVars = this.generateEnvironmentVariables(
@@ -125,9 +114,18 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         userEnvVars
       );
 
+      // On macOS/Windows, Docker containers need to use host.docker.internal instead of localhost
+      if (process.platform === "darwin" || process.platform === "win32") {
+        if (commonEnvVars.PEERBOT_DATABASE_HOST === "localhost" || 
+            commonEnvVars.PEERBOT_DATABASE_HOST === "127.0.0.1") {
+          commonEnvVars.PEERBOT_DATABASE_HOST = "host.docker.internal";
+        }
+      }
+
       const envVars = [
-        `PEERBOT_DATABASE_URL=${dbUrl.toString()}`,
-        // Database URL already contains username and password, no need to pass them separately
+        `PEERBOT_DATABASE_USERNAME=${username}`,
+        `PEERBOT_DATABASE_PASSWORD=${password}`,
+        `ANTHROPIC_API_KEY=${username}:${password}`,
         // Convert common environment variables to Docker format
         ...Object.entries(commonEnvVars).map(
           ([key, value]) => `${key}=${value}`
@@ -277,6 +275,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
       // Don't throw - activity tracking should not block message processing
     }
   }
+
 
   private async getPasswordForUser(username: string): Promise<string> {
     // Get password from the secret manager

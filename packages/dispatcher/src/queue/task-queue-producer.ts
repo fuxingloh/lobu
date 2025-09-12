@@ -18,7 +18,6 @@ export interface BotContext {
 export interface WorkerDeploymentPayload {
   userId: string;
   botId: string;
-  agentSessionId: string;
   threadId: string;
   platform: string;
   platformUserId: string;
@@ -28,6 +27,11 @@ export interface WorkerDeploymentPayload {
   platformMetadata: Record<string, any>;
   claudeOptions: Record<string, any>;
   environmentVariables?: Record<string, string>;
+  // Routing metadata for thread-specific processing
+  routingMetadata?: {
+    targetThreadId: string;
+    userId: string;
+  };
 }
 
 export interface ThreadMessagePayload {
@@ -38,13 +42,11 @@ export interface ThreadMessagePayload {
   channelId: string;
   messageId: string;
   messageText: string;
-  agentSessionId?: string;
   platformMetadata: Record<string, any>;
   claudeOptions: Record<string, any>;
   // Routing metadata for thread-specific processing
   routingMetadata?: {
     targetThreadId: string;
-    agentSessionId: string;
     userId: string;
   };
 }

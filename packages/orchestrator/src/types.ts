@@ -30,7 +30,6 @@ export interface OrchestratorConfig {
 export interface WorkerDeploymentRequest {
   userId: string;
   botId: string;
-  agentSessionId: string;
   threadId: string;
   platform: string;
   platformUserId: string;
@@ -66,7 +65,6 @@ export interface ThreadDeployment {
   threadId: string;
   userId: string;
   deploymentName: string;
-  agentSessionId: string;
   createdAt: Date;
   isActive: boolean;
   lastHeartbeat: Date;

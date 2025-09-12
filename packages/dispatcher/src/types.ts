@@ -52,7 +52,7 @@ export interface DispatcherConfig {
   sessionTimeoutMinutes: number;
   logLevel?: LogLevel;
   queues: QueueConfig;
-  anthropicProxy?: AnthropicProxyConfig;
+  anthropicProxy: AnthropicProxyConfig; // Always required now
 }
 
 export interface SlackContext {
@@ -84,7 +84,6 @@ export interface WorkerJobRequest {
 export interface WorkerDeploymentRequest {
   userId: string;
   botId: string;
-  agentSessionId: string;
   threadId: string;
   platform: string;
   platformUserId: string;
@@ -104,7 +103,6 @@ export interface ThreadSession {
   username: string;
   jobName?: string;
   repositoryUrl: string;
-  agentSessionId?: string; // Agent session ID for resumption
   lastActivity: number;
   status:
     | "pending"

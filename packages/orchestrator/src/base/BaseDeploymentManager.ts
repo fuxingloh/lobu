@@ -167,11 +167,14 @@ export abstract class BaseDeploymentManager {
     includeSecrets: boolean = true,
     userEnvVars: Record<string, string> = {}
   ): { [key: string]: string } {
+    // Parse database connection string to extract host and port
+    const dbUrl = new URL(this.config.database.connectionString);
+    const dbHost = dbUrl.hostname;
+    const dbPort = dbUrl.port || "5432"; // Default PostgreSQL port
+    
     const envVars: { [key: string]: string } = {
       USER_ID: userId,
       DEPLOYMENT_NAME: deploymentName,
-      SESSION_KEY:
-        messageData?.agentSessionId || `session-${userId}-${Date.now()}`,
       CHANNEL_ID: messageData?.channelId || "",
       REPOSITORY_URL:
         messageData?.platformMetadata?.repositoryUrl ||
@@ -185,6 +188,8 @@ export abstract class BaseDeploymentManager {
       SLACK_TEAM_ID: messageData?.platformMetadata?.teamId || "",
       SLACK_CHANNEL_ID: messageData?.channelId || "",
       SLACK_THREAD_TS: messageData?.threadId || "",
+      PEERBOT_DATABASE_HOST: dbHost,
+      PEERBOT_DATABASE_PORT: dbPort,
     };
 
     // Add optional environment variables only if they exist
@@ -197,15 +202,7 @@ export abstract class BaseDeploymentManager {
       if (process.env.GITHUB_TOKEN) {
         envVars.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
       }
-
-      // Only include OAuth token if proxy is disabled
-      // When proxy is enabled, the token is handled by the proxy itself
-      if (
-        process.env.CLAUDE_CODE_OAUTH_TOKEN &&
-        process.env.ANTHROPIC_PROXY_ENABLED !== "true"
-      ) {
-        envVars.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-      }
+      // OAuth token is now always handled by the proxy in dispatcher
     }
 
     if (process.env.CLAUDE_ALLOWED_TOOLS) {
@@ -227,43 +224,35 @@ export abstract class BaseDeploymentManager {
       });
     }
 
-    // Configure Anthropic API proxy if enabled
-    if (process.env.ANTHROPIC_PROXY_ENABLED === "true") {
-      const dispatcherService =
-        process.env.DISPATCHER_SERVICE_NAME || "peerbot-dispatcher";
-      const dispatcherPort = process.env.DISPATCHER_SERVICE_PORT || "8080";
-      const namespace = process.env.KUBERNETES_NAMESPACE || "peerbot";
+    // Always configure Anthropic API proxy
+    const dispatcherService =
+      process.env.DISPATCHER_SERVICE_NAME || "peerbot-dispatcher";
+    const dispatcherPort = process.env.DISPATCHER_SERVICE_PORT || "8080";
+    const namespace = process.env.KUBERNETES_NAMESPACE || "peerbot";
 
-      // Detect if we're running in Docker mode (DEPLOYMENT_MODE=docker) or Kubernetes mode
-      const isDockerMode = process.env.DEPLOYMENT_MODE === "docker";
-      let proxyUrl: string;
+    // Detect if we're running in Docker mode (DEPLOYMENT_MODE=docker) or Kubernetes mode
+    const isDockerMode = process.env.DEPLOYMENT_MODE === "docker";
+    let proxyUrl: string;
 
-      if (isDockerMode) {
-        // For Docker mode, use localhost (host.docker.internal doesn't work reliably)
-        // The dispatcher runs on port 8080 in Docker mode for the proxy endpoint
-        proxyUrl = `http://host.docker.internal:8080/api/anthropic`;
-      } else {
-        // For Kubernetes mode, use internal service DNS  
-        // The dispatcher runs on port 8080 for the proxy endpoint
-        proxyUrl = `http://${dispatcherService}.${namespace}.svc.cluster.local:${dispatcherPort}/api/anthropic`;
-      }
-
-      // Set the base URL to use dispatcher's proxy
-      envVars.ANTHROPIC_BASE_URL = proxyUrl;
-
-      // ANTHROPIC_API_KEY will be set by the container command override
-      // which extracts the credentials from PEERBOT_DATABASE_URL
-
-      console.log(
-        `🔧 Configured worker to use Anthropic proxy at ${envVars.ANTHROPIC_BASE_URL}`
-      );
-    } else if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-      // If proxy is disabled, pass OAuth token to Claude Code in the expected env var
-      envVars.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-      console.log(
-        `🔧 Using OAuth token directly with Claude Code (proxy disabled)`
-      );
+    if (isDockerMode) {
+      // For Docker mode, use host.docker.internal
+      // The dispatcher runs on port 8080 in Docker mode for the proxy endpoint
+      proxyUrl = `http://host.docker.internal:8080/api/anthropic`;
+    } else {
+      // For Kubernetes mode, use internal service DNS  
+      // The dispatcher runs on port 8080 for the proxy endpoint
+      proxyUrl = `http://${dispatcherService}.${namespace}.svc.cluster.local:${dispatcherPort}/api/anthropic`;
     }
+
+    // Set the base URL to use dispatcher's proxy
+    envVars.ANTHROPIC_BASE_URL = proxyUrl;
+
+    // ANTHROPIC_API_KEY will be set by the container command override
+    // which uses the database username and password
+
+    console.log(
+      `🔧 Configured worker to use Anthropic proxy at ${envVars.ANTHROPIC_BASE_URL}`
+    );
 
     // Merge user environment variables (they take precedence over defaults)
     Object.entries(userEnvVars).forEach(([key, value]) => {

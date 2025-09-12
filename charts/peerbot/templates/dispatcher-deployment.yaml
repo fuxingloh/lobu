@@ -211,10 +211,7 @@ spec:
                   key: encryption-key
                   optional: true
             
-            # Anthropic proxy configuration
-            {{- if .Values.dispatcher.anthropicProxy.enabled }}
-            - name: ANTHROPIC_PROXY_ENABLED
-              value: "true"
+            # Anthropic proxy configuration (always enabled)
             - name: CLAUDE_CODE_OAUTH_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -223,7 +220,6 @@ spec:
             {{- if .Values.dispatcher.anthropicProxy.baseUrl }}
             - name: ANTHROPIC_BASE_URL
               value: "{{ .Values.dispatcher.anthropicProxy.baseUrl }}"
-            {{- end }}
             {{- end }}
       
       {{- with .Values.nodeSelector }}

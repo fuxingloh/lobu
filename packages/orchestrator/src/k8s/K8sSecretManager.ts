@@ -72,13 +72,7 @@ export class K8sSecretManager extends BaseSecretManager {
     const coreV1Api = this.ensureCoreV1Api();
 
     try {
-      // Parse the DATABASE_URL to extract components and reconstruct with user credentials
-      const dbUrl = new URL(this.config.database.connectionString);
-      dbUrl.username = username;
-      dbUrl.password = password;
-
       const secretData = {
-        PEERBOT_DATABASE_URL: Buffer.from(dbUrl.toString()).toString("base64"),
         PEERBOT_DATABASE_USERNAME: Buffer.from(username).toString("base64"),
         PEERBOT_DATABASE_PASSWORD: Buffer.from(password).toString("base64"),
       };

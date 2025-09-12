@@ -185,10 +185,6 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       false,
       userEnvVars
     );
-    
-    // Extract user password from DATABASE_URL for proxy authentication
-    // We'll pass it as a separate env var that the worker can use
-    // Note: The actual password is in the secret, we just need to reference it
 
     const deployment: SimpleDeployment = {
       apiVersion: "apps/v1",
@@ -281,16 +277,6 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                   readOnlyRootFilesystem: false,
                 },
                 env: [
-                  // User-specific database connection from secret
-                  {
-                    name: "PEERBOT_DATABASE_URL",
-                    valueFrom: {
-                      secretKeyRef: {
-                        name: `peerbot-user-secret-${username.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}`,
-                        key: "PEERBOT_DATABASE_URL",
-                      },
-                    },
-                  },
                   // Get the database username for constructing ANTHROPIC_API_KEY
                   {
                     name: "PEERBOT_DATABASE_USERNAME",
@@ -301,7 +287,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                       },
                     },
                   },
-                  // Get the database password separately for constructing ANTHROPIC_API_KEY
+                  // Get the database password for constructing ANTHROPIC_API_KEY
                   {
                     name: "PEERBOT_DATABASE_PASSWORD",
                     valueFrom: {
@@ -328,15 +314,6 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                       secretKeyRef: {
                         name: "peerbot-secrets",
                         key: "github-token",
-                      },
-                    },
-                  },
-                  {
-                    name: "CLAUDE_CODE_OAUTH_TOKEN",
-                    valueFrom: {
-                      secretKeyRef: {
-                        name: "peerbot-secrets",
-                        key: "claude-code-oauth-token",
                       },
                     },
                   },
@@ -506,4 +483,5 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       // Don't throw - activity tracking should not block message processing
     }
   }
+
 }

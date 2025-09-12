@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { randomUUID } from "node:crypto";
 import { SessionUtils } from "@peerbot/shared";
 import type { App } from "@slack/bolt";
 import type { GitHubRepositoryManager } from "../github/repository-manager";
@@ -446,13 +445,8 @@ export class SlackEventHandlers {
         client
       );
 
-      // Generate unique Claude session ID for each message to ensure each gets its own bot response
-      // Don't cache - each user message should create a new Claude session and bot message
-      const existingClaudeSessionId = randomUUID();
-      const isNewSession = true; // Always treat as new session
-      logger.info(
-        `Generated new Claude session ID ${existingClaudeSessionId} for message ${context.messageTs} in thread ${sessionKey}`
-      );
+      // Check if this is a new session (not a thread reply)
+      const isNewSession = !context.threadTs;
 
       // Check repository cache first
       let repository;
@@ -479,7 +473,6 @@ export class SlackEventHandlers {
         userId: context.userId,
         username,
         repositoryUrl: repository.repositoryUrl,
-        agentSessionId: existingClaudeSessionId,
         lastActivity: Date.now(),
         status: "pending",
         createdAt: Date.now(),
@@ -517,7 +510,6 @@ export class SlackEventHandlers {
         const deploymentPayload: WorkerDeploymentPayload = {
           userId: context.userId,
           botId: this.getBotId(),
-          agentSessionId: existingClaudeSessionId || sessionKey,
           threadId: threadTs,
           platform: "slack",
           platformUserId: context.userId,
@@ -537,8 +529,11 @@ export class SlackEventHandlers {
             allowedTools: this.config.claude.allowedTools,
             model: this.config.claude.model,
             timeoutMinutes: this.config.sessionTimeoutMinutes.toString(),
-            // Always use sessionId to create new sessions - disable resume functionality
-            sessionId: existingClaudeSessionId,
+          },
+          // Add routing metadata for first message to ensure consistent worker naming
+          routingMetadata: {
+            targetThreadId: threadTs,
+            userId: context.userId,
           },
         };
 
@@ -559,7 +554,6 @@ export class SlackEventHandlers {
           channelId: context.channelId,
           messageId: context.messageTs,
           messageText: userRequest,
-          agentSessionId: existingClaudeSessionId,
           platformMetadata: {
             teamId: context.teamId,
             userDisplayName: context.userDisplayName,
@@ -572,13 +566,10 @@ export class SlackEventHandlers {
           claudeOptions: {
             ...this.config.claude,
             timeoutMinutes: this.config.sessionTimeoutMinutes.toString(),
-            // Always use sessionId to create new sessions - disable resume functionality
-            sessionId: existingClaudeSessionId,
           },
           // Add routing metadata for thread-specific processing
           routingMetadata: {
             targetThreadId: threadTs,
-            agentSessionId: existingClaudeSessionId || sessionKey,
             userId: context.userId,
           },
         };
@@ -587,7 +578,7 @@ export class SlackEventHandlers {
           await this.queueProducer.enqueueThreadMessage(threadPayload);
 
         logger.info(
-          `Enqueued thread message job ${jobId} for continuing session ${existingClaudeSessionId}`
+          `Enqueued thread message job ${jobId} for thread ${threadTs}`
         );
         threadSession.status = "running"; // Mark as running since worker is processing
       }
