@@ -235,9 +235,10 @@ export abstract class BaseDeploymentManager {
     let proxyUrl: string;
 
     if (isDockerMode) {
-      // For Docker mode, use host.docker.internal
+      // For Docker mode with Docker Compose, use the dispatcher container name
       // The dispatcher runs on port 8080 in Docker mode for the proxy endpoint
-      proxyUrl = `http://host.docker.internal:8080/api/anthropic`;
+      // Using the container name works because they're on the same Docker network
+      proxyUrl = `http://peerbot-dispatcher-1:8080/api/anthropic`;
     } else {
       // For Kubernetes mode, use internal service DNS  
       // The dispatcher runs on port 8080 for the proxy endpoint
