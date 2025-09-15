@@ -1081,6 +1081,7 @@ Branch: ${branch}`;
         });
       } else {
         // Show login button if GitHub OAuth is configured
+        logger.info(`GitHub OAuth config check - clientId: ${this.config.github.clientId}, has value: ${!!this.config.github.clientId}`);
         if (this.config.github.clientId) {
           // Use INGRESS_URL if provided, otherwise use default dispatcher URL
           const oauthBaseUrl =
@@ -1089,11 +1090,26 @@ Branch: ${branch}`;
               ? "http://localhost:8080"
               : "http://dispatcher:8080");
 
+          // Show current repository or organization/username as a clickable link
+          let githubText = "*GitHub:* ";
+          let repoUrl = "";
+          
+          if (repository && repository.repositoryUrl) {
+            repoUrl = repository.repositoryUrl;
+            githubText += `<${repoUrl}|${repoUrl}>`;
+          } else if (this.config.github.organization) {
+            repoUrl = `https://github.com/${this.config.github.organization}/${username}`;
+            githubText += `<${repoUrl}|${repoUrl}>`;
+          } else {
+            repoUrl = `https://github.com/${username}`;
+            githubText += `<${repoUrl}|${repoUrl}>`;
+          }
+
           blocks.push({
             type: "section",
             text: {
               type: "mrkdwn",
-              text: "*GitHub:* Not connected",
+              text: githubText,
             },
             accessory: {
               type: "button",

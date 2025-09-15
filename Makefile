@@ -190,22 +190,59 @@ down:
 
 # Clean up everything including volumes
 clean:
-	@echo "🧹 Cleaning up all peerbot resources..."
-	@# Stop and remove all containers with peerbot labels
-	@docker ps -q --filter "label=com.docker.compose.project=peerbot" | xargs -r docker stop 2>/dev/null || true
-	@docker ps -aq --filter "label=com.docker.compose.project=peerbot" | xargs -r docker rm 2>/dev/null || true
-	@docker ps -q --filter "label=app.kubernetes.io/component=worker" | xargs -r docker stop 2>/dev/null || true
-	@docker ps -aq --filter "label=app.kubernetes.io/component=worker" | xargs -r docker rm 2>/dev/null || true
-	@# Clean up with docker compose (including volumes)
-	@docker compose -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true
-	@docker compose down -v --remove-orphans 2>/dev/null || true
-	@# Clean up Kubernetes resources if they exist
-	@helm uninstall peerbot -n peerbot 2>/dev/null || true
-	@kubectl delete namespace peerbot 2>/dev/null || true
-	@echo "✅ All Docker containers, volumes, and K8s resources cleaned up"
+	@# Load deployment mode from .env
+	@if [ -f .env ]; then \
+		DEPLOYMENT_MODE=$$(grep "^DEPLOYMENT_MODE=" .env | cut -d'=' -f2 | tr -d ' '); \
+	else \
+		DEPLOYMENT_MODE="docker"; \
+	fi; \
+	echo "🧹 Cleaning up peerbot resources (mode: $$DEPLOYMENT_MODE)..."; \
+	if [ "$$DEPLOYMENT_MODE" = "docker" ]; then \
+		echo "🐳 Cleaning Docker Compose resources..."; \
+		docker ps -q --filter "label=com.docker.compose.project=peerbot" | xargs -r docker stop 2>/dev/null || true; \
+		docker ps -aq --filter "label=com.docker.compose.project=peerbot" | xargs -r docker rm 2>/dev/null || true; \
+		docker ps -q --filter "label=app.kubernetes.io/component=worker" | xargs -r docker stop 2>/dev/null || true; \
+		docker ps -aq --filter "label=app.kubernetes.io/component=worker" | xargs -r docker rm 2>/dev/null || true; \
+		docker compose -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true; \
+		docker compose down -v --remove-orphans 2>/dev/null || true; \
+		echo "✅ Docker containers and volumes cleaned up"; \
+	elif [ "$$DEPLOYMENT_MODE" = "kubernetes" ] || [ "$$DEPLOYMENT_MODE" = "k8s" ]; then \
+		echo "☸️  Cleaning Kubernetes resources..."; \
+		helm uninstall peerbot -n peerbot 2>/dev/null || true; \
+		kubectl delete namespace peerbot --wait=false 2>/dev/null || true; \
+		echo "✅ Kubernetes resources cleaned up"; \
+	else \
+		echo "⚠️  Unknown deployment mode: $$DEPLOYMENT_MODE"; \
+		echo "Cleaning both Docker and Kubernetes resources..."; \
+		docker ps -q --filter "label=com.docker.compose.project=peerbot" | xargs -r docker stop 2>/dev/null || true; \
+		docker ps -aq --filter "label=com.docker.compose.project=peerbot" | xargs -r docker rm 2>/dev/null || true; \
+		docker compose -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true; \
+		helm uninstall peerbot -n peerbot 2>/dev/null || true; \
+		kubectl delete namespace peerbot --wait=false 2>/dev/null || true; \
+		echo "✅ All resources cleaned up"; \
+	fi
 
 clean-workers:
-	@echo "🧹 Removing all worker containers..."
-	@# Use xargs without -r flag for macOS compatibility
-	@docker ps -a --filter "label=app.kubernetes.io/component=worker" -q | xargs docker rm -f 2>/dev/null || true
-	@echo "✅ All worker containers removed. New workers will use updated code"
+	@# Load deployment mode from .env
+	@if [ -f .env ]; then \
+		DEPLOYMENT_MODE=$$(grep "^DEPLOYMENT_MODE=" .env | cut -d'=' -f2 | tr -d ' '); \
+	else \
+		DEPLOYMENT_MODE="docker"; \
+	fi; \
+	echo "🧹 Removing worker containers (mode: $$DEPLOYMENT_MODE)..."; \
+	if [ "$$DEPLOYMENT_MODE" = "docker" ]; then \
+		echo "🐳 Removing Docker worker containers..."; \
+		docker ps -a --filter "label=app.kubernetes.io/component=worker" -q | xargs docker rm -f 2>/dev/null || true; \
+		echo "✅ Docker worker containers removed"; \
+	elif [ "$$DEPLOYMENT_MODE" = "kubernetes" ] || [ "$$DEPLOYMENT_MODE" = "k8s" ]; then \
+		echo "☸️  Removing Kubernetes worker pods..."; \
+		kubectl delete pods -n peerbot -l app.kubernetes.io/component=worker --wait=false 2>/dev/null || true; \
+		echo "✅ Kubernetes worker pods removed"; \
+	else \
+		echo "⚠️  Unknown deployment mode: $$DEPLOYMENT_MODE"; \
+		echo "Removing both Docker and Kubernetes workers..."; \
+		docker ps -a --filter "label=app.kubernetes.io/component=worker" -q | xargs docker rm -f 2>/dev/null || true; \
+		kubectl delete pods -n peerbot -l app.kubernetes.io/component=worker --wait=false 2>/dev/null || true; \
+		echo "✅ All worker resources removed"; \
+	fi; \
+	echo "✅ New workers will use updated code"

@@ -8,6 +8,7 @@ on:
       - 'packages/**'
       - 'Dockerfile.*'
       - '.github/workflows/docker-publish.yml'
+      - 'charts/peerbot/**'
   release:
     types: [published]
   repository_dispatch:

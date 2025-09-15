@@ -19,6 +19,11 @@ on:
         required: false
         default: 'latest'
         type: string
+      skip_docker_check:
+        description: 'Skip Docker build check (use existing images)'
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types: [deploy-community]
 
@@ -32,8 +37,8 @@ jobs:
     name: Deploy to OVH Kubernetes
     runs-on: ubuntu-latest
     environment: community
-    # Only run if the docker build workflow succeeded or this was manually triggered
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    # Only run if the docker build workflow succeeded, manually triggered with skip_docker_check, or repository dispatch
+    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_docker_check == 'true') || github.event_name == 'repository_dispatch' }}
     
     steps:
       - name: Checkout
