@@ -154,99 +154,14 @@ export class AnthropicProxy {
     );
 
     if (isOAuthToken) {
-      logger.info(`🔧 OAuth token detected - using Claude Code CLI pattern`);
+      logger.info(`🔧 OAuth token detected - passthrough body (no tool override)`);
 
-      // Parse request body to check model
-      let requestData: any = {};
-      try {
-        if (body) {
-          requestData = typeof body === "string" ? JSON.parse(body) : body;
-          logger.info(`🔧 Parsed request data:`, {
-            model: requestData.model,
-            hasMessages: !!requestData.messages,
-          });
-        }
-      } catch (e) {
-        logger.error(`🔧 Error parsing body:`, e);
-        requestData = {};
-      }
-
-      const model = requestData.model || "";
-      const isExpensiveModel = ["sonnet", "opus"].some((tier) =>
-        model.toLowerCase().includes(tier),
-      );
-
-      if (isExpensiveModel) {
-        logger.info(
-          `🎯 Expensive model detected (${model}) - enhancing request for Claude Code CLI compatibility`,
-        );
-
-        // Transform request to look like Claude Code CLI
-        const enhancedBody = { ...requestData };
-
-        // Add Claude Code system prompt
-        enhancedBody.system = [
-          {
-            type: "text",
-            text: "You are Claude Code, Anthropic's official CLI for Claude.",
-            cache_control: { type: "ephemeral" },
-          },
-        ];
-
-        // Enhance messages with cache_control
-        if (enhancedBody.messages?.[0]) {
-          const msg = enhancedBody.messages[0];
-          if (typeof msg.content === "string") {
-            msg.content = [
-              {
-                type: "text",
-                text: msg.content,
-                cache_control: { type: "ephemeral" },
-              },
-            ];
-          }
-        }
-
-        // Add tools array
-        enhancedBody.tools = [
-          {
-            name: "Task",
-            description:
-              "Launch a new agent to handle complex, multi-step tasks autonomously.",
-            input_schema: {
-              type: "object",
-              properties: {
-                description: { type: "string" },
-                prompt: { type: "string" },
-                subagent_type: { type: "string" },
-              },
-              required: ["description", "prompt", "subagent_type"],
-            },
-          },
-        ];
-
-        // Add metadata
-        enhancedBody.metadata = {
-          user_id: `user_peerbot_${Date.now()}`,
-        };
-
-        // Ensure streaming and other CLI defaults
-        enhancedBody.stream = enhancedBody.stream !== false; // Default to true
-        enhancedBody.max_tokens = enhancedBody.max_tokens || 32000;
-        enhancedBody.temperature = enhancedBody.temperature || 1;
-
-        body = JSON.stringify(enhancedBody);
-        logger.info(
-          `📝 Enhanced body for expensive model (length: ${body.length})`,
-        );
-      } else {
-        // For cheap models, use original body
-        body = body
-          ? typeof body === "string"
-            ? body
-            : JSON.stringify(body)
-          : undefined;
-      }
+      // Passthrough: do not modify request body or tools
+      body = body
+        ? typeof body === "string"
+          ? body
+          : JSON.stringify(body)
+        : undefined;
 
       // OAuth headers (Bearer, not x-api-key)
       headers.Authorization = `Bearer ${this.config.anthropicApiKey}`;
@@ -264,20 +179,11 @@ export class AnthropicProxy {
       headers["x-stainless-runtime"] = "node";
       headers["x-stainless-runtime-version"] = "v23.10.0";
       headers["x-stainless-timeout"] = "600";
+      // Keep a stable beta header without mutating tools/body
+      headers["anthropic-beta"] =
+        "oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14";
 
-      // Set appropriate anthropic-beta based on model
-      if (isExpensiveModel) {
-        headers["anthropic-beta"] =
-          "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14";
-        headers["x-stainless-helper-method"] = "stream";
-      } else {
-        headers["anthropic-beta"] =
-          "oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14";
-      }
-
-      logger.info(
-        `🔧 Using OAuth token with Claude Code CLI pattern for ${isExpensiveModel ? "expensive" : "cheap"} model`,
-      );
+      logger.info(`🔧 Using OAuth token with passthrough body`);
     } else {
       logger.info(`🔧 Using regular API key routing for public Anthropic API`);
 
