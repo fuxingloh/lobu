@@ -39,6 +39,9 @@ export class SlackEventHandlers {
     { repository: any; timestamp: number }
   >(); // username -> {repository, timestamp}
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+  private readonly SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours session TTL
+  private readonly USER_MAPPING_TTL = 60 * 60 * 1000; // 1 hour user mapping TTL
+  private lastCleanupTime = Date.now();
 
   constructor(
     private app: App,
@@ -735,14 +738,51 @@ export class SlackEventHandlers {
 
   private startCachePrewarming(): void {
     setInterval(() => {
-      const now = Date.now();
-      for (const [username, cached] of this.repositoryCache.entries()) {
-        if (now - cached.timestamp > this.CACHE_TTL) {
-          this.repositoryCache.delete(username);
-          logger.info(`Evicted stale repository cache for ${username}`);
-        }
+      this.cleanupExpiredData();
+    }, 60000); // Run cleanup every minute
+  }
+
+  /**
+   * Cleanup expired data from all Maps to prevent memory leaks
+   */
+  private cleanupExpiredData(): void {
+    const now = Date.now();
+    let cleanedItems = 0;
+
+    // Cleanup repository cache
+    for (const [username, cached] of this.repositoryCache.entries()) {
+      if (now - cached.timestamp > this.CACHE_TTL) {
+        this.repositoryCache.delete(username);
+        cleanedItems++;
+        logger.info(`Evicted stale repository cache for ${username}`);
       }
-    }, 60000);
+    }
+
+    // Cleanup expired sessions
+    for (const [sessionKey, session] of this.activeSessions.entries()) {
+      if (now - session.lastActivity > this.SESSION_TTL) {
+        this.activeSessions.delete(sessionKey);
+        cleanedItems++;
+        logger.info(`Evicted expired session: ${sessionKey}`);
+      }
+    }
+
+    // Cleanup user mappings (less aggressive)
+    for (const [userId, username] of this.userMappings.entries()) {
+      // Keep user mappings longer, only clean if not used recently
+      // We don't have access to last used time, so we'll be more conservative
+      // Only clean if we haven't done a full cleanup in a while
+      if (now - this.lastCleanupTime > this.USER_MAPPING_TTL * 24) { // Clean user mappings every 24 hours
+        // For now, keep all user mappings as they're lightweight
+        // In the future, could add last-accessed tracking
+      }
+    }
+
+    // Update cleanup time and log if we cleaned anything
+    if (cleanedItems > 0) {
+      logger.info(`Memory cleanup completed: removed ${cleanedItems} expired items`);
+    }
+    this.lastCleanupTime = now;
   }
 
   private async handleGitHubPullRequestAction(
@@ -1520,9 +1560,12 @@ Branch: ${branch}`;
 
   private decryptValue(payload: string): string {
     const crypto = require("node:crypto");
-    const key: string = (
-      process.env.ENCRYPTION_KEY || "default-32-char-encryption-key!!"
-    )
+    
+    if (!process.env.ENCRYPTION_KEY) {
+      throw new Error("ENCRYPTION_KEY environment variable is required for decryption");
+    }
+    
+    const key: string = process.env.ENCRYPTION_KEY
       .padEnd(32)
       .slice(0, 32);
     const parts = payload.split(":");
@@ -1645,11 +1688,13 @@ Branch: ${branch}`;
   }
 
   /**
-   * Cleanup all sessions
+   * Cleanup all sessions and perform final memory cleanup
    */
   async cleanup(): Promise<void> {
+    logger.info('Performing final cleanup of SlackEventHandlers');
     this.activeSessions.clear();
     this.userMappings.clear();
     this.repositoryCache.clear();
+    logger.info('All Maps cleared during cleanup');
   }
 }

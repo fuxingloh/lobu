@@ -36,7 +36,7 @@ export class ClaudeWorker {
       );
     }
 
-    const databaseUrl = `postgresql://${process.env.PEERBOT_DATABASE_USERNAME}:${process.env.PEERBOT_DATABASE_PASSWORD}@${process.env.PEERBOT_DATABASE_HOST}:${process.env.PEERBOT_DATABASE_PORT}/peerbot`;
+    const databaseUrl = `postgresql://${encodeURIComponent(process.env.PEERBOT_DATABASE_USERNAME)}:${encodeURIComponent(process.env.PEERBOT_DATABASE_PASSWORD)}@${process.env.PEERBOT_DATABASE_HOST}:${process.env.PEERBOT_DATABASE_PORT}/peerbot`;
 
     this.queueIntegration = new QueueIntegration({
       databaseUrl: databaseUrl,

@@ -41,8 +41,14 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         process.env.KUBERNETES_SERVICE_HOST?.includes("localhost")
       ) {
         const cluster = kc.getCurrentCluster();
-        if (cluster && cluster.skipTLSVerify !== true) {
-          (cluster as any).skipTLSVerify = true;
+        if (cluster && typeof cluster === 'object' && cluster.skipTLSVerify !== true) {
+          // Safely set skipTLSVerify property with type checking
+          Object.defineProperty(cluster, 'skipTLSVerify', {
+            value: true,
+            writable: true,
+            enumerable: true,
+            configurable: true
+          });
         }
       }
     } catch (error) {
