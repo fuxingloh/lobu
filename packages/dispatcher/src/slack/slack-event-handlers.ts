@@ -62,6 +62,125 @@ export class SlackEventHandlers {
   }
   
   /**
+   * Setup team join event handler for welcome messages
+   */
+  private setupTeamJoinHandler(): void {
+    logger.info("Setting up team_join event handler...");
+    
+    this.app.event("team_join", async ({ event, client }) => {
+      try {
+        const userId = (event as any).user?.id;
+        if (!userId) {
+          logger.error("No user ID in team_join event");
+          return;
+        }
+        
+        logger.info(`New team member joined: ${userId}`);
+        
+        // Open a DM with the new user
+        const im = await client.conversations.open({ users: userId });
+        if (!im.channel?.id) {
+          logger.error("Failed to open DM with new user");
+          return;
+        }
+        
+        // Send welcome message with Login with GitHub and Try Demo buttons
+        await client.chat.postMessage({
+          channel: im.channel.id,
+          text: "Welcome to Peerbot! 👋",
+          blocks: [
+            {
+              type: "header",
+              text: {
+                type: "plain_text",
+                text: "Welcome to Peerbot! 👋",
+                emoji: true
+              }
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "I'm your AI coding assistant powered by Claude. I can help you with:\n\n"
+                      + "• 💻 Writing and reviewing code\n"
+                      + "• 🔧 Building features and fixing bugs\n"
+                      + "• 📚 Understanding codebases\n"
+                      + "• 🚀 Creating new projects\n\n"
+                      + "Let's get you started!"
+              }
+            },
+            {
+              type: "divider"
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "*Option 1: Connect Your GitHub*\n"
+                      + "Link your GitHub account to work with your own repositories."
+              },
+              accessory: {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "🔗 Login with GitHub",
+                  emoji: true
+                },
+                style: "primary",
+                action_id: "github_connect",
+                value: "welcome_login"
+              }
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "*Option 2: Try a Demo*\n"
+                      + "Explore Peerbot's capabilities with a demo repository."
+              },
+              accessory: {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "🎮 Try Demo",
+                  emoji: true
+                },
+                action_id: "try_demo",
+                value: "welcome_demo"
+              }
+            },
+            {
+              type: "divider"
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: "💡 *Quick Start:* Just mention me with <@${this.getBotId()}> or send me a direct message to start coding!"
+                }
+              ]
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: "📖 *Commands:* Type `/peerbot help` to see all available commands"
+                }
+              ]
+            }
+          ]
+        });
+        
+        logger.info(`Welcome message sent to new user ${userId}`);
+      } catch (error) {
+        logger.error("Error handling team_join event:", error);
+      }
+    });
+  }
+  
+  /**
    * Setup shortcut handlers for global shortcuts
    */
   private setupShortcuts(): void {
@@ -250,6 +369,9 @@ export class SlackEventHandlers {
     setupMessageHandlers(this.app);
     setupUserHandlers(this.app);
     setupFileHandlers(this.app);
+    
+    // Setup team join event handler for welcome messages
+    this.setupTeamJoinHandler();
     
     // Setup slash command handler
     this.setupSlashCommands();
@@ -1127,6 +1249,10 @@ Branch: ${branch}`;
       case "github_connect":
         await this.handleGitHubConnect(userId, channelId, client);
         break;
+        
+      case "try_demo":
+        await this.handleTryDemo(userId, channelId, client);
+        break;
 
       case "select_repository":
         await this.openRepositoryModal(userId, body, client);
@@ -1774,6 +1900,101 @@ Branch: ${branch}`;
     }
   }
 
+  /**
+   * Handle Try Demo action
+   */
+  private async handleTryDemo(
+    userId: string,
+    channelId: string,
+    client: any
+  ): Promise<void> {
+    try {
+      // Set demo repository as environment override
+      const demoRepo = "https://github.com/anthropics/anthropic-sdk-typescript";
+      
+      // Store in user_environ for the demo
+      const dbPool = getDbPool(this.config.queues.connectionString);
+      
+      // First ensure user exists
+      await dbPool.query(
+        `INSERT INTO users (platform, platform_user_id) 
+         VALUES ('slack', $1) 
+         ON CONFLICT (platform, platform_user_id) DO NOTHING`,
+        [userId.toUpperCase()]
+      );
+      
+      // Get user ID
+      const userResult = await dbPool.query(
+        `SELECT id FROM users WHERE platform = 'slack' AND platform_user_id = $1`,
+        [userId.toUpperCase()]
+      );
+      const userDbId = userResult.rows[0].id;
+      
+      // Set demo repository
+      await dbPool.query(
+        `INSERT INTO user_environ (user_id, name, value, type) 
+         VALUES ($1, 'GITHUB_REPOSITORY', $2, 'user') 
+         ON CONFLICT (user_id, name) 
+         DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [userDbId, demoRepo]
+      );
+      
+      // Clear cache
+      const username = await this.getOrCreateUserMapping(userId, client);
+      this.repositoryCache.delete(username);
+      
+      // Send confirmation and instructions
+      await client.chat.postMessage({
+        channel: channelId,
+        text: "🎮 Demo mode activated!",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "🎮 *Demo mode activated!*\n\n"
+                    + "You're now connected to the Anthropic SDK TypeScript repository for demo purposes."
+            }
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "*Try these examples:*\n"
+                    + "• \"Show me the main API client implementation\"\n"
+                    + "• \"Explain how error handling works in this SDK\"\n"
+                    + "• \"What are the available authentication methods?\"\n"
+                    + "• \"Create a simple example using this SDK\""
+            }
+          },
+          {
+            type: "divider"
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: "💡 When you're ready to work with your own repos, use `/peerbot login` to connect your GitHub account."
+              }
+            ]
+          }
+        ]
+      });
+      
+      // Update home tab
+      await this.updateAppHome(userId, client);
+      
+    } catch (error) {
+      logger.error(`Failed to set demo mode for user ${userId}:`, error);
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: "❌ Failed to activate demo mode. Please try again."
+      });
+    }
+  }
+  
   /**
    * Handle GitHub connect action
    */
