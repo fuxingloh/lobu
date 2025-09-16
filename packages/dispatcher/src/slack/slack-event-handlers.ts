@@ -132,12 +132,12 @@ export class SlackEventHandlers {
   private setupSlashCommands(): void {
     logger.info("Setting up slash command handlers...");
     
-    // Handle /codebase command (formerly /peerbot)
-    this.app.command("/codebase", async ({ ack, body, client }) => {
+    // Handle /peerbot command
+    this.app.command("/peerbot", async ({ ack, body, client }) => {
       await ack();
       
       const { text, user_id, channel_id } = body;
-      logger.info(`/codebase command received: text='${text}', user=${user_id}, channel=${channel_id}`);
+      logger.info(`/peerbot command received: text='${text}', user=${user_id}, channel=${channel_id}`);
       
       if (text === "connect" || text === "repository") {
         // Open repository selection modal
@@ -148,9 +148,9 @@ export class SlackEventHandlers {
           channel: channel_id,
           user: user_id,
           text: "*Peerbot Commands:*\n" +
-                "• `/codebase connect` - Select a GitHub repository for this channel\n" +
+                "• `/peerbot connect` - Select a GitHub repository for this channel\n" +
                 "• `/login` - Connect your GitHub account\n" +
-                "• `/codebase help` - Show this help message"
+                "• `/peerbot help` - Show this help message"
         });
       } else {
         // Unknown command
@@ -158,7 +158,7 @@ export class SlackEventHandlers {
           channel: channel_id,
           user: user_id,
           text: `Unknown command: '${text}'\n` +
-                "Try `/codebase help` for available commands."
+                "Try `/peerbot help` for available commands."
         });
       }
     });

@@ -43,9 +43,9 @@
     ],
     "slash_commands": [
       {
-        "command": "/codebase",
+        "command": "/peerbot",
         "description": "Peerbot commands - connect repositories and get help",
-        "usage_hint": "connect to a GIT repository"
+        "usage_hint": "connect | help"
       },
       {
         "command": "/login",
