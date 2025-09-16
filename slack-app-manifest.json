@@ -23,6 +23,18 @@
         "description": "Creates a project"
       }
     ],
+    "slash_commands": [
+      {
+        "command": "/peerbot",
+        "description": "Peerbot commands - connect repositories and get help",
+        "usage_hint": "connect | help"
+      },
+      {
+        "command": "/login",
+        "description": "Connect your GitHub account to Peerbot",
+        "usage_hint": ""
+      }
+    ],
     "assistant_view": {
       "assistant_description": "It can generate Claude Code session working on public Github data",
       "suggested_prompts": [
