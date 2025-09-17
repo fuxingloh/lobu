@@ -29,6 +29,23 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
+          # Route /api paths to port 8080 (health, OAuth, proxy)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "peerbot.fullname" $ }}-dispatcher
+                port:
+                  number: 8080
+          # Route /health to port 8080
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "peerbot.fullname" $ }}-dispatcher
+                port:
+                  number: 8080
+          # Route everything else to port 3000 (Slack)
           {{- range .paths }}
           - path: {{ .path }}
             pathType: {{ .pathType }}
