@@ -129,11 +129,11 @@ deploy:
 		--create-namespace \
 		--namespace "$${NAMESPACE:-peerbot}" \
 		-f "$$VALUES_FILE" \
-		--set dispatcher.image.repository="$$IMAGE_REPO-dispatcher" \
+		--set dispatcher.image.repository="$$IMAGE_REPO/peerbot-dispatcher" \
 		--set dispatcher.image.tag="$$IMAGE_TAG" \
-		--set orchestrator.image.repository="$$IMAGE_REPO-orchestrator" \
+		--set orchestrator.image.repository="$$IMAGE_REPO/peerbot-orchestrator" \
 		--set orchestrator.image.tag="$$IMAGE_TAG" \
-		--set worker.image.repository="$$IMAGE_REPO-worker" \
+		--set worker.image.repository="$$IMAGE_REPO/peerbot-worker" \
 		--set worker.image.tag="$$IMAGE_TAG" \
 		--set config.githubClientId="$$GITHUB_CLIENT_ID" \
 		--set secrets.githubClientSecret="$$GITHUB_CLIENT_SECRET" \
