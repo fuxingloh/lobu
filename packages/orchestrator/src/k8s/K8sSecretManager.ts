@@ -49,7 +49,10 @@ export class K8sSecretManager extends BaseSecretManager {
         } catch (error: any) {
           // User might already exist, which is fine
           if (!error.message?.includes("already exists")) {
-            console.error(`Failed to ensure database user ${username}:`, error.message);
+            console.error(
+              `Failed to ensure database user ${username}:`,
+              error.message
+            );
             throw error;
           }
         }
