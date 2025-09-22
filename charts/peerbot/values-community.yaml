@@ -188,7 +188,8 @@ resourceQuota:
     memory: "32Gi"
   counts:
     pods: "50"
-    persistentvolumeclaims: "100"
+    persistentvolumeclaims: "100"  # Increased from 5 to support more worker threads
+    pvcs: "100"  # Alias for persistentvolumeclaims
 
 # Worker-specific quota
 workerQuota:
