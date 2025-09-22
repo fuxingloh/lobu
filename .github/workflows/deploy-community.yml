@@ -110,6 +110,34 @@ jobs:
           
       - name: Deploy with Helm
         run: |
+          # Check if PostgreSQL StatefulSet exists and needs to be recreated
+          if kubectl get statefulset $DEPLOYMENT_NAME-postgresql -n $NAMESPACE 2>/dev/null; then
+            echo "PostgreSQL StatefulSet exists, checking if it needs recreation..."
+            # Try a dry-run first to see if there would be issues
+            if ! helm upgrade $DEPLOYMENT_NAME charts/peerbot \
+              --namespace $NAMESPACE \
+              --dry-run \
+              --values charts/peerbot/values-community.yaml \
+              --set dispatcher.image.repository=${{ env.DOCKER_NAMESPACE }}/peerbot-dispatcher \
+              --set dispatcher.image.tag=${{ steps.get-tag.outputs.tag }} \
+              --set worker.image.repository=${{ env.DOCKER_NAMESPACE }}/peerbot-worker \
+              --set worker.image.tag=${{ steps.get-tag.outputs.tag }} \
+              --set orchestrator.image.repository=${{ env.DOCKER_NAMESPACE }}/peerbot-orchestrator \
+              --set orchestrator.image.tag=${{ steps.get-tag.outputs.tag }} \
+              --set config.githubClientId="${{ secrets.GH_CLIENT_ID }}" \
+              --set secrets.githubClientSecret="${{ secrets.GH_CLIENT_SECRET }}" \
+              --set secrets.encryptionKey="${{ secrets.ENCRYPTION_KEY }}" \
+              --set secrets.slackBotToken="${{ secrets.SLACK_BOT_TOKEN }}" \
+              --set secrets.slackAppToken="${{ secrets.SLACK_APP_TOKEN }}" \
+              --set secrets.slackSigningSecret="${{ secrets.SLACK_SIGNING_SECRET }}" \
+              --set secrets.githubToken="${{ secrets.GH_TOKEN_PEERBOT }}" \
+              --set secrets.claudeCodeOAuthToken="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
+              --set secrets.postgresqlPassword="${{ secrets.POSTGRESQL_PASSWORD }}" 2>&1 | grep -q "Forbidden: updates to statefulset spec"; then
+              echo "StatefulSet update would fail due to immutable fields. Deleting and recreating..."
+              kubectl delete statefulset $DEPLOYMENT_NAME-postgresql -n $NAMESPACE --cascade=orphan || true
+            fi
+          fi
+          
           # Deploy using Docker Hub images
           helm upgrade --install $DEPLOYMENT_NAME charts/peerbot \
             --namespace $NAMESPACE \
