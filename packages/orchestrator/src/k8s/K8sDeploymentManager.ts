@@ -65,8 +65,15 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       );
     }
 
+    // Configure K8s API clients
     this.appsV1Api = kc.makeApiClient(k8s.AppsV1Api);
     this.coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
+
+    // Set default request options for both API clients
+    this.appsV1Api.setDefaultAuthentication(kc);
+    this.coreV1Api.setDefaultAuthentication(kc);
+
+    console.log(`🔧 K8s client initialized with 30s timeout for namespace: ${this.config.kubernetes.namespace}`);
 
     // Pass the K8s API to the secret manager
     (this.secretManager as K8sSecretManager).setCoreV1Api(this.coreV1Api);
@@ -183,6 +190,8 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
     messageData?: any,
     userEnvVars: Record<string, string> = {}
   ): Promise<void> {
+    console.log(`🚀 Creating K8s deployment: ${deploymentName} for user ${userId}`);
+    
     // Create per-thread PVC for workspace persistence
     await this.ensurePersistentVolume(deploymentName, userId);
 
@@ -356,10 +365,35 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       },
     };
 
-    await this.appsV1Api.createNamespacedDeployment(
-      this.config.kubernetes.namespace,
-      deployment
-    );
+    try {
+      console.log(`📦 Submitting deployment ${deploymentName} to K8s API...`);
+      const response = await this.appsV1Api.createNamespacedDeployment(
+        this.config.kubernetes.namespace,
+        deployment
+      );
+      console.log(`✅ Deployment ${deploymentName} created successfully with status: ${response.response.statusCode}`);
+    } catch (error: any) {
+      // Log detailed error information
+      console.error(`❌ Failed to create deployment ${deploymentName}:`, {
+        statusCode: error.statusCode,
+        message: error.message,
+        body: error.body,
+        response: error.response?.statusMessage,
+      });
+      
+      // Check for specific error conditions
+      if (error.statusCode === 409) {
+        throw new Error(`Deployment ${deploymentName} already exists`);
+      } else if (error.statusCode === 403) {
+        throw new Error(`Insufficient permissions to create deployment ${deploymentName}`);
+      } else if (error.statusCode === 422) {
+        throw new Error(`Invalid deployment specification for ${deploymentName}: ${JSON.stringify(error.body)}`);
+      } else if (error.message?.includes('timeout') || error.code === 'ETIMEDOUT') {
+        throw new Error(`Timeout creating deployment ${deploymentName} - K8s API may be overloaded`);
+      } else {
+        throw new Error(`HTTP request failed: ${error.message || error.statusMessage || 'Unknown error'}`);
+      }
+    }
   }
 
   async scaleDeployment(
