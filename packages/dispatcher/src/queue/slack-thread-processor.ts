@@ -481,7 +481,7 @@ async function generateGitHubActionButtons(
     } else if (hasGitChanges || isSessionBranch) {
       // Build dynamic prompt based on GitHub auth status
       let prompt: string;
-      
+
       if (hasGitHubAuth) {
         // User is authenticated - agent should handle forking if needed
         prompt = `📝 *Create Pull Request*
@@ -522,7 +522,6 @@ async function generateGitHubActionButtons(
         }),
       });
     }
-
 
     return buttons.length > 0 ? buttons : undefined;
   } catch (_error) {

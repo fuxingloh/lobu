@@ -171,8 +171,7 @@ export class ActionHandler {
             body,
             client
           );
-        }
- else {
+        } else {
           logger.info(
             `Unsupported action: ${actionId} from user ${userId} in channel ${channelId}`
           );
@@ -273,7 +272,6 @@ export class ActionHandler {
       });
     }
   }
-
 
   /**
    * Update App Home tab with repository information and README
