@@ -147,8 +147,10 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         pvcName,
         this.config.kubernetes.namespace
       );
+      console.log(`📁 PVC ${pvcName} already exists`);
     } catch (error: any) {
       if (error.statusCode === 404) {
+        console.log(`📁 Creating new PVC: ${pvcName}`);
         // PVC doesn't exist, create it
         const pvc = {
           apiVersion: "v1",
@@ -173,12 +175,26 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
           },
         };
 
-        await this.coreV1Api.createNamespacedPersistentVolumeClaim(
-          this.config.kubernetes.namespace,
-          pvc
-        );
+        try {
+          await this.coreV1Api.createNamespacedPersistentVolumeClaim(
+            this.config.kubernetes.namespace,
+            pvc
+          );
+          console.log(`✅ PVC ${pvcName} created successfully`);
+        } catch (pvcError: any) {
+          console.error(`❌ Failed to create PVC ${pvcName}:`, {
+            statusCode: pvcError.statusCode,
+            message: pvcError.message,
+            body: pvcError.body,
+          });
+          throw new Error(`Failed to create PVC: ${pvcError.message || 'Unknown error'}`);
+        }
       } else {
-        throw error;
+        console.error(`❌ Failed to check PVC ${pvcName}:`, {
+          statusCode: error.statusCode,
+          message: error.message,
+        });
+        throw new Error(`Failed to check PVC: ${error.message || 'Unknown error'}`);
       }
     }
   }
@@ -192,8 +208,13 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
   ): Promise<void> {
     console.log(`🚀 Creating K8s deployment: ${deploymentName} for user ${userId}`);
     
-    // Create per-thread PVC for workspace persistence
-    await this.ensurePersistentVolume(deploymentName, userId);
+    try {
+      // Create per-thread PVC for workspace persistence
+      await this.ensurePersistentVolume(deploymentName, userId);
+    } catch (error: any) {
+      console.error(`Failed during PVC setup for ${deploymentName}:`, error.message);
+      throw error;
+    }
 
     // Get environment variables before creating the deployment spec
     const envVars = this.generateEnvironmentVariables(
