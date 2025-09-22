@@ -6,7 +6,7 @@
 
 ## Instructions
 - You MUST only do what has been asked; nothing more, nothing less.
-- For comprehensive QA and E2E testing, see `.claude/commands/qa.md` for detailed testing procedures and examples. You can directly run `.claude/commands/test-e2e-slack-bot.sh "Your prompt"` if there is no specific testing asked, otherwise use `./slack-qa-bot.js` to test the bot.
+- For comprehensive QA and E2E testing, see `.claude/commands/qa.md` for detailed testing procedures and examples. You can directly run `.claude/commands/slack-qa-bot.sh "Your prompt"` if there is no specific testing asked, otherwise use `./slack-qa-bot.js` to test the bot.
 - When you make changes to worker code (`packages/worker/*`), run `make clean-workers` to ensure new workers use the updated code.
 - Anytime you make changes in the code, you MUST:
 
@@ -65,5 +65,5 @@ Basic usage:
 ./slack-qa-bot.js --json "Create a function" | jq -r .thread_ts
 
 # Comprehensive E2E testing
-./.claude/commands/test-e2e-slack-bot.sh
+./.claude/commands/slack-qa-bot.sh
 ```

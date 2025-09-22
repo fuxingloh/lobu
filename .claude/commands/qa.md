@@ -12,7 +12,7 @@ Test and validate the Slack bot functionality with comprehensive testing scenari
 ./slack-qa-bot.js --json "Create a function" | jq -r .thread_ts
 
 # Run comprehensive e2e tests
-./bin/test-e2e-slack-bot.sh
+./bin/slack-qa-bot.sh
 ```
 
 ## Script Usage
