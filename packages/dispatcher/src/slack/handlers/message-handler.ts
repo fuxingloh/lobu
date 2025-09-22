@@ -99,7 +99,7 @@ export class MessageHandler {
       const result = await dbPool.query(query, [
         userDbId,
         isChannel ? channelId : null,
-        repository || null
+        repository || null,
       ]);
 
       // Decrypt all values
@@ -112,8 +112,8 @@ export class MessageHandler {
       if (result.rows.length > 0) {
         logger.info(
           `Found ${result.rows.length} environment variables for user ${userId}` +
-          (channelId ? ` in channel ${channelId}` : '') +
-          (repository ? ` for repository ${repository}` : '')
+            (channelId ? ` in channel ${channelId}` : "") +
+            (repository ? ` for repository ${repository}` : "")
         );
       }
 
@@ -179,7 +179,9 @@ export class MessageHandler {
         context.channelId,
         undefined // Don't pass repository yet as we need to determine it first
       );
-      const overrideRepo = preliminaryEnv.GITHUB_REPOSITORY as string | undefined;
+      const overrideRepo = preliminaryEnv.GITHUB_REPOSITORY as
+        | string
+        | undefined;
 
       let repository;
       if (overrideRepo) {

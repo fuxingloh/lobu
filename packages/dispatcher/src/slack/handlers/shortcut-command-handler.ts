@@ -537,7 +537,7 @@ export class ShortcutCommandHandler {
 
       const encryptedUrl = encrypt(repositoryUrl);
       const isChannel = channelId && !channelId.startsWith("D");
-      
+
       // Check if user is admin for channel-level save
       let saveToChannel = false;
       if (isChannel) {
@@ -554,10 +554,10 @@ export class ShortcutCommandHandler {
          DO UPDATE SET value = EXCLUDED.value, type = EXCLUDED.type, updated_at = NOW()`,
         [
           userDbId,
-          saveToChannel ? channelId : null,  // Set channel_id if admin in channel
-          repositoryUrl,  // Store the repository in its own column
-          encryptedUrl,   // The encrypted value
-          saveToChannel ? 'channel' : 'user'
+          saveToChannel ? channelId : null, // Set channel_id if admin in channel
+          repositoryUrl, // Store the repository in its own column
+          encryptedUrl, // The encrypted value
+          saveToChannel ? "channel" : "user",
         ]
       );
 

@@ -45,34 +45,41 @@ async function handlePresenceChange({ event }: EventHandlerContext) {
 /**
  * Handle group/channel joins
  */
-async function handleMemberJoinedChannel({ event, client }: EventHandlerContext) {
+async function handleMemberJoinedChannel({
+  event,
+  client,
+}: EventHandlerContext) {
   // Log the event for debugging
   logger.info(`Member joined channel: ${JSON.stringify(event, null, 2)}`);
-  
+
   try {
     // Skip if it's a bot joining (bot user IDs typically start with 'B' or are app users)
     // The event.user is the user who joined
-    if (event.user.startsWith('B')) {
+    if (event.user.startsWith("B")) {
       logger.info(`Skipping welcome for bot user: ${event.user}`);
       return;
     }
-    
+
     // Also check if it's the bot itself joining
     const authResult = await client.auth.test();
     if (event.user === authResult.user_id) {
-      logger.info('Bot joined channel, skipping welcome message');
+      logger.info("Bot joined channel, skipping welcome message");
       return;
     }
-    
+
     // Send context-aware ephemeral welcome message using the callback if available
     if (memberJoinedWelcomeCallback) {
       await memberJoinedWelcomeCallback(event.user, event.channel, client);
-      logger.info(`Sent ephemeral welcome message to user ${event.user} in channel ${event.channel}`);
+      logger.info(
+        `Sent ephemeral welcome message to user ${event.user} in channel ${event.channel}`
+      );
     } else {
-      logger.info(`No welcome callback configured for user ${event.user} in channel ${event.channel}`);
+      logger.info(
+        `No welcome callback configured for user ${event.user} in channel ${event.channel}`
+      );
     }
   } catch (error) {
-    logger.error('Error handling member joined channel:', error);
+    logger.error("Error handling member joined channel:", error);
   }
 }
 
@@ -104,7 +111,7 @@ export function setupUserHandlers(app: App, sendWelcomeCallback?: any) {
   if (sendWelcomeCallback) {
     memberJoinedWelcomeCallback = sendWelcomeCallback;
   }
-  
+
   setupEventHandlers(app, {
     team_join: handleTeamJoin,
     presence_change: handlePresenceChange,

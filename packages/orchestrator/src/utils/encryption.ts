@@ -9,7 +9,9 @@ function getEncryptionKey(): string {
   const key = process.env.ENCRYPTION_KEY || "";
   if (!key) {
     // For backward compatibility, return a default key if not set
-    console.warn("ENCRYPTION_KEY not set, using default key (not secure for production)");
+    console.warn(
+      "ENCRYPTION_KEY not set, using default key (not secure for production)"
+    );
     return "default-insecure-key-change-me!!".padEnd(32).slice(0, 32);
   }
   return key.padEnd(32).slice(0, 32);

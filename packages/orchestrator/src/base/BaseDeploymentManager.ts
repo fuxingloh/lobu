@@ -47,7 +47,7 @@ export abstract class BaseDeploymentManager {
   ): Promise<Record<string, string>> {
     try {
       const platformUserId = userId.toUpperCase();
-      
+
       // Query with priority ordering
       const query = `
         WITH prioritized AS (
@@ -82,7 +82,7 @@ export abstract class BaseDeploymentManager {
       const result = await this.dbPool.query(query, [
         platformUserId,
         channelId || null,
-        repository || null
+        repository || null,
       ]);
 
       const envVars: Record<string, string> = {};
@@ -91,14 +91,17 @@ export abstract class BaseDeploymentManager {
         if (row.value) {
           try {
             // Only decrypt if it looks like encrypted format (iv:tag:data)
-            if (row.value.includes(':') && row.value.split(':').length === 3) {
+            if (row.value.includes(":") && row.value.split(":").length === 3) {
               envVars[row.name] = decrypt(row.value);
             } else {
               // Use plain value for backward compatibility
               envVars[row.name] = row.value;
             }
           } catch (error) {
-            console.warn(`Failed to decrypt env var ${row.name}, using plain value:`, error);
+            console.warn(
+              `Failed to decrypt env var ${row.name}, using plain value:`,
+              error
+            );
             envVars[row.name] = row.value;
           }
         }
@@ -185,7 +188,7 @@ export abstract class BaseDeploymentManager {
       // Extract channel and repository from messageData
       const channelId = messageData?.channelId;
       const repository = messageData?.platformMetadata?.repositoryUrl;
-      
+
       // Fetch user environment variables with context
       const userEnvVars = await this.getUserEnvironmentVariables(
         userId,

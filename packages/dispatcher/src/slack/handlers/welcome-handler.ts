@@ -5,7 +5,16 @@ import type { App } from "@slack/bolt";
  * Setup team join event handler for welcome messages
  * Uses the context-aware welcome from ShortcutCommandHandler
  */
-export function setupTeamJoinHandler(app: App, botId: string, sendContextAwareWelcome: (userId: string, channelId: string, client: any, threadTs?: string) => Promise<void>): void {
+export function setupTeamJoinHandler(
+  app: App,
+  botId: string,
+  sendContextAwareWelcome: (
+    userId: string,
+    channelId: string,
+    client: any,
+    threadTs?: string
+  ) => Promise<void>
+): void {
   logger.info("Setting up team_join event handler...");
 
   app.event("team_join", async ({ event, client }) => {

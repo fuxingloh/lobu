@@ -231,14 +231,28 @@ export class SlackEventHandlers {
 
     // Setup modular event handlers for files, messages, and users
     setupMessageHandlers(this.app);
-    setupUserHandlers(this.app, (userId: string, channelId: string, client: any) => 
-      this.shortcutCommandHandler.sendContextAwareWelcome(userId, channelId, client)
+    setupUserHandlers(
+      this.app,
+      (userId: string, channelId: string, client: any) =>
+        this.shortcutCommandHandler.sendContextAwareWelcome(
+          userId,
+          channelId,
+          client
+        )
     );
     setupFileHandlers(this.app);
 
     // Setup team join event handler for welcome messages
-    setupTeamJoinHandler(this.app, this.getBotId(), (userId: string, channelId: string, client: any, threadTs?: string) =>
-      this.shortcutCommandHandler.sendContextAwareWelcome(userId, channelId, client, threadTs)
+    setupTeamJoinHandler(
+      this.app,
+      this.getBotId(),
+      (userId: string, channelId: string, client: any, threadTs?: string) =>
+        this.shortcutCommandHandler.sendContextAwareWelcome(
+          userId,
+          channelId,
+          client,
+          threadTs
+        )
     );
 
     // Setup shortcuts, slash commands, and view submissions
@@ -457,6 +471,29 @@ export class SlackEventHandlers {
   private setupFormSubmissionHandler(): void {
     logger.info("Registering view_submission handler for forms");
 
+    // Register handler for blockkit form modal submissions
+    this.app.view(
+      "blockkit_form_modal",
+      async ({ ack, body, view, client }) => {
+        await ack();
+
+        const userId = body.user.id;
+
+        logger.info(
+          `Form submission from user ${userId} for blockkit_form_modal`
+        );
+
+        await handleBlockkitFormSubmission(
+          userId,
+          view,
+          client,
+          async (context: any, userRequest: string, client: any) =>
+            this.messageHandler.handleUserRequest(context, userRequest, client)
+        );
+      }
+    );
+
+    // Keep the old handler for backward compatibility
     this.app.view(
       "blockkit_form_submission",
       async ({ ack, body, view, client }) => {
@@ -464,7 +501,9 @@ export class SlackEventHandlers {
 
         const userId = body.user.id;
 
-        logger.info(`Form submission from user ${userId}`);
+        logger.info(
+          `Form submission from user ${userId} for blockkit_form_submission`
+        );
 
         await handleBlockkitFormSubmission(
           userId,

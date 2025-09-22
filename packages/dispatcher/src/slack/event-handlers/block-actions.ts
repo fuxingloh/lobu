@@ -103,28 +103,49 @@ export async function handleBlockkitForm(
 ): Promise<void> {
   logger.info(`Handling blockkit form: ${actionId}`);
 
-  let blocks: any[] = [];
-
   try {
     // Extract the blocks from the button's value
     const action = (body as any).actions?.[0];
     if (!action?.value) {
+      logger.error(`No form data found in button for action ${actionId}`);
       throw new Error("No form data found in button");
     }
 
-    const formData = JSON.parse(action.value);
-    blocks = formData.blocks || [];
+    let formData;
+    try {
+      formData = JSON.parse(action.value);
+    } catch (parseError) {
+      logger.error(
+        `Failed to parse form data for action ${actionId}:`,
+        parseError
+      );
+      logger.error(`Raw value: ${action.value}`);
+      throw new Error(`Invalid JSON in form data: ${parseError}`);
+    }
+
+    const blocks = formData.blocks || [];
 
     if (blocks.length === 0) {
+      logger.error(`No blocks found in form data for action ${actionId}`);
       throw new Error("No blocks found in form data");
+    }
+
+    // Check if trigger_id exists
+    if (!body.trigger_id) {
+      logger.error(`No trigger_id in body for action ${actionId}`);
+      throw new Error("No trigger_id available - cannot open modal");
     }
 
     // Get the actual thread_ts from the message (messageTs is where button was clicked)
     // If message has thread_ts, use it; otherwise this IS the thread root
     const actualThreadTs = (body as any).message?.thread_ts || messageTs;
 
+    logger.info(
+      `Opening modal for action ${actionId}, trigger_id: ${body.trigger_id}`
+    );
+
     // Create modal with the blockkit form
-    await client.views.open({
+    const modalResult = await client.views.open({
       trigger_id: body.trigger_id,
       view: {
         type: "modal",
@@ -141,8 +162,17 @@ export async function handleBlockkitForm(
         blocks: blocks,
       },
     });
-  } catch (error) {
-    logger.error(`Failed to handle blockkit form ${actionId}:`, error);
+
+    logger.info(
+      `Modal opened successfully for action ${actionId}, ok: ${modalResult.ok}`
+    );
+  } catch (error: any) {
+    logger.error(`Failed to handle blockkit form ${actionId}:`, {
+      error: error.message,
+      data: error.data,
+      code: error.code,
+      stack: error.stack,
+    });
 
     // Show the raw Block Kit content for troubleshooting
     const rawBlocksJson = JSON.stringify(blocks, null, 2);
