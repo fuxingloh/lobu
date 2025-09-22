@@ -104,9 +104,10 @@ jobs:
             done
           fi
           
-          # Also clean up orphaned secrets if needed
+          # Also clean up orphaned secrets if needed  
           echo "Cleaning up orphaned Helm secrets..."
-          kubectl get secrets -n $NAMESPACE -o name | grep "sh.helm.release" | head -n -5 | xargs -r kubectl delete -n $NAMESPACE || true
+          # Keep only the last 3 Helm release secrets to stay under quota
+          kubectl get secrets -n $NAMESPACE -o name | grep "sh.helm.release" | head -n -3 | xargs -r kubectl delete -n $NAMESPACE || true
           
       - name: Deploy with Helm
         run: |
