@@ -45,16 +45,26 @@ export async function handleTryDemo(
 
     // Set demo repository (just like selecting any other repository)
     await dbPool.query(
-      `INSERT INTO user_environ (user_id, name, value, type) 
-       VALUES ($1, 'GITHUB_REPOSITORY', $2, 'user') 
-       ON CONFLICT (user_id, name) 
+      `INSERT INTO user_environ (user_id, channel_id, repository, name, value, type) 
+       VALUES ($1, $2, $3, 'GITHUB_REPOSITORY', $4, 'user') 
+       ON CONFLICT (user_id, channel_id, repository, name) 
        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-      [userDbId, demoRepo]
+      [userDbId, null, null, demoRepo]
     );
 
-    // If from home tab, always send as DM to ensure user sees it
-    // Otherwise use the provided channel (which might be the same thread)
-    const targetChannel = fromHomeTab ? userId : channelId;
+    // If from home tab, open a DM conversation first
+    let targetChannel = channelId;
+    if (fromHomeTab) {
+      try {
+        const result = await client.conversations.open({
+          users: userId,
+        });
+        targetChannel = result.channel.id;
+      } catch (error) {
+        logger.error("Failed to open DM conversation:", error);
+        targetChannel = userId; // Fallback to user ID
+      }
+    }
 
     // Send confirmation and instructions (in thread if available and not from home tab)
     const messagePayload: any = {
