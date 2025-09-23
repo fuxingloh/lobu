@@ -87,8 +87,14 @@ jobs:
             # Handle different states
             case "$RELEASE_STATUS" in
               "pending-install"|"pending-upgrade"|"pending-rollback")
-                echo "⚠️ Found stuck Helm release, attempting to rollback..."
-                helm rollback $DEPLOYMENT_NAME -n $NAMESPACE --wait --timeout=60s || true
+                echo "⚠️ Found stuck Helm release in status: $RELEASE_STATUS"
+                echo "🔧 Attempting to rollback..."
+                if ! helm rollback $DEPLOYMENT_NAME -n $NAMESPACE --wait --timeout=60s; then
+                  echo "⚠️ Rollback failed, forcefully deleting the secret to clear state..."
+                  # Delete the Helm secret that tracks the release state
+                  kubectl delete secret -n $NAMESPACE -l name=$DEPLOYMENT_NAME,owner=helm --ignore-not-found=true
+                  echo "✅ Cleared Helm release state"
+                fi
                 ;;
               "failed")
                 echo "⚠️ Found failed release, will upgrade..."
