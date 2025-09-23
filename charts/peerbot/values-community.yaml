@@ -9,20 +9,12 @@ spegel:
   enabled: true
   # Resources for Spegel containers (required by resource quota)
   resources:
-    configuration:
-      limits:
-        cpu: "100m"
-        memory: "128Mi"
-      requests:
-        cpu: "50m"
-        memory: "64Mi"
-    registry:
-      limits:
-        cpu: "200m"
-        memory: "256Mi"
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
 
 # Kubernetes namespace
 kubernetes:
