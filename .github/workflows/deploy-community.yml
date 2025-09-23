@@ -79,9 +79,13 @@ jobs:
         run: |
           echo "🔍 Checking Helm release state..."
           
-          # Check if release exists
-          if helm list -n $NAMESPACE | grep -q $DEPLOYMENT_NAME; then
-            RELEASE_STATUS=$(helm list -n $NAMESPACE -o json | jq -r ".[] | select(.name==\"$DEPLOYMENT_NAME\") | .status")
+          # Check all releases including failed ones
+          echo "📋 All Helm releases in namespace:"
+          helm list -n $NAMESPACE --all
+          
+          # Check if release exists (including pending/failed states)
+          if helm list -n $NAMESPACE --all | grep -q $DEPLOYMENT_NAME; then
+            RELEASE_STATUS=$(helm list -n $NAMESPACE --all -o json | jq -r ".[] | select(.name==\"$DEPLOYMENT_NAME\") | .status")
             echo "📊 Current release status: $RELEASE_STATUS"
             
             # Handle different states
