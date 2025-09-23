@@ -15,14 +15,14 @@ on:
         type: string
   repository_dispatch:
     types: [deploy-community]
-  push:
-    branches:
-      - main
-    paths:
-      - 'packages/**'
-      - 'charts/**'
-      - 'Dockerfile.*'
-      - '.github/workflows/deploy-community.yml'
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'packages/**'
+  #     - 'charts/**'
+  #     - 'Dockerfile.*'
+  #     - '.github/workflows/deploy-community.yml'
 
 env:
   NAMESPACE: peerbot

@@ -149,6 +149,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "peerbot.fullname" . }}-secrets
                   key: github-token
+                  optional: true
             - name: GITHUB_CLIENT_ID
               valueFrom:
                 configMapKeyRef:
