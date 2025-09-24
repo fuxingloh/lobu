@@ -145,7 +145,7 @@ export class GitHubRepositoryManager {
       logger.info(
         `Checking for user-selected repository for ${username} (Slack ID: ${slackUserId || "unknown"})`
       );
-      const { getDbPool } = await import("../db");
+      const { getDbPool } = await import("@peerbot/shared");
       const dbPool = getDbPool(this.databaseUrl || process.env.DATABASE_URL);
 
       let result;

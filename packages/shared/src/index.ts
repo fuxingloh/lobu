@@ -9,3 +9,11 @@ export type {
   ConversationMessage,
   SessionContext,
 } from "./types";
+
+// Export database utilities
+export { DatabasePool, DatabaseError, getDbPool } from "./database/connection-pool";
+export { DatabaseManager } from "./database/operations";
+export type { DatabaseConfig } from "./database/connection-pool";
+
+// Export encryption utilities
+export { encrypt, decrypt } from "./utils/encryption";
