@@ -104,25 +104,25 @@ process.on("SIGINT", async () => {
  */
 async function appendTerminationMessage(signal: string): Promise<void> {
   try {
-      const databaseUrl = `postgresql://${process.env.PEERBOT_DATABASE_USERNAME}:${process.env.PEERBOT_DATABASE_PASSWORD}@${process.env.PEERBOT_DATABASE_HOST}:${process.env.PEERBOT_DATABASE_PORT}/peerbot`;
+    const databaseUrl = `postgresql://${process.env.PEERBOT_DATABASE_USERNAME}:${process.env.PEERBOT_DATABASE_PASSWORD}@${process.env.PEERBOT_DATABASE_HOST}:${process.env.PEERBOT_DATABASE_PORT}/peerbot`;
 
-      const queueIntegration = new QueueIntegration({
-        databaseUrl,
-        responseChannel: process.env.SLACK_RESPONSE_CHANNEL,
-        responseTs: process.env.SLACK_RESPONSE_TS,
-        messageId: process.env.SLACK_RESPONSE_TS,
-      });
+    const queueIntegration = new QueueIntegration({
+      databaseUrl,
+      responseChannel: process.env.SLACK_RESPONSE_CHANNEL,
+      responseTs: process.env.SLACK_RESPONSE_TS,
+      messageId: process.env.SLACK_RESPONSE_TS,
+    });
 
-      await queueIntegration.start();
-      await queueIntegration.updateProgress(
-        `🛑 *Worker terminated (${signal})* - The host is terminated and not processing further requests.`
-      );
-      await queueIntegration.signalDone();
+    await queueIntegration.start();
+    await queueIntegration.updateProgress(
+      `🛑 *Worker terminated (${signal})* - The host is terminated and not processing further requests.`
+    );
+    await queueIntegration.signalDone();
 
-      // Reactions are now handled by dispatcher based on message isDone status
-      // No direct reaction calls needed here
+    // Reactions are now handled by dispatcher based on message isDone status
+    // No direct reaction calls needed here
 
-      await queueIntegration.stop();
+    await queueIntegration.stop();
   } catch (error) {
     logger.error(
       `Failed to send ${signal} termination message via queue:`,
