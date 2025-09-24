@@ -10,5 +10,7 @@ export type {
   SessionContext,
 } from "./types";
 
+// Export testing utilities
+export * from "./testing";
 // Export error classes
 export * from "./errors";
