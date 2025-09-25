@@ -13,7 +13,8 @@
     "@peerbot/shared": "workspace:*",
     "dockerode": "^4.0.7",
     "dotenv": "^17.2.1",
-    "pg-boss": "^10.0.4"
+    "pg-boss": "^10.0.4",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.29",

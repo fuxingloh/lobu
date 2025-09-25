@@ -3,6 +3,7 @@
 - Top-level tooling and ops: `Makefile`, `bin/` (CLI and setup scripts), `docker-compose*.yml`, `charts/peerbot` (Helm), `workspaces/` (local volumes), `.env*`.
 - TypeScript sources under `packages/*/src`. Tests live in `packages/*/src/__tests__` and `packages/shared/tests`.
 - **ALWAYS use `bun` commands, NEVER use `npm`** - npm is incompatible with workspace protocol
+- When fixing unused parameter errors, remove the parameter entirely if possible rather than prefixing with underscore
 
 ## Instructions
 - You MUST only do what has been asked; nothing more, nothing less.

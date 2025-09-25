@@ -168,8 +168,6 @@ export class QueueProducer {
     }
   }
 
-
-
   /**
    * Execute a query with user context for RLS
    */

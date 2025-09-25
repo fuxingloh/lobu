@@ -9,9 +9,7 @@ import { jest } from "bun:test";
 /**
  * Factory for creating mock worker job requests
  */
-export function createMockWorkerJobRequest(
-  overrides: any = {}
-): any {
+export function createMockWorkerJobRequest(overrides: any = {}): any {
   return {
     sessionKey: "test-session-123",
     userId: "U123456789",

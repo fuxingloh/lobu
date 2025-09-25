@@ -19,7 +19,7 @@ export class GitHubRepositoryError extends BaseError {
     return {
       ...super.toJSON(),
       operation: this.operation,
-      username: this.username
+      username: this.username,
     };
   }
 }

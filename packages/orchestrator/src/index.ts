@@ -8,8 +8,7 @@ initSentry();
 import { join } from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import type { BaseDeploymentManager } from "./base/BaseDeploymentManager";
-import { DatabasePool } from "@peerbot/shared";
-import { createLogger } from "@peerbot/shared";
+import { createLogger, DatabasePool } from "@peerbot/shared";
 
 const logger = createLogger("orchestrator");
 import { DockerDeploymentManager } from "./docker/DockerDeploymentManager";

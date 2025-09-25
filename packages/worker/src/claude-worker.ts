@@ -190,12 +190,6 @@ export class ClaudeWorker {
         }
       );
 
-      // Now that workspace is successfully set up, send a progress update
-      const workspaceMessage = isResumedSession
-        ? "💻 Workspace resumed, processing your request..."
-        : "💻 Workspace ready, processing your request...";
-      await this.queueIntegration.updateProgress(workspaceMessage);
-
       // Prepare session context
       const sessionContext = {
         platform: "slack" as const,

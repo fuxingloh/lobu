@@ -327,7 +327,7 @@ export class MessageHandler {
         };
 
         const jobId =
-          await this.queueProducer.enqueueWorkerDeployment(deploymentPayload);
+          await this.queueProducer.enqueueMessage(deploymentPayload);
 
         logger.info(
           `Enqueued direct message job ${jobId} for session ${sessionKey}`
@@ -362,8 +362,7 @@ export class MessageHandler {
           },
         };
 
-        const jobId =
-          await this.queueProducer.enqueueThreadMessage(threadPayload);
+        const jobId = await this.queueProducer.enqueueMessage(threadPayload);
 
         logger.info(
           `Enqueued thread message job ${jobId} for thread ${threadTs}`

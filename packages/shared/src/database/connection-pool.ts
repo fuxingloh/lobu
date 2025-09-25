@@ -3,7 +3,7 @@ import { createLogger } from "../logger";
 
 const logger = createLogger("shared");
 
-export interface DatabaseConfig {
+export interface DatabasePoolConfig {
   connectionString: string;
   max?: number;
   idleTimeoutMillis?: number;
@@ -35,11 +35,10 @@ export class DatabaseError extends Error {
 export class DatabasePool {
   private pool: Pool;
 
-  constructor(config: DatabaseConfig | string) {
-    const dbConfig = typeof config === 'string' 
-      ? { connectionString: config }
-      : config;
-      
+  constructor(config: DatabasePoolConfig | string) {
+    const dbConfig =
+      typeof config === "string" ? { connectionString: config } : config;
+
     this.pool = new Pool({
       connectionString: dbConfig.connectionString,
       max: dbConfig.max ?? 20,

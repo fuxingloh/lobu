@@ -22,7 +22,6 @@ export function parseCodeBlockMetadata(metadataStr: string): any {
  * Process a code block with action metadata and return button configuration
  */
 export function processCodeBlockWithAction(
-  fullMatch: string,
   language: string,
   metadata: any,
   codeContent: string,
@@ -39,7 +38,9 @@ export function processCodeBlockWithAction(
     // The show parameter doesn't affect button creation for blockkit
     const buttonValue = JSON.stringify({
       blocks: codeContent
-        ? JSON.parse(codeContent.trim()).blocks || [JSON.parse(codeContent.trim())]
+        ? JSON.parse(codeContent.trim()).blocks || [
+            JSON.parse(codeContent.trim()),
+          ]
         : { blocks: [] },
     });
 
@@ -122,7 +123,10 @@ export function processCodeBlockWithAction(
 /**
  * Validate content length against Slack limits
  */
-export function validateContentLength(content: string, maxLength: number): boolean {
+export function validateContentLength(
+  content: string,
+  maxLength: number
+): boolean {
   return content.length <= maxLength;
 }
 

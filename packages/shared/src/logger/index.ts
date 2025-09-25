@@ -29,40 +29,42 @@ export function createLogger(serviceName: string): Logger {
       new winston.transports.Console({
         format: winston.format.combine(
           ...(isProduction ? [] : [winston.format.colorize()]),
-          winston.format.printf(({ timestamp, level, message, service, ...meta }) => {
-            let metaStr = "";
-            if (Object.keys(meta).length) {
-              try {
-                metaStr = ` ${JSON.stringify(meta, null, 0)}`;
-              } catch (_err) {
-                // Handle circular structures with a safer approach
+          winston.format.printf(
+            ({ timestamp, level, message, service, ...meta }) => {
+              let metaStr = "";
+              if (Object.keys(meta).length) {
                 try {
-                  const seen = new WeakSet();
-                  metaStr = ` ${JSON.stringify(meta, (key, value) => {
-                    if (typeof value === "object" && value !== null) {
-                      if (seen.has(value)) {
-                        return "[Circular Reference]";
+                  metaStr = ` ${JSON.stringify(meta, null, 0)}`;
+                } catch (_err) {
+                  // Handle circular structures with a safer approach
+                  try {
+                    const seen = new WeakSet();
+                    metaStr = ` ${JSON.stringify(meta, (_key, value) => {
+                      if (typeof value === "object" && value !== null) {
+                        if (seen.has(value)) {
+                          return "[Circular Reference]";
+                        }
+                        seen.add(value);
+
+                        if (value instanceof Error) {
+                          return {
+                            name: value.name,
+                            message: value.message,
+                            stack: value.stack?.split("\n")[0], // Only first line of stack
+                          };
+                        }
                       }
-                      seen.add(value);
-                      
-                      if (value instanceof Error) {
-                        return {
-                          name: value.name,
-                          message: value.message,
-                          stack: value.stack?.split("\n")[0], // Only first line of stack
-                        };
-                      }
-                    }
-                    return value;
-                  })}`;
-                } catch (_err2) {
-                  // Final fallback if even the circular handler fails
-                  metaStr = " [Object too complex to serialize]";
+                      return value;
+                    })}`;
+                  } catch (_err2) {
+                    // Final fallback if even the circular handler fails
+                    metaStr = " [Object too complex to serialize]";
+                  }
                 }
               }
+              return `[${timestamp}] [${level}] [${service}] ${message}${metaStr}`;
             }
-            return `[${timestamp}] [${level}] [${service}] ${message}${metaStr}`;
-          })
+          )
         ),
       }),
     ],

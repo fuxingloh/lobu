@@ -18,7 +18,10 @@ export const SlackConfigSchema = z.object({
   appToken: z.string().optional(),
   signingSecret: z.string().min(1, "Slack signing secret is required"),
   socketMode: z.boolean().optional().default(true),
-  logLevel: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).optional().default("INFO"),
+  logLevel: z
+    .enum(["DEBUG", "INFO", "WARN", "ERROR"])
+    .optional()
+    .default("INFO"),
 });
 
 // GitHub configuration schema
@@ -48,17 +51,26 @@ export const QueueConfigSchema = z.object({
 export const KubernetesConfigSchema = z.object({
   namespace: z.string().optional().default("default"),
   workerImage: z.string().optional().default("claude-worker"),
-  imagePullPolicy: z.enum(["Always", "Never", "IfNotPresent"]).optional().default("IfNotPresent"),
-  resources: z.object({
-    requests: z.object({
-      cpu: z.string().optional().default("100m"),
-      memory: z.string().optional().default("256Mi"),
-    }).optional(),
-    limits: z.object({
-      cpu: z.string().optional().default("500m"),
-      memory: z.string().optional().default("512Mi"),
-    }).optional(),
-  }).optional(),
+  imagePullPolicy: z
+    .enum(["Always", "Never", "IfNotPresent"])
+    .optional()
+    .default("IfNotPresent"),
+  resources: z
+    .object({
+      requests: z
+        .object({
+          cpu: z.string().optional().default("100m"),
+          memory: z.string().optional().default("256Mi"),
+        })
+        .optional(),
+      limits: z
+        .object({
+          cpu: z.string().optional().default("500m"),
+          memory: z.string().optional().default("512Mi"),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 // Complete application configuration schema
@@ -84,9 +96,12 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
  */
 export function loadDatabaseConfig(): DatabaseConfig {
   const config = {
-    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL || "",
+    connectionString:
+      process.env.DATABASE_URL || process.env.POSTGRES_URL || "",
     ssl: process.env.DATABASE_SSL === "true",
-    maxConnections: process.env.DATABASE_MAX_CONNECTIONS ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10) : undefined,
+    maxConnections: process.env.DATABASE_MAX_CONNECTIONS
+      ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10)
+      : undefined,
   };
 
   return DatabaseConfigSchema.parse(config);
@@ -127,7 +142,9 @@ export function loadClaudeConfig(): ClaudeConfig {
   return ClaudeConfigSchema.parse({
     apiKey: process.env.ANTHROPIC_API_KEY,
     model: process.env.CLAUDE_MODEL,
-    maxTokens: process.env.CLAUDE_MAX_TOKENS ? parseInt(process.env.CLAUDE_MAX_TOKENS, 10) : undefined,
+    maxTokens: process.env.CLAUDE_MAX_TOKENS
+      ? parseInt(process.env.CLAUDE_MAX_TOKENS, 10)
+      : undefined,
   });
 }
 
@@ -136,9 +153,14 @@ export function loadClaudeConfig(): ClaudeConfig {
  */
 export function loadQueueConfig(): QueueConfig {
   const config = {
-    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL || "",
-    jobTimeoutMs: process.env.JOB_TIMEOUT_MS ? parseInt(process.env.JOB_TIMEOUT_MS, 10) : undefined,
-    retryLimit: process.env.JOB_RETRY_LIMIT ? parseInt(process.env.JOB_RETRY_LIMIT, 10) : undefined,
+    connectionString:
+      process.env.DATABASE_URL || process.env.POSTGRES_URL || "",
+    jobTimeoutMs: process.env.JOB_TIMEOUT_MS
+      ? parseInt(process.env.JOB_TIMEOUT_MS, 10)
+      : undefined,
+    retryLimit: process.env.JOB_RETRY_LIMIT
+      ? parseInt(process.env.JOB_RETRY_LIMIT, 10)
+      : undefined,
   };
 
   return QueueConfigSchema.parse(config);
@@ -151,7 +173,7 @@ export function loadKubernetesConfig(): KubernetesConfig {
   return KubernetesConfigSchema.parse({
     namespace: process.env.KUBERNETES_NAMESPACE,
     workerImage: process.env.WORKER_IMAGE,
-    imagePullPolicy: (process.env.IMAGE_PULL_POLICY as any),
+    imagePullPolicy: process.env.IMAGE_PULL_POLICY as any,
     resources: {
       requests: {
         cpu: process.env.WORKER_CPU_REQUEST,
@@ -185,10 +207,12 @@ export function loadConfig(): AppConfig {
  * @throws Error if any required variables are missing
  */
 export function validateRequiredEnvVars(requiredVars: string[]): void {
-  const missing = requiredVars.filter(varName => !process.env[varName]);
-  
+  const missing = requiredVars.filter((varName) => !process.env[varName]);
+
   if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`
+    );
   }
 }
 
@@ -198,6 +222,9 @@ export function validateRequiredEnvVars(requiredVars: string[]): void {
  * @param defaultValue Default value if environment variable is not set
  * @returns The environment variable value or default
  */
-export function getEnvVar(name: string, defaultValue?: string): string | undefined {
+export function getEnvVar(
+  name: string,
+  defaultValue?: string
+): string | undefined {
   return process.env[name] || defaultValue;
 }

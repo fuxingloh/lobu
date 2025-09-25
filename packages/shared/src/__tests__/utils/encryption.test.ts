@@ -52,8 +52,12 @@ describe("Encryption utilities", () => {
   it("should throw error when ENCRYPTION_KEY is missing", () => {
     delete process.env.ENCRYPTION_KEY;
 
-    expect(() => encrypt("test")).toThrow("ENCRYPTION_KEY environment variable is required");
-    expect(() => decrypt("test:test:test")).toThrow("ENCRYPTION_KEY environment variable is required");
+    expect(() => encrypt("test")).toThrow(
+      "ENCRYPTION_KEY environment variable is required"
+    );
+    expect(() => decrypt("test:test:test")).toThrow(
+      "ENCRYPTION_KEY environment variable is required"
+    );
   });
 
   it("should throw error for invalid encrypted format", () => {
@@ -87,6 +91,6 @@ describe("Encryption utilities", () => {
     expect(parts).toHaveLength(3);
     expect(parts[0]).toHaveLength(24); // IV: 12 bytes = 24 hex chars
     expect(parts[1]).toHaveLength(32); // Tag: 16 bytes = 32 hex chars
-    expect(parts[2]).toHaveLength(8);  // "test" encrypted: 4 bytes = 8 hex chars
+    expect(parts[2]).toHaveLength(8); // "test" encrypted: 4 bytes = 8 hex chars
   });
 });

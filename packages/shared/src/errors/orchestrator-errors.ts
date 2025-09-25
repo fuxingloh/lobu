@@ -57,7 +57,7 @@ export class OrchestratorError extends BaseError {
       ...super.toJSON(),
       code: this.code,
       details: this.details,
-      shouldRetry: this.shouldRetry
+      shouldRetry: this.shouldRetry,
     };
   }
 }

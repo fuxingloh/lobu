@@ -9,7 +9,7 @@ export abstract class BaseError extends Error {
     public cause?: Error
   ) {
     super(message);
-    
+
     // Maintain proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, new.target.prototype);
   }
@@ -36,8 +36,11 @@ export abstract class BaseError extends Error {
     return {
       name: this.name,
       message: this.message,
-      cause: this.cause instanceof BaseError ? this.cause.toJSON() : this.cause?.message,
-      stack: this.stack
+      cause:
+        this.cause instanceof BaseError
+          ? this.cause.toJSON()
+          : this.cause?.message,
+      stack: this.stack,
     };
   }
 }

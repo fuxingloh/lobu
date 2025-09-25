@@ -17,7 +17,7 @@ export class WorkerError extends BaseError {
   toJSON(): Record<string, any> {
     return {
       ...super.toJSON(),
-      operation: this.operation
+      operation: this.operation,
     };
   }
 }
@@ -39,7 +39,7 @@ export class WorkspaceError extends BaseError {
   toJSON(): Record<string, any> {
     return {
       ...super.toJSON(),
-      operation: this.operation
+      operation: this.operation,
     };
   }
 }
@@ -61,7 +61,7 @@ export class SlackError extends BaseError {
   toJSON(): Record<string, any> {
     return {
       ...super.toJSON(),
-      operation: this.operation
+      operation: this.operation,
     };
   }
 }
@@ -85,7 +85,7 @@ export class SessionError extends BaseError {
     return {
       ...super.toJSON(),
       sessionKey: this.sessionKey,
-      code: this.code
+      code: this.code,
     };
   }
 }
@@ -109,7 +109,7 @@ export class CoreWorkerError extends BaseError {
     return {
       ...super.toJSON(),
       workerId: this.workerId,
-      operation: this.operation
+      operation: this.operation,
     };
   }
 }

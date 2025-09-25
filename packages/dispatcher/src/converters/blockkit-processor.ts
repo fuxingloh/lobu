@@ -39,7 +39,7 @@ export function processMarkdownAndBlockkit(content: string): {
     const [fullMatch, language, metadataStr, codeContent] = match;
 
     try {
-      const metadata = parseCodeBlockMetadata(metadataStr);
+      const metadata = parseCodeBlockMetadata(metadataStr || "");
 
       if (metadata.action) {
         logger.info(
@@ -47,10 +47,9 @@ export function processMarkdownAndBlockkit(content: string): {
         );
 
         const result = processCodeBlockWithAction(
-          fullMatch,
-          language,
+          language || "",
           metadata,
-          codeContent,
+          codeContent || "",
           blockIndex,
           generateDeterministicActionId
         );
