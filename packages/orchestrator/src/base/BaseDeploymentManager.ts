@@ -7,6 +7,7 @@ import {
 } from "../types";
 import type { BaseSecretManager } from "./BaseSecretManager";
 import { decrypt, createLogger } from "@peerbot/shared";
+import { buildModuleEnvVars } from "../module-integration";
 
 const logger = createLogger("orchestrator");
 
@@ -257,6 +258,13 @@ export abstract class BaseDeploymentManager {
         envVars.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
       }
       // OAuth token is now always handled by the proxy in dispatcher
+      
+      // Add module-specific environment variables
+      try {
+        envVars = await buildModuleEnvVars(messageData?.userId || '', envVars);
+      } catch (error) {
+        logger.warn('Failed to build module environment variables:', error);
+      }
     }
 
     if (process.env.CLAUDE_ALLOWED_TOOLS) {

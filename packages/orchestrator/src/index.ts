@@ -5,6 +5,9 @@ import { initSentry } from "@peerbot/shared";
 // Initialize Sentry monitoring
 initSentry();
 
+import { moduleRegistry } from "../../../modules";
+import { GitHubModule } from "../../../modules/github";
+
 import { join } from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import type { BaseDeploymentManager } from "./base/BaseDeploymentManager";
@@ -27,6 +30,9 @@ class PeerbotOrchestrator {
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
+    
+    // Register modules
+    moduleRegistry.register(new GitHubModule());
     this.dbPool = new DatabasePool(config.database);
     this.deploymentManager = this.createDeploymentManager(config);
     this.queueConsumer = new QueueConsumer(config, this.deploymentManager);
@@ -178,6 +184,10 @@ class PeerbotOrchestrator {
 
   async start(): Promise<void> {
     try {
+      // Initialize modules
+      await moduleRegistry.initAll();
+      logger.info("✅ Modules initialized");
+      
       // Run database migrations using dbmate (this will create database and run migrations)
       await this.runDbmateMigrations();
 

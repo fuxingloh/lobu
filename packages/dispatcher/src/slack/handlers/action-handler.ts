@@ -12,6 +12,7 @@ import {
   handleGitHubLogout,
   getUserGitHubInfo,
 } from "./github-handler";
+import { moduleRegistry } from "../../../../../modules";
 import { handleTryDemo } from "./demo-handler";
 import { openRepositoryModal } from "./repository-modal-utils";
 import {
@@ -339,63 +340,9 @@ export class ActionHandler {
         client
       );
 
-      // Check if user has GitHub token
+      // Get GitHub connection status for demo purposes
       const githubUser = await getUserGitHubInfo(userId);
       const isGitHubConnected = !!githubUser.token;
-
-      let repository;
-      let readmeSection: string | null = null;
-
-      // Check for environment overrides
-      const userEnv = await this.messageHandler.getUserEnvironment(userId);
-      const overrideRepo = userEnv.GITHUB_REPOSITORY as string | undefined;
-
-      // Try to get or create repository
-      try {
-        if (overrideRepo) {
-          const repoUrl = overrideRepo.replace(/\/$/, "").replace(/\.git$/, "");
-          const repoName = repoUrl.split("/").pop() || "unknown";
-
-          repository = {
-            username,
-            repositoryName: repoName,
-            repositoryUrl: repoUrl,
-            cloneUrl: repoUrl.endsWith(".git") ? repoUrl : `${repoUrl}.git`,
-            createdAt: Date.now(),
-            lastUsed: Date.now(),
-          };
-
-          logger.info(
-            `Using environment override repository for user ${userId}: ${repoUrl}`
-          );
-        } else {
-          // Try to get existing repository
-          repository = await this.repoManager.getUserRepository(
-            username,
-            userId
-          );
-
-          // If no cached repository and we have a token, create one
-          if (!repository && (this.config.github.token || isGitHubConnected)) {
-            repository = await this.repoManager.ensureUserRepository(username);
-          }
-        }
-
-        // Fetch README.md content if we have a repository
-        if (repository) {
-          const readmeContent = await this.fetchRepositoryReadme(
-            repository.repositoryUrl
-          );
-          if (readmeContent) {
-            readmeSection = `*📖 README :*\n\`\`\`\n${readmeContent.slice(0, 500)}${readmeContent.length > 500 ? "..." : ""}\n\`\`\``;
-          }
-        }
-      } catch (error) {
-        logger.warn(
-          `Could not get/ensure repository for user ${username}:`,
-          error
-        );
-      }
 
       const blocks: any[] = [
         {
@@ -407,85 +354,27 @@ export class ActionHandler {
         },
       ];
 
-      // Show repository info or login prompt
-      if (repository && isGitHubConnected) {
-        const repoUrl = repository.repositoryUrl.replace(/\.git$/, "");
-        const repoDisplayName = repoUrl.replace(
-          /^https?:\/\/(www\.)?github\.com\//,
-          ""
-        );
-
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*Active Repository:*\n<${repoUrl}|${repoDisplayName}>`,
-          },
-          accessory: {
-            type: "button",
-            text: { type: "plain_text", text: "🔄 Change Repository" },
-            action_id: "open_repository_modal",
-          },
-        });
-
-        // Add README section if available
-        if (readmeSection) {
-          blocks.push({
-            type: "section",
-            text: { type: "mrkdwn", text: readmeSection },
-          });
+      // Add module-rendered home tab sections
+      const homeTabModules = moduleRegistry.getHomeTabModules();
+      for (const module of homeTabModules) {
+        try {
+          const moduleBlocks = await module.renderHomeTab!(userId);
+          blocks.push(...moduleBlocks);
+          if (moduleBlocks.length > 0) {
+            blocks.push({ type: "divider" });
+          }
+        } catch (error) {
+          logger.error(`Failed to render home tab for module ${module.name}:`, error);
         }
+      }
 
-        blocks.push({ type: "divider" });
-      } else if (repository && !isGitHubConnected) {
-        // Repository exists but user not authenticated - show login prompt with repo info
-        const repoUrl = repository.repositoryUrl.replace(/\.git$/, "");
-        const repoDisplayName = repoUrl.replace(
-          /^https?:\/\/(www\.)?github\.com\//,
-          ""
-        );
-
+      // Demo functionality (non-module specific)
+      if (process.env.DEMO_REPOSITORY && !isGitHubConnected) {
         blocks.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Demo Repository:*\n<${repoUrl}|${repoDisplayName}>\n\n_Connect your GitHub account to work with your own repositories._`,
-          },
-        });
-
-        const authUrl = generateGitHubAuthUrl(userId);
-
-        const demoElements = [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "🔗 Login with GitHub" },
-            url: authUrl,
-            style: "primary",
-          } as any,
-        ];
-
-        // Only show Try Demo button if DEMO_REPOSITORY is configured
-        if (process.env.DEMO_REPOSITORY) {
-          demoElements.push({
-            type: "button",
-            text: { type: "plain_text", text: "🎮 Try Demo" },
-            action_id: "try_demo",
-          });
-        }
-
-        blocks.push({
-          type: "actions",
-          elements: demoElements,
-        });
-
-        blocks.push({ type: "divider" });
-      } else if (isGitHubConnected) {
-        // GitHub connected but no repository selected
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*GitHub Connected:* ${githubUser.username || "✓"}\n\nSelect a repository to start working:`,
+            text: "*🎮 Demo Mode*\nTry Peerbot with a demo repository",
           },
         });
 
@@ -494,47 +383,11 @@ export class ActionHandler {
           elements: [
             {
               type: "button",
-              text: { type: "plain_text", text: "📂 Select Repository" },
-              action_id: "open_repository_modal",
+              text: { type: "plain_text", text: "🎮 Try Demo" },
+              action_id: "try_demo",
               style: "primary",
             },
           ],
-        });
-
-        blocks.push({ type: "divider" });
-      } else {
-        // Not connected to GitHub
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "*Get Started:*\nConnect your GitHub account to start working with your repositories.",
-          },
-        });
-
-        const authUrl = generateGitHubAuthUrl(userId);
-
-        const loginElements = [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "🔗 Login with GitHub" },
-            url: authUrl,
-            style: "primary",
-          } as any,
-        ];
-
-        // Only show Try Demo button if DEMO_REPOSITORY is configured
-        if (process.env.DEMO_REPOSITORY) {
-          loginElements.push({
-            type: "button",
-            text: { type: "plain_text", text: "🎮 Try Demo" },
-            action_id: "try_demo",
-          });
-        }
-
-        blocks.push({
-          type: "actions",
-          elements: loginElements,
         });
 
         blocks.push({ type: "divider" });
@@ -553,32 +406,6 @@ export class ActionHandler {
         },
       });
 
-      // Add logout button if GitHub is connected
-      if (isGitHubConnected) {
-        blocks.push(
-          { type: "divider" },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "🚪 Logout from GitHub" },
-                action_id: "github_logout",
-                style: "danger",
-                confirm: {
-                  title: { type: "plain_text", text: "Logout from GitHub?" },
-                  text: {
-                    type: "mrkdwn",
-                    text: "This will disconnect your GitHub account. You'll need to login again to access your repositories.",
-                  },
-                  confirm: { type: "plain_text", text: "Logout" },
-                  deny: { type: "plain_text", text: "Cancel" },
-                },
-              },
-            ],
-          }
-        );
-      }
 
       // Update the app home view
       await client.views.publish({

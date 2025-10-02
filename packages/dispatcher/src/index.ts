@@ -21,6 +21,8 @@ import { QueueProducer } from "./queue/task-queue-producer";
 import { setupHealthEndpoints } from "./simple-http";
 import { SlackEventHandlers } from "./slack/slack-event-handlers";
 import type { DispatcherConfig } from "./types";
+import { moduleRegistry } from "../../../modules";
+import { GitHubModule } from "../../../modules/github";
 
 export class SlackDispatcher {
   private app: App;
@@ -33,6 +35,9 @@ export class SlackDispatcher {
 
   constructor(config: DispatcherConfig) {
     this.config = config;
+
+    // Register modules
+    moduleRegistry.register(new GitHubModule());
 
     if (!config.queues?.connectionString) {
       throw new Error("Queue connection string is required");
@@ -130,6 +135,10 @@ export class SlackDispatcher {
       logger.info("✅ Anthropic proxy initialized");
 
       // Setup health endpoints will be called after event handlers are created
+
+      // Initialize modules
+      await moduleRegistry.initAll();
+      logger.info("✅ Modules initialized");
 
       // Start queue producer
       await this.queueProducer.start();

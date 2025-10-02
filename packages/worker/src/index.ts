@@ -7,6 +7,9 @@ import { initSentry, createLogger } from "@peerbot/shared";
 // Initialize Sentry monitoring
 initSentry();
 
+import { moduleRegistry } from "../../../modules";
+import { GitHubModule } from "../../../modules/github";
+
 const logger = createLogger("worker");
 
 import { QueuePersistentClaudeWorker } from "./persistent-task-worker";
@@ -23,6 +26,11 @@ export { ClaudeWorker } from "./claude-worker";
  * Main entry point - now supports both queue-based and legacy workers
  */
 async function main() {
+  // Register modules
+  moduleRegistry.register(new GitHubModule());
+  await moduleRegistry.initAll();
+  logger.info("✅ Modules initialized");
+  
   logger.info(
     "🔄 Starting in queue mode (dynamic deployment-based persistent worker)"
   );
