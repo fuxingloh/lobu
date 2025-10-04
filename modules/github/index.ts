@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { HomeTabModule, WorkerModule, OrchestratorModule, SessionContext, ActionButton } from '../types';
+import type { HomeTabModule, WorkerModule, OrchestratorModule, DispatcherModule, SessionContext, ActionButton, ThreadContext } from '../types';
 import { GitHubRepositoryManager } from './repository-manager';
 import { handleGitHubConnect, handleGitHubLogout, getUserGitHubInfo } from './handlers';
 import { generateGitHubAuthUrl } from './utils';
@@ -36,7 +36,7 @@ export function loadGitHubConfig(): GitHubConfig {
   });
 }
 
-export class GitHubModule implements HomeTabModule, WorkerModule, OrchestratorModule {
+export class GitHubModule implements HomeTabModule, WorkerModule, OrchestratorModule, DispatcherModule {
   name = 'github';
   private repoManager?: GitHubRepositoryManager;
 
@@ -259,6 +259,61 @@ export class GitHubModule implements HomeTabModule, WorkerModule, OrchestratorMo
     return match ? `${match[1]}/${match[2]}` : url;
   }
 
+  async generateActionButtons(context: ThreadContext): Promise<ActionButton[]> {
+    if (!this.repoManager) {
+      return [];
+    }
+
+    const { generateGitHubActionButtons } = await import('./actions');
+    const buttons = await generateGitHubActionButtons(
+      context.userId,
+      context.gitBranch,
+      context.hasGitChanges,
+      context.pullRequestUrl,
+      context.userMappings,
+      this.repoManager,
+      context.slackClient
+    );
+
+    return buttons?.map(button => ({
+      text: button.text?.text || '',
+      action_id: button.action_id,
+      style: button.style,
+      value: button.value
+    })) || [];
+  }
+
+  async handleAction(actionId: string, userId: string, context: any): Promise<boolean> {
+    // Handle GitHub-specific actions
+    switch (actionId) {
+      case "github_login":
+        const { handleGitHubConnect } = await import('./handlers');
+        await handleGitHubConnect(userId, context.channelId, context.client);
+        return true;
+        
+      case "github_logout":
+        const { handleGitHubLogout } = await import('./handlers');
+        await handleGitHubLogout(userId, context.client);
+        // Update home tab after logout - delegate back to action handler
+        if (context.updateAppHome) {
+          await context.updateAppHome(userId, context.client);
+        }
+        return true;
+        
+      case "open_repository_modal":
+        // This is handled by repository-modal-utils which should also be moved to module
+        return false; // Let dispatcher handle for now
+        
+      default:
+        // Check if it's a GitHub-specific action (prefixed with github_ or contains repo operations)
+        if (actionId.startsWith('github_') || actionId.includes('pr_') || actionId.includes('view_pr_')) {
+          // This is a GitHub action but not one we handle directly
+          return false;
+        }
+        return false;
+    }
+  }
+
   getRepositoryManager(): GitHubRepositoryManager | undefined {
     return this.repoManager;
   }
@@ -267,3 +322,4 @@ export class GitHubModule implements HomeTabModule, WorkerModule, OrchestratorMo
 export * from './repository-manager';
 export * from './handlers';
 export * from './utils';
+export * from './errors';

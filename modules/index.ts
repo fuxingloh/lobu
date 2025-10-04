@@ -1,4 +1,4 @@
-import type { ModuleInterface, HomeTabModule, WorkerModule, OrchestratorModule } from './types';
+import type { ModuleInterface, HomeTabModule, WorkerModule, OrchestratorModule, DispatcherModule } from './types';
 import { GitHubModule } from './github';
 
 export class ModuleRegistry {
@@ -44,6 +44,12 @@ export class ModuleRegistry {
   getOrchestratorModules(): OrchestratorModule[] {
     return Array.from(this.modules.values()).filter(
       (m): m is OrchestratorModule => 'buildEnvVars' in m
+    );
+  }
+
+  getDispatcherModules(): DispatcherModule[] {
+    return Array.from(this.modules.values()).filter(
+      (m): m is DispatcherModule => 'generateActionButtons' in m
     );
   }
 

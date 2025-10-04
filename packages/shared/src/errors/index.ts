@@ -13,5 +13,4 @@ export {
   CoreWorkerError,
 } from "./worker-errors";
 
-// Export dispatcher errors
-export { GitHubRepositoryError } from "./dispatcher-errors";
+// Dispatcher errors - GitHub-specific errors moved to GitHub module

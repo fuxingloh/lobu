@@ -32,12 +32,12 @@ export class SlackEventHandlers {
     queueProducer: QueueProducer,
     private config: DispatcherConfig
   ) {
-    // Get repository manager from GitHub module
+    // Get repository manager from GitHub module (optional)
     const githubModule = moduleRegistry.getModule('github');
     const repoManager = githubModule?.getRepositoryManager();
     
     if (!repoManager) {
-      throw new Error('GitHub module not available or repository manager not found');
+      logger.warn('GitHub module not available - some features may be limited');
     }
 
     // Initialize specialized handlers

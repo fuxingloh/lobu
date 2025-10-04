@@ -36,6 +36,14 @@ export interface OrchestratorModule extends ModuleInterface {
   getContainerAddress?(): string;
 }
 
+export interface DispatcherModule extends ModuleInterface {
+  /** Generate action buttons for thread responses */
+  generateActionButtons?(context: ThreadContext): Promise<ActionButton[]>;
+  
+  /** Handle action button clicks */
+  handleAction?(actionId: string, userId: string, context: any): Promise<boolean>;
+}
+
 export interface SessionContext {
   userId: string;
   threadId: string;
@@ -49,4 +57,15 @@ export interface ActionButton {
   action_id: string;
   style?: 'primary' | 'danger';
   value?: string;
+}
+
+export interface ThreadContext {
+  userId: string;
+  channelId: string;
+  threadTs: string;
+  gitBranch?: string;
+  hasGitChanges?: boolean;
+  pullRequestUrl?: string;
+  userMappings: Map<string, string>;
+  slackClient?: any;
 }

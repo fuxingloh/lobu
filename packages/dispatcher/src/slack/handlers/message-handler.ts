@@ -13,7 +13,7 @@ import type {
   SlackContext,
   ThreadSession,
 } from "../../types";
-import type { GitHubRepositoryManager } from "../../../../../modules/github/repository-manager";
+// GitHubRepositoryManager imported dynamically when needed
 import { getDbPool } from "@peerbot/shared";
 
 export class MessageHandler {
@@ -30,7 +30,7 @@ export class MessageHandler {
 
   constructor(
     private queueProducer: QueueProducer,
-    private repoManager: GitHubRepositoryManager,
+    private repoManager: any, // Made generic since GitHub module is optional
     private config: DispatcherConfig
   ) {
     this.startCachePrewarming();
