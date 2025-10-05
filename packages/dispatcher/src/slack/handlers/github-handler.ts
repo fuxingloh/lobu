@@ -130,7 +130,12 @@ export async function getUserGitHubInfo(userId: string): Promise<{
           token = null;
         }
       } else if (row.name === "GITHUB_USER") {
-        username = row.value;
+        try {
+          username = decrypt(row.value);
+        } catch (error) {
+          // If decryption fails, assume it's plain text (for backwards compatibility)
+          username = row.value;
+        }
       }
     }
 

@@ -150,11 +150,11 @@ export class GitHubOAuthHandler {
       );
 
       await this.dbPool.query(
-        `INSERT INTO user_environ (user_id, channel_id, repository, name, value, type) 
-         VALUES ($1, NULL, NULL, 'GITHUB_USER', $2, 'user') 
-         ON CONFLICT (user_id, channel_id, repository, name) 
+        `INSERT INTO user_environ (user_id, channel_id, repository, name, value, type)
+         VALUES ($1, NULL, NULL, 'GITHUB_USER', $2, 'user')
+         ON CONFLICT (user_id, channel_id, repository, name)
          DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-        [userDbId, githubUsername]
+        [userDbId, encrypt(githubUsername)]
       );
 
       // Trigger home tab refresh and send repository selection message

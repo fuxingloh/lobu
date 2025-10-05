@@ -153,6 +153,12 @@ export class WorkspaceManager {
       );
       return this.workspaceInfo;
     } catch (error: any) {
+      logger.error(`Workspace setup failed for ${username}:`, error);
+      logger.error(`Error details:`, {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+      });
       const workspaceError = new WorkspaceError(
         "setupWorkspace",
         `Failed to setup workspace for ${username}`,
