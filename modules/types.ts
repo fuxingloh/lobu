@@ -77,26 +77,6 @@ export interface ThreadContext {
   userId: string;
   channelId: string;
   threadTs: string;
-  gitBranch?: string;
-  hasGitChanges?: boolean;
-  pullRequestUrl?: string;
-  userMappings: Map<string, string>;
   slackClient?: any;
-}
-
-export interface GitHubModuleInterface extends ModuleInterface {
-  /** Add GitHub authentication to repository URL */
-  addGitHubAuth(repositoryUrl: string, token: string): string;
-  
-  /** Generate OAuth URL for user authentication */
-  generateOAuthUrl(userId: string): string;
-  
-  /** Check if GitHub CLI is authenticated */
-  isGitHubCLIAuthenticated(workingDir: string): Promise<boolean>;
-  
-  /** Get repository manager instance */
-  getRepositoryManager(): any;
-  
-  /** Get user GitHub info */
-  getUserInfo(userId: string): Promise<{ token: string | null; username: string | null }>;
+  moduleFields?: Record<string, any>; // Generic fields for modules to use
 }

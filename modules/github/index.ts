@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type {
+  ModuleInterface,
   HomeTabModule,
   WorkerModule,
   OrchestratorModule,
   DispatcherModule,
-  GitHubModuleInterface,
   SessionContext,
   ActionButton,
   ThreadContext,
@@ -12,6 +12,24 @@ import type {
 import { GitHubRepositoryManager } from "./repository-manager";
 import { getUserGitHubInfo, GitHubOAuthHandler } from "./handlers";
 import { generateGitHubAuthUrl } from "./utils";
+
+// GitHub-specific module interface (defined in GitHub module)
+export interface GitHubModuleInterface extends ModuleInterface {
+  /** Add GitHub authentication to repository URL */
+  addGitHubAuth(repositoryUrl: string, token: string): string;
+  
+  /** Generate OAuth URL for user authentication */
+  generateOAuthUrl(userId: string): string;
+  
+  /** Check if GitHub CLI is authenticated */
+  isGitHubCLIAuthenticated(workingDir: string): Promise<boolean>;
+  
+  /** Get repository manager instance */
+  getRepositoryManager(): any;
+  
+  /** Get user GitHub info */
+  getUserInfo(userId: string): Promise<{ token: string | null; username: string | null }>;
+}
 
 // GitHub configuration schema (module-specific)
 export const GitHubConfigSchema = z.object({
@@ -315,13 +333,16 @@ export class GitHubModule
       return [];
     }
 
+    // Extract GitHub-specific fields from moduleFields
+    const githubFields = context.moduleFields?.github || {};
+    
     const { generateGitHubActionButtons } = await import("./actions");
     const buttons = await generateGitHubActionButtons(
       context.userId,
-      context.gitBranch,
-      context.hasGitChanges,
-      context.pullRequestUrl,
-      context.userMappings,
+      githubFields.gitBranch,
+      githubFields.hasGitChanges,
+      githubFields.pullRequestUrl,
+      githubFields.userMappings || new Map(),
       this.repoManager,
       context.slackClient
     );

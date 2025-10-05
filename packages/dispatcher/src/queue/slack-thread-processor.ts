@@ -398,11 +398,15 @@ export class ThreadResponseConsumer {
             userId,
             channelId: data.channelId,
             threadTs: data.threadTs,
-            gitBranch: data.gitBranch,
-            hasGitChanges: data.hasGitChanges,
-            pullRequestUrl: data.pullRequestUrl,
-            userMappings: this.userMappings,
             slackClient: this.slackClient,
+            moduleFields: {
+              github: {
+                gitBranch: data.gitBranch,
+                hasGitChanges: data.hasGitChanges,
+                pullRequestUrl: data.pullRequestUrl,
+                userMappings: this.userMappings,
+              }
+            }
           });
           actionButtons.push(
             ...moduleButtons
@@ -643,11 +647,15 @@ export class ThreadResponseConsumer {
             userId,
             channelId: data.channelId,
             threadTs: data.threadTs,
-            gitBranch: data.gitBranch,
-            hasGitChanges: data.hasGitChanges,
-            pullRequestUrl: data.pullRequestUrl,
-            userMappings: this.userMappings,
             slackClient: this.slackClient,
+            moduleFields: {
+              github: {
+                gitBranch: data.gitBranch,
+                hasGitChanges: data.hasGitChanges,
+                pullRequestUrl: data.pullRequestUrl,
+                userMappings: this.userMappings,
+              }
+            }
           });
           actionButtons.push(
             ...moduleButtons

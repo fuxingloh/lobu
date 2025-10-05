@@ -82,7 +82,7 @@ function generateEnvironmentSection(context: SessionContext): string {
   sections.push("## Working Environment");
 
   if (context.repositoryUrl) {
-    sections.push("You are working in a user-specific GitHub repository:");
+    sections.push("You are working in a user-specific repository:");
     sections.push(`- Repository: ${context.repositoryUrl}`);
     sections.push(
       `- Working Directory: ${context.workingDirectory || "/workspace"}`
@@ -101,7 +101,7 @@ function generateEnvironmentSection(context: SessionContext): string {
   sections.push("Container Information:");
   sections.push("- This is an ephemeral Kubernetes job container");
   sections.push("- Maximum execution time: 5 minutes");
-  sections.push("- Changes will be persisted to GitHub ");
+  sections.push("- Changes will be persisted to the repository");
   sections.push("- Progress updates are streamed to Slack in real-time");
 
   return `${sections.join("\n")}\n\n`;

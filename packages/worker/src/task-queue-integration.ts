@@ -2,7 +2,7 @@
 
 import PgBoss from "pg-boss";
 import { createLogger } from "@peerbot/shared";
-import type { GitHubModuleInterface } from "../../../modules/types";
+import type { GitHubModuleInterface } from "../../../modules/github";
 
 const logger = createLogger("worker");
 

@@ -391,7 +391,6 @@ export class WorkerQueueConsumer {
       claudeOptions: JSON.stringify(claudeOptions),
       workspace: {
         baseDirectory: "/workspace",
-        githubToken: process.env.GITHUB_TOKEN!,
       },
     };
   }

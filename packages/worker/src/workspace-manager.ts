@@ -5,7 +5,6 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createLogger } from "@peerbot/shared";
-import type { GitHubModuleInterface } from "../../../modules/types";
 import type {
   GitRepository,
   WorkspaceInfo,
@@ -117,23 +116,7 @@ export class WorkspaceManager {
       // Setup git configuration
       await this.setupGitConfig(userDirectory, username);
 
-      // Setup GitHub CLI authentication through module if available
-      if (process.env.GITHUB_TOKEN && repositoryUrl.includes("github.com")) {
-        try {
-          const { moduleRegistry } = await import("../../../modules");
-          const githubModule = moduleRegistry.getModule<GitHubModuleInterface>("github");
-          if (githubModule && "init" in githubModule) {
-            // GitHub module will handle CLI authentication during its own setup
-            logger.info("GitHub module will handle CLI authentication");
-          }
-        } catch (error) {
-          logger.warn(
-            "Failed to setup GitHub CLI authentication through module:",
-            error
-          );
-          // Non-fatal - continue without gh CLI
-        }
-      }
+      // Note: GitHub authentication is handled by GitHub module during workspace initialization hook
 
       // Get repository info
       const repository = await this.getRepositoryInfo(
@@ -182,18 +165,8 @@ export class WorkspaceManager {
         `Cloning repository ${repositoryUrl} to ${targetDirectory}...`
       );
 
-      // Use GitHub token for authentication through module
+      // Note: GitHub authentication is handled by the GitHub module through workspace hooks
       let authenticatedUrl = repositoryUrl;
-      if (this.config.githubToken && repositoryUrl.includes("github.com")) {
-        const { moduleRegistry } = await import("../../../modules");
-        const githubModule = moduleRegistry.getModule<GitHubModuleInterface>("github");
-        if (githubModule) {
-          authenticatedUrl = githubModule.addGitHubAuth(
-            repositoryUrl,
-            this.config.githubToken
-          );
-        }
-      }
 
       const { stderr } = await execAsync(
         `git clone "${authenticatedUrl}" "${targetDirectory}"`,
