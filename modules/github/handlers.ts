@@ -314,6 +314,95 @@ export class GitHubOAuthHandler {
 }
 
 /**
+ * Handle GitHub login modal action
+ */
+export async function handleGitHubLoginModal(
+  userId: string,
+  body: any,
+  client: any
+): Promise<void> {
+  try {
+    const authUrl = generateGitHubAuthUrl(userId);
+    
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: "modal",
+        callback_id: "github_login_modal",
+        title: {
+          type: "plain_text",
+          text: "Connect GitHub",
+        },
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "🔗 Connect Your GitHub Account",
+              emoji: true,
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text:
+                "Connect your GitHub account to:\n\n" +
+                "• Access your repositories\n" +
+                "• Create new projects\n" +
+                "• Manage code with AI assistance\n\n" +
+                "*Your connection is secure and encrypted.*",
+            },
+          },
+          {
+            type: "divider",
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "Click the button below to authenticate with GitHub:",
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "🚀 Connect with GitHub",
+                  emoji: true,
+                },
+                url: authUrl,
+                style: "primary",
+              },
+            ],
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: "💡 *Note:* After connecting, you can select which repositories to work with.",
+              },
+            ],
+          },
+        ],
+        close: {
+          type: "plain_text",
+          text: "Cancel",
+        },
+      },
+    });
+
+    logger.info(`GitHub login modal opened for user ${userId}`);
+  } catch (error) {
+    logger.error("Failed to open GitHub login modal:", error);
+  }
+}
+
+/**
  * Handle GitHub connect action - initiates OAuth flow
  */
 export async function handleGitHubConnect(
@@ -394,6 +483,136 @@ export async function handleGitHubLogout(
     }
   } catch (error) {
     logger.error(`Failed to logout user ${userId}:`, error);
+  }
+}
+
+/**
+ * Search user's accessible repositories
+ */
+export async function searchUserRepos(query: string, token: string): Promise<any[]> {
+  try {
+    let url: string;
+
+    if (query) {
+      // Search user's repos with query
+      url = `https://api.github.com/user/repos?per_page=100&sort=updated`;
+    } else {
+      // Get recent repos if no query
+      url = `https://api.github.com/user/repos?per_page=20&sort=updated`;
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        `GitHub API error for user repos: ${response.status} ${response.statusText}`
+      );
+      return [];
+    }
+
+    const repos = (await response.json()) as any;
+
+    // Filter by query if provided
+    if (query) {
+      const lowerQuery = query.toLowerCase();
+      return repos.filter(
+        (repo: any) =>
+          repo.name.toLowerCase().includes(lowerQuery) ||
+          repo.full_name.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    return repos;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search organization repositories
+ */
+export async function searchOrgRepos(query: string, token: string): Promise<any[]> {
+  const org = process.env.GITHUB_ORGANIZATION;
+
+  if (!org) return [];
+
+  try {
+    // Get organization repos
+    const response = await fetch(
+      `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
+      {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      logger.warn(
+        `GitHub API error for org repos: ${response.status} ${response.statusText}`
+      );
+      return [];
+    }
+
+    const repos = (await response.json()) as any;
+
+    // Filter by query if provided
+    if (query) {
+      const lowerQuery = query.toLowerCase();
+      return repos.filter(
+        (repo: any) =>
+          repo.name.toLowerCase().includes(lowerQuery) ||
+          repo.full_name.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    // Return top 20 if no query
+    return repos.slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Handle repository search - provides Slack option format
+ */
+export async function handleRepositorySearch(query: string, userId: string): Promise<any[]> {
+  try {
+    const { token } = await getUserGitHubInfo(userId);
+    
+    if (!token) {
+      return [];
+    }
+
+    // Search both user repos and org repos in parallel
+    const [userRepos, orgRepos] = await Promise.all([
+      searchUserRepos(query, token),
+      searchOrgRepos(query, token),
+    ]);
+
+    // Combine and deduplicate
+    const allRepos = [...userRepos, ...orgRepos];
+    const uniqueRepos = Array.from(
+      new Map(allRepos.map((repo) => [repo.html_url, repo])).values()
+    );
+
+    // Format for Slack (limit to 100)
+    return uniqueRepos.slice(0, 100).map((repo) => ({
+      text: {
+        type: "plain_text" as const,
+        text: repo.full_name, // Shows "owner/repo"
+      },
+      value: repo.html_url,
+    }));
+  } catch (error) {
+    logger.error("Error in repository search:", error);
+    return [];
   }
 }
 

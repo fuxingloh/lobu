@@ -598,19 +598,22 @@ export class QueueIntegration {
     }
 
     try {
-      // Generate GitHub OAuth URL for authentication through module
+      // Generate authentication URL through module system
       let authUrl = `${process.env.INGRESS_URL || "http://localhost:8080"}/login`;
+      let loginButtonText = "🔗 Login";
+      
       try {
         const { moduleRegistry } = await import("../../../modules");
         const githubModule = moduleRegistry.getModule("github");
-        if (githubModule) {
-          authUrl = githubModule.generateOAuthUrl(
+        if (githubModule && 'generateOAuthUrl' in githubModule) {
+          authUrl = (githubModule as any).generateOAuthUrl(
             process.env.USER_ID || ""
           );
+          loginButtonText = "🔗 Login with GitHub";
         }
       } catch (moduleError) {
         console.warn(
-          "Failed to get GitHub OAuth URL from module, using fallback:",
+          "Failed to get OAuth URL from module, using fallback:",
           moduleError
         );
       }
@@ -631,7 +634,7 @@ export class QueueIntegration {
               type: "button",
               text: {
                 type: "plain_text",
-                text: "🔐 Connect GitHub",
+                text: loginButtonText,
               },
               url: authUrl,
               action_id: "github_login",

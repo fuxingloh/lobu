@@ -63,7 +63,7 @@ export class SlackEventHandlers {
   private setupOptionsHandlers(): void {
     logger.info("Setting up options handlers for external selects");
 
-    // Handle repository search
+    // Handle repository search via GitHub module
     this.app.options("existing_repo_select", async ({ options, ack, body }) => {
       // Handle both initial load and search
       const query = options?.value || "";
@@ -79,8 +79,7 @@ export class SlackEventHandlers {
       );
 
       try {
-        // Get user's GitHub token
-        logger.info(`Fetching GitHub info for user ${userId}`);
+        // Delegate to GitHub module
         let gitHubModule: any = null;
         try {
           const { moduleRegistry } = await import("../../../../modules");
@@ -89,50 +88,15 @@ export class SlackEventHandlers {
           logger.warn("Module registry not available");
         }
         
-        if (!gitHubModule || !('getUserInfo' in gitHubModule)) {
+        if (!gitHubModule || !('handleRepositorySearch' in gitHubModule)) {
           logger.warn("GitHub module not available - returning empty options");
           await ack({ options: [] });
           return;
         }
 
-        const githubUser = await gitHubModule.getUserInfo(userId);
-        logger.info(
-          `GitHub user info retrieved: token=${!!githubUser.token}, username=${githubUser.username}`
-        );
-
-        if (!githubUser.token) {
-          // No token = no suggestions
-          logger.info(`No GitHub token found for user ${userId}`);
-          await ack({ options: [] });
-          return;
-        }
-
-        // Search both user repos and org repos in parallel
-        const [userRepos, orgRepos] = await Promise.all([
-          this.searchUserRepos(query, githubUser.token),
-          this.searchOrgRepos(query, githubUser.token),
-        ]);
-
-        logger.info(
-          `Found ${userRepos.length} user repos, ${orgRepos.length} org repos`
-        );
-
-        // Combine and deduplicate
-        const allRepos = [...userRepos, ...orgRepos];
-        const uniqueRepos = Array.from(
-          new Map(allRepos.map((repo) => [repo.html_url, repo])).values()
-        );
-
-        // Format for Slack (limit to 100)
-        const options = uniqueRepos.slice(0, 100).map((repo) => ({
-          text: {
-            type: "plain_text" as const,
-            text: repo.full_name, // Shows "owner/repo"
-          },
-          value: repo.html_url,
-        }));
-
-        logger.info(`Returning ${options.length} repository options`);
+        const options = await gitHubModule.handleRepositorySearch(query, userId);
+        
+        logger.info(`Returning ${options.length} repository options from GitHub module`);
         await ack({ options });
       } catch (error) {
         // Log error but still return empty options
@@ -142,98 +106,6 @@ export class SlackEventHandlers {
     });
   }
 
-  /**
-   * Search user's accessible repositories
-   */
-  private async searchUserRepos(query: string, token: string): Promise<any[]> {
-    try {
-      let url: string;
-
-      if (query) {
-        // Search user's repos with query
-        url = `https://api.github.com/user/repos?per_page=100&sort=updated`;
-      } else {
-        // Get recent repos if no query
-        url = `https://api.github.com/user/repos?per_page=20&sort=updated`;
-      }
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      });
-
-      if (!response.ok) {
-        logger.warn(
-          `GitHub API error for user repos: ${response.status} ${response.statusText}`
-        );
-        return [];
-      }
-
-      const repos = (await response.json()) as any;
-
-      // Filter by query if provided
-      if (query) {
-        const lowerQuery = query.toLowerCase();
-        return repos.filter(
-          (repo: any) =>
-            repo.name.toLowerCase().includes(lowerQuery) ||
-            repo.full_name.toLowerCase().includes(lowerQuery)
-        );
-      }
-
-      return repos;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Search organization repositories
-   */
-  private async searchOrgRepos(query: string, token: string): Promise<any[]> {
-    const org = process.env.GITHUB_ORGANIZATION;
-
-    if (!org) return [];
-
-    try {
-      // Get organization repos
-      const response = await fetch(
-        `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
-        {
-          headers: {
-            Authorization: `token ${token}`,
-            Accept: "application/vnd.github.v3+json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        logger.warn(
-          `GitHub API error for org repos: ${response.status} ${response.statusText}`
-        );
-        return [];
-      }
-
-      const repos = (await response.json()) as any;
-
-      // Filter by query if provided
-      if (query) {
-        const lowerQuery = query.toLowerCase();
-        return repos.filter(
-          (repo: any) =>
-            repo.name.toLowerCase().includes(lowerQuery) ||
-            repo.full_name.toLowerCase().includes(lowerQuery)
-        );
-      }
-
-      // Return top 20 if no query
-      return repos.slice(0, 20);
-    } catch {
-      return [];
-    }
-  }
 
   /**
    * Get bot ID from configuration

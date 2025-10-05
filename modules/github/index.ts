@@ -364,7 +364,14 @@ export class GitHubModule
   ): Promise<boolean> {
     // Handle GitHub-specific actions
     switch (actionId) {
-      case "github_login": {
+      case "open_github_login_modal": {
+        const { handleGitHubLoginModal } = await import("./handlers");
+        await handleGitHubLoginModal(userId, context.body, context.client);
+        return true;
+      }
+
+      case "github_login":
+      case "github_connect": {
         const { handleGitHubConnect } = await import("./handlers");
         await handleGitHubConnect(userId, context.channelId, context.client);
         return true;
@@ -396,6 +403,14 @@ export class GitHubModule
         }
         return false;
     }
+  }
+
+  /**
+   * Handle repository search options - called from slack external select
+   */
+  async handleRepositorySearch(query: string, userId: string): Promise<any[]> {
+    const { handleRepositorySearch } = await import("./handlers");
+    return handleRepositorySearch(query, userId);
   }
 
   getRepositoryManager(): GitHubRepositoryManager | undefined {
