@@ -5,6 +5,8 @@ import { initSentry } from "@peerbot/shared";
 // Initialize Sentry monitoring
 initSentry();
 
+import { moduleRegistry } from "../../../modules";
+
 import { join } from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import type { BaseDeploymentManager } from "./base/BaseDeploymentManager";
@@ -26,6 +28,7 @@ class PeerbotOrchestrator {
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
+
     this.dbPool = new DatabasePool(config.database);
     this.deploymentManager = this.createDeploymentManager(config);
     this.queueConsumer = new QueueConsumer(config, this.deploymentManager);
@@ -161,6 +164,10 @@ class PeerbotOrchestrator {
 
   async start(): Promise<void> {
     try {
+      // Initialize modules
+      await moduleRegistry.initAll();
+      logger.info("✅ Modules initialized");
+
       // Run database migrations using dbmate (this will create database and run migrations)
       await this.runDbmateMigrations();
 
@@ -461,11 +468,6 @@ async function main() {
     // Create and start orchestrator
     const orchestrator = new PeerbotOrchestrator(config);
     await orchestrator.start();
-
-    // Keep the process alive
-    process.on("SIGUSR1", () => {
-      // const _status = orchestrator.getStatus();
-    });
   } catch (error) {
     logger.error("💥 Failed to start Peerbot Orchestrator:", error);
     process.exit(1);

@@ -2,12 +2,26 @@
 
 import { Octokit } from "@octokit/rest";
 import { createLogger } from "@peerbot/shared";
-import type { GitHubConfig, UserRepository } from "../types";
 
-const logger = createLogger("dispatcher");
+const logger = createLogger("github-module");
 
-// Import from shared package
-import { GitHubRepositoryError, getDbPool } from "@peerbot/shared";
+// Import from shared package and local module
+import { getDbPool } from "@peerbot/shared";
+import { GitHubRepositoryError } from "./errors";
+import type { GitHubConfig } from "./index";
+
+export interface GitHubModuleConfig extends GitHubConfig {
+  // All config is already in the base GitHubConfig type
+}
+
+export interface UserRepository {
+  username: string;
+  repositoryName: string;
+  repositoryUrl: string;
+  cloneUrl: string;
+  createdAt: number;
+  lastUsed: number;
+}
 
 export class GitHubRepositoryManager {
   private octokit: Octokit;

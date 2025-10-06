@@ -234,7 +234,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
     }
 
     // Get environment variables before creating the deployment spec
-    const envVars = this.generateEnvironmentVariables(
+    const envVars = await this.generateEnvironmentVariables(
       username,
       userId,
       deploymentName,
@@ -341,17 +341,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                     name: "NODE_ENV",
                     value: process.env.NODE_ENV || "production",
                   },
-                  // K8s-specific secrets that can't be handled in base class
-                  {
-                    name: "GITHUB_TOKEN",
-                    valueFrom: {
-                      secretKeyRef: {
-                        name: "peerbot-secrets",
-                        key: "github-token",
-                        optional: true,
-                      } as any,
-                    },
-                  },
+                  // Module-specific environment variables are added through base class
                 ],
                 resources: {
                   requests: this.config.worker.resources.requests,

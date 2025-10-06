@@ -2,10 +2,10 @@
 
 import { initSentry, createLogger } from "@peerbot/shared";
 
-// Force rebuild to deploy MCP config fix - timestamp: 1756399400
-
 // Initialize Sentry monitoring
 initSentry();
+
+import { moduleRegistry } from "../../../modules";
 
 const logger = createLogger("worker");
 
@@ -23,6 +23,10 @@ export { ClaudeWorker } from "./claude-worker";
  * Main entry point - now supports both queue-based and legacy workers
  */
 async function main() {
+  // Initialize available modules
+  await moduleRegistry.initAll();
+  logger.info("✅ Modules initialized");
+
   logger.info(
     "🔄 Starting in queue mode (dynamic deployment-based persistent worker)"
   );
@@ -135,5 +139,3 @@ async function appendTerminationMessage(signal: string): Promise<void> {
 export type { WorkerConfig } from "./types";
 
 main();
-
-// Cache bust Sat Aug 30 18:38:05 BST 2025

@@ -15,13 +15,11 @@ export interface WorkerConfig {
   resumeSessionId?: string; // Claude session ID to resume from
   workspace: {
     baseDirectory: string;
-    githubToken: string;
   };
 }
 
 export interface WorkspaceSetupConfig {
   baseDirectory: string;
-  githubToken: string;
 }
 
 export interface GitRepository {

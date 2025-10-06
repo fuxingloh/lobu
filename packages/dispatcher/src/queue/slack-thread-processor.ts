@@ -2,9 +2,9 @@
 
 import { WebClient } from "@slack/web-api";
 import PgBoss from "pg-boss";
-import type { GitHubRepositoryManager } from "../github/repository-manager";
+import { moduleRegistry } from "../../../../modules";
 import { processMarkdownAndBlockkit } from "../converters/blockkit-processor";
-import { generateGitHubActionButtons } from "../converters/github-actions";
+// GitHub action buttons now handled through module system
 import { convertMarkdownToSlack } from "../converters/markdown-to-slack";
 import { createLogger } from "@peerbot/shared";
 
@@ -36,20 +36,11 @@ export class ThreadResponseConsumer {
   private pgBoss: PgBoss;
   private slackClient: WebClient;
   private isRunning = false;
-  private repoManager: GitHubRepositoryManager;
-  private userMappings: Map<string, string>; // slackUserId -> githubUsername
   private sessionBotMessages: Map<string, string> = new Map(); // sessionKey -> botMessageTs
 
-  constructor(
-    connectionString: string,
-    slackToken: string,
-    repoManager: GitHubRepositoryManager,
-    userMappings: Map<string, string>
-  ) {
+  constructor(connectionString: string, slackToken: string) {
     this.pgBoss = new PgBoss(connectionString);
     this.slackClient = new WebClient(slackToken);
-    this.repoManager = repoManager;
-    this.userMappings = userMappings;
   }
 
   /**
@@ -392,19 +383,50 @@ export class ThreadResponseConsumer {
         );
       }
 
-      // Get GitHub action buttons for this session
-      const githubActionButtons = await generateGitHubActionButtons(
-        userId,
-        data.gitBranch,
-        data.hasGitChanges,
-        data.pullRequestUrl,
-        this.userMappings,
-        this.repoManager,
-        this.slackClient
-      );
+      // Get action buttons from modules
+      const actionButtons: any[] = [];
+      const dispatcherModules = moduleRegistry.getDispatcherModules();
+      for (const module of dispatcherModules) {
+        if (module.generateActionButtons) {
+          const moduleButtons = await module.generateActionButtons({
+            userId,
+            channelId: data.channelId,
+            threadTs: data.threadTs,
+            slackClient: this.slackClient,
+            moduleFields: {
+              github: {
+                gitBranch: data.gitBranch,
+                hasGitChanges: data.hasGitChanges,
+                pullRequestUrl: data.pullRequestUrl,
+              },
+            },
+          });
+          actionButtons.push(
+            ...moduleButtons
+              .filter((btn) => {
+                // Validate required button properties
+                if (!btn.text || !btn.action_id) {
+                  logger.warn(
+                    `Invalid button from module ${module.name}: missing text or action_id`,
+                    btn
+                  );
+                  return false;
+                }
+                return true;
+              })
+              .map((btn) => ({
+                type: "button",
+                text: { type: "plain_text", text: btn.text },
+                action_id: btn.action_id,
+                style: btn.style,
+                value: btn.value,
+              }))
+          );
+        }
+      }
 
-      // Add GitHub action buttons as a separate actions block
-      if (githubActionButtons && githubActionButtons.length > 0) {
+      // Add action buttons as a separate actions block
+      if (actionButtons && actionButtons.length > 0) {
         // Add a divider before the GitHub actions if there are other blocks
         if (result.blocks.length > 0) {
           result.blocks.push({ type: "divider" });
@@ -413,7 +435,7 @@ export class ThreadResponseConsumer {
         // Add the GitHub action buttons as an actions block
         result.blocks.push({
           type: "actions",
-          elements: githubActionButtons,
+          elements: actionButtons,
         });
       }
 
@@ -612,19 +634,50 @@ export class ThreadResponseConsumer {
         ],
       };
 
-      // Get GitHub action buttons for this session
-      const githubActionButtons = await generateGitHubActionButtons(
-        userId,
-        data.gitBranch,
-        data.hasGitChanges,
-        data.pullRequestUrl,
-        this.userMappings,
-        this.repoManager,
-        this.slackClient
-      );
+      // Get action buttons from modules
+      const actionButtons: any[] = [];
+      const dispatcherModules = moduleRegistry.getDispatcherModules();
+      for (const module of dispatcherModules) {
+        if (module.generateActionButtons) {
+          const moduleButtons = await module.generateActionButtons({
+            userId,
+            channelId: data.channelId,
+            threadTs: data.threadTs,
+            slackClient: this.slackClient,
+            moduleFields: {
+              github: {
+                gitBranch: data.gitBranch,
+                hasGitChanges: data.hasGitChanges,
+                pullRequestUrl: data.pullRequestUrl,
+              },
+            },
+          });
+          actionButtons.push(
+            ...moduleButtons
+              .filter((btn) => {
+                // Validate required button properties
+                if (!btn.text || !btn.action_id) {
+                  logger.warn(
+                    `Invalid button from module ${module.name}: missing text or action_id`,
+                    btn
+                  );
+                  return false;
+                }
+                return true;
+              })
+              .map((btn) => ({
+                type: "button",
+                text: { type: "plain_text", text: btn.text },
+                action_id: btn.action_id,
+                style: btn.style,
+                value: btn.value,
+              }))
+          );
+        }
+      }
 
-      // Add GitHub action buttons if available
-      if (githubActionButtons && githubActionButtons.length > 0) {
+      // Add action buttons if available
+      if (actionButtons && actionButtons.length > 0) {
         // Add a divider before the GitHub actions
         errorResult.blocks.push({
           type: "divider",
@@ -633,7 +686,7 @@ export class ThreadResponseConsumer {
         // Add the GitHub action buttons as an actions block
         errorResult.blocks.push({
           type: "actions",
-          elements: githubActionButtons,
+          elements: actionButtons,
         } as any);
       }
 

@@ -8,7 +8,7 @@ import { encrypt } from "@peerbot/shared";
 import type { MessageHandler } from "./message-handler";
 import type { ActionHandler } from "./action-handler";
 import { openRepositoryModal } from "./repository-modal-utils";
-import { getUserGitHubInfo } from "./github-handler";
+// GitHub imports are loaded dynamically when needed
 
 export class ShortcutCommandHandler {
   constructor(
@@ -59,6 +59,9 @@ export class ShortcutCommandHandler {
       const userId = body.user.id;
       logger.info(`Create project shortcut triggered by ${userId}`);
 
+      const { getUserGitHubInfo } = await import(
+        "../../../../../modules/github/handlers"
+      );
       await openRepositoryModal({
         userId,
         body,
@@ -144,6 +147,9 @@ export class ShortcutCommandHandler {
     threadTs?: string
   ): Promise<void> {
     // Check if user has GitHub connected
+    const { getUserGitHubInfo } = await import(
+      "../../../../../modules/github/handlers"
+    );
     const githubUser = await getUserGitHubInfo(userId);
     const isGitHubConnected = !!githubUser.token;
 
@@ -435,6 +441,9 @@ export class ShortcutCommandHandler {
         // Create new repository
         // Get GitHub user info
         // const username = await this.messageHandler.getOrCreateUserMapping(userId, client); // Currently unused
+        const { getUserGitHubInfo } = await import(
+          "../../../../../modules/github/handlers"
+        );
         const githubUser = await getUserGitHubInfo(userId);
 
         if (!githubUser.token) {
@@ -467,13 +476,6 @@ export class ShortcutCommandHandler {
 
       // Save the selected repository
       await this.saveSelectedRepository(userId, repositoryUrl, channelId);
-
-      // Clear cache for the user
-      const username = await this.messageHandler.getOrCreateUserMapping(
-        userId,
-        client
-      );
-      this.messageHandler.clearCacheForUser(username);
 
       // Send confirmation
       const repoName =

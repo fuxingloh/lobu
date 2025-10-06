@@ -2,6 +2,7 @@
 
 import PgBoss from "pg-boss";
 import { createLogger } from "@peerbot/shared";
+// Dynamic module imports - no hardcoded GitHub types
 
 const logger = createLogger("worker");
 
@@ -277,31 +278,44 @@ export class QueueIntegration {
             `About to check for PR in directory: ${workingDir}, branch: ${branch}`
           );
 
-          // First check if gh CLI is authenticated
+          // Check if GitHub CLI is authenticated through module
+          let isAuthenticated = false;
           try {
-            logger.info("Checking GitHub CLI authentication...");
-            execSync("gh auth status", {
-              cwd: workingDir,
-              stdio: "pipe",
-              timeout: 3000, // 3 second timeout
-            });
-            logger.info("GitHub CLI is authenticated");
-          } catch (authError: any) {
-            // If GH_TOKEN is set, authentication is available even if gh auth status fails
-            if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) {
+            const { moduleRegistry } = await import("../../../modules");
+            const githubModule = moduleRegistry.getModule("github");
+            if (githubModule && "isGitHubCLIAuthenticated" in githubModule) {
+              isAuthenticated = await (
+                githubModule as any
+              ).isGitHubCLIAuthenticated(workingDir);
               logger.info(
-                "Using GH_TOKEN/GITHUB_TOKEN environment variable for authentication"
+                `GitHub CLI authentication status: ${isAuthenticated}`
               );
             } else {
-              logger.warn(
-                "GitHub CLI not authenticated and no token found, skipping PR detection"
-              );
-              return {
-                branch,
-                hasGitChanges: status.hasChanges,
-                pullRequestUrl: undefined,
-              };
+              // Fallback to direct check
+              logger.info("Checking GitHub CLI authentication (fallback)...");
+              execSync("gh auth status", {
+                cwd: workingDir,
+                stdio: "pipe",
+                timeout: 3000,
+              });
+              isAuthenticated = true;
             }
+          } catch (authError: any) {
+            logger.warn("GitHub CLI not authenticated, skipping PR detection");
+            return {
+              branch,
+              hasGitChanges: status.hasChanges,
+              pullRequestUrl: undefined,
+            };
+          }
+
+          if (!isAuthenticated) {
+            logger.warn("GitHub CLI not authenticated, skipping PR detection");
+            return {
+              branch,
+              hasGitChanges: status.hasChanges,
+              pullRequestUrl: undefined,
+            };
           }
 
           // Try to get PR information
@@ -586,8 +600,25 @@ export class QueueIntegration {
     }
 
     try {
-      // Generate GitHub OAuth URL for authentication
-      const authUrl = `${process.env.INGRESS_URL || "http://localhost:8080"}/api/github/oauth/authorize?userId=${process.env.USER_ID}`;
+      // Generate authentication URL through module system
+      let authUrl = `${process.env.INGRESS_URL || "http://localhost:8080"}/login`;
+      let loginButtonText = "🔗 Login";
+
+      try {
+        const { moduleRegistry } = await import("../../../modules");
+        const githubModule = moduleRegistry.getModule("github");
+        if (githubModule && "generateOAuthUrl" in githubModule) {
+          authUrl = (githubModule as any).generateOAuthUrl(
+            process.env.USER_ID || ""
+          );
+          loginButtonText = "🔗 Login with GitHub";
+        }
+      } catch (moduleError) {
+        logger.warn(
+          "Failed to get OAuth URL from module, using fallback:",
+          moduleError
+        );
+      }
 
       // Create a rich message with buttons
       const blocks = [
@@ -605,7 +636,7 @@ export class QueueIntegration {
               type: "button",
               text: {
                 type: "plain_text",
-                text: "🔐 Connect GitHub",
+                text: loginButtonText,
               },
               url: authUrl,
               action_id: "github_login",

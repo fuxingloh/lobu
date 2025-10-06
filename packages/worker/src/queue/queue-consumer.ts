@@ -389,8 +389,7 @@ export class WorkerQueueConsumer {
       botResponseTs: platformMetadata.botResponseTs, // Pass through bot response timestamp
       claudeOptions: JSON.stringify(claudeOptions),
       workspace: {
-        baseDirectory: process.env.WORKSPACE_DIR || "/workspace",
-        githubToken: process.env.GITHUB_TOKEN!,
+        baseDirectory: "/workspace",
       },
     };
   }

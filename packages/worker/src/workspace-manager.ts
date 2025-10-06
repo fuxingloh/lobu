@@ -116,23 +116,7 @@ export class WorkspaceManager {
       // Setup git configuration
       await this.setupGitConfig(userDirectory, username);
 
-      // Setup GitHub CLI authentication if token is available
-      if (process.env.GITHUB_TOKEN) {
-        try {
-          logger.info("Setting up GitHub CLI authentication...");
-          await execAsync(
-            `echo "${process.env.GITHUB_TOKEN}" | gh auth login --with-token`,
-            {
-              cwd: userDirectory,
-              env: { ...process.env, GH_TOKEN: process.env.GITHUB_TOKEN },
-            }
-          );
-          logger.info("GitHub CLI authentication configured successfully");
-        } catch (error) {
-          logger.warn("Failed to setup GitHub CLI authentication:", error);
-          // Non-fatal - continue without gh CLI
-        }
-      }
+      // Note: GitHub authentication is handled by GitHub module during workspace initialization hook
 
       // Get repository info
       const repository = await this.getRepositoryInfo(
@@ -187,8 +171,8 @@ export class WorkspaceManager {
         `Cloning repository ${repositoryUrl} to ${targetDirectory}...`
       );
 
-      // Use GitHub token for authentication
-      const authenticatedUrl = this.addGitHubAuth(repositoryUrl);
+      // Note: GitHub authentication is handled by the GitHub module through workspace hooks
+      const authenticatedUrl = repositoryUrl;
 
       const { stderr } = await execAsync(
         `git clone "${authenticatedUrl}" "${targetDirectory}"`,
@@ -392,27 +376,6 @@ export class WorkspaceManager {
         `Failed to get repository information`,
         error as Error
       );
-    }
-  }
-
-  /**
-   * Add GitHub authentication to URL
-   */
-  private addGitHubAuth(repositoryUrl: string): string {
-    try {
-      const url = new URL(repositoryUrl);
-
-      if (url.hostname === "github.com") {
-        // Convert to authenticated HTTPS URL
-        url.username = "x-access-token";
-        url.password = this.config.githubToken;
-        return url.toString();
-      }
-
-      return repositoryUrl;
-    } catch (error) {
-      logger.warn("Failed to parse repository URL, using as-is:", error);
-      return repositoryUrl;
     }
   }
 

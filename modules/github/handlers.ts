@@ -1,12 +1,11 @@
-#!/usr/bin/env bun
-
+import { createLogger } from "@peerbot/shared";
+import { getDbPool } from "@peerbot/shared";
+import { encrypt, decrypt } from "@peerbot/shared";
 import axios from "axios";
 import type { Request, Response } from "express";
-import { getDbPool } from "@peerbot/shared";
-import { createLogger } from "@peerbot/shared";
-import { encrypt, decrypt } from "@peerbot/shared";
 
-const logger = createLogger("dispatcher");
+const logger = createLogger("github-module");
+import { generateGitHubAuthUrl } from "./utils";
 
 export class GitHubOAuthHandler {
   private dbPool: any;
@@ -164,9 +163,6 @@ export class GitHubOAuthHandler {
             `Triggering home tab refresh for user ${userId} after GitHub OAuth`
           );
           await this.homeTabCallback(userId);
-
-          // Also send a DM with repository selection prompt
-          // This requires access to Slack client, which we'll pass through the callback
         }
       } catch (error) {
         logger.error("Failed to trigger home tab refresh:", error);
@@ -277,7 +273,7 @@ export class GitHubOAuthHandler {
   }
 
   /**
-   * Handle logout
+   * Handle logout/revoke
    */
   async handleLogout(req: Request, res: Response): Promise<void> {
     try {
@@ -303,9 +299,373 @@ export class GitHubOAuthHandler {
   }
 
   /**
+   * Handle OAuth revoke (alias for logout)
+   */
+  async handleRevoke(req: Request, res: Response): Promise<void> {
+    return this.handleLogout(req, res);
+  }
+
+  /**
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
     /* no-op for shared pool */
+  }
+}
+
+/**
+ * Handle GitHub login modal action
+ */
+export async function handleGitHubLoginModal(
+  userId: string,
+  body: any,
+  client: any
+): Promise<void> {
+  try {
+    const authUrl = generateGitHubAuthUrl(userId);
+
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: "modal",
+        callback_id: "github_login_modal",
+        title: {
+          type: "plain_text",
+          text: "Connect GitHub",
+        },
+        blocks: [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: "🔗 Connect Your GitHub Account",
+              emoji: true,
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text:
+                "Connect your GitHub account to:\n\n" +
+                "• Access your repositories\n" +
+                "• Create new projects\n" +
+                "• Manage code with AI assistance\n\n" +
+                "*Your connection is secure and encrypted.*",
+            },
+          },
+          {
+            type: "divider",
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "Click the button below to authenticate with GitHub:",
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "🚀 Connect with GitHub",
+                  emoji: true,
+                },
+                url: authUrl,
+                style: "primary",
+              },
+            ],
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: "💡 *Note:* After connecting, you can select which repositories to work with.",
+              },
+            ],
+          },
+        ],
+        close: {
+          type: "plain_text",
+          text: "Cancel",
+        },
+      },
+    });
+
+    logger.info(`GitHub login modal opened for user ${userId}`);
+  } catch (error) {
+    logger.error("Failed to open GitHub login modal:", error);
+  }
+}
+
+/**
+ * Handle GitHub connect action - initiates OAuth flow
+ */
+export async function handleGitHubConnect(
+  userId: string,
+  channelId: string,
+  client: any
+): Promise<void> {
+  try {
+    // Generate OAuth URL with user ID
+    const authUrl = generateGitHubAuthUrl(userId);
+
+    await client.chat.postMessage({
+      channel: channelId,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "🔗 *Connect your GitHub account*\n\nClick the link below to authorize Peerbot to access your GitHub repositories:",
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `<${authUrl}|Connect with GitHub>`,
+          },
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: "🔒 We'll only access repositories you explicitly grant permission to",
+            },
+          ],
+        },
+      ],
+    });
+
+    logger.info(`GitHub connect initiated for user ${userId}`);
+  } catch (error) {
+    logger.error("Failed to initiate GitHub connect:", error);
+    await client.chat.postMessage({
+      channel: channelId,
+      text: "Failed to generate GitHub login link. Please try again.",
+    });
+  }
+}
+
+/**
+ * Handle GitHub logout
+ */
+export async function handleGitHubLogout(
+  userId: string,
+  client: any
+): Promise<void> {
+  try {
+    const dbPool = getDbPool(process.env.DATABASE_URL!);
+
+    // Remove GitHub token and username from database
+    await dbPool.query(
+      `DELETE FROM user_environ 
+       WHERE user_id = (SELECT id FROM users WHERE platform = 'slack' AND platform_user_id = $1)
+       AND name IN ('GITHUB_TOKEN', 'GITHUB_USER')`,
+      [userId.toUpperCase()]
+    );
+
+    logger.info(`GitHub logout completed for user ${userId}`);
+
+    // Send confirmation
+    const im = await client.conversations.open({ users: userId });
+    if (im.channel?.id) {
+      await client.chat.postMessage({
+        channel: im.channel.id,
+        text: "✅ Successfully logged out from GitHub",
+      });
+    }
+  } catch (error) {
+    logger.error(`Failed to logout user ${userId}:`, error);
+  }
+}
+
+/**
+ * Search user's accessible repositories
+ */
+export async function searchUserRepos(
+  query: string,
+  token: string
+): Promise<any[]> {
+  try {
+    let url: string;
+
+    if (query) {
+      // Search user's repos with query
+      url = `https://api.github.com/user/repos?per_page=100&sort=updated`;
+    } else {
+      // Get recent repos if no query
+      url = `https://api.github.com/user/repos?per_page=20&sort=updated`;
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        `GitHub API error for user repos: ${response.status} ${response.statusText}`
+      );
+      return [];
+    }
+
+    const repos = (await response.json()) as any;
+
+    // Filter by query if provided
+    if (query) {
+      const lowerQuery = query.toLowerCase();
+      return repos.filter(
+        (repo: any) =>
+          repo.name.toLowerCase().includes(lowerQuery) ||
+          repo.full_name.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    return repos;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search organization repositories
+ */
+export async function searchOrgRepos(
+  query: string,
+  token: string
+): Promise<any[]> {
+  const org = process.env.GITHUB_ORGANIZATION;
+
+  if (!org) return [];
+
+  try {
+    // Get organization repos
+    const response = await fetch(
+      `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
+      {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      logger.warn(
+        `GitHub API error for org repos: ${response.status} ${response.statusText}`
+      );
+      return [];
+    }
+
+    const repos = (await response.json()) as any;
+
+    // Filter by query if provided
+    if (query) {
+      const lowerQuery = query.toLowerCase();
+      return repos.filter(
+        (repo: any) =>
+          repo.name.toLowerCase().includes(lowerQuery) ||
+          repo.full_name.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    // Return top 20 if no query
+    return repos.slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Handle repository search - provides Slack option format
+ */
+export async function handleRepositorySearch(
+  query: string,
+  userId: string
+): Promise<any[]> {
+  try {
+    const { token } = await getUserGitHubInfo(userId);
+
+    if (!token) {
+      return [];
+    }
+
+    // Search both user repos and org repos in parallel
+    const [userRepos, orgRepos] = await Promise.all([
+      searchUserRepos(query, token),
+      searchOrgRepos(query, token),
+    ]);
+
+    // Combine and deduplicate
+    const allRepos = [...userRepos, ...orgRepos];
+    const uniqueRepos = Array.from(
+      new Map(allRepos.map((repo) => [repo.html_url, repo])).values()
+    );
+
+    // Format for Slack (limit to 100)
+    return uniqueRepos.slice(0, 100).map((repo) => ({
+      text: {
+        type: "plain_text" as const,
+        text: repo.full_name, // Shows "owner/repo"
+      },
+      value: repo.html_url,
+    }));
+  } catch (error) {
+    logger.error("Error in repository search:", error);
+    return [];
+  }
+}
+
+/**
+ * Get user's GitHub info from database
+ */
+export async function getUserGitHubInfo(userId: string): Promise<{
+  token: string | null;
+  username: string | null;
+}> {
+  try {
+    const dbPool = getDbPool(process.env.DATABASE_URL!);
+
+    const result = await dbPool.query(
+      `SELECT name, value 
+       FROM user_environ 
+       WHERE user_id = (SELECT id FROM users WHERE platform = 'slack' AND platform_user_id = $1)
+       AND name IN ('GITHUB_TOKEN', 'GITHUB_USER')`,
+      [userId.toUpperCase()]
+    );
+
+    let token = null;
+    let username = null;
+
+    for (const row of result.rows) {
+      if (row.name === "GITHUB_TOKEN") {
+        try {
+          // Token is encrypted, decrypt it
+          token = decrypt(row.value);
+        } catch (error) {
+          logger.error(
+            `Failed to decrypt GitHub token for user ${userId}:`,
+            error
+          );
+          token = null;
+        }
+      } else if (row.name === "GITHUB_USER") {
+        username = row.value;
+      }
+    }
+
+    return { token, username };
+  } catch (error) {
+    logger.error(`Failed to get GitHub info for user ${userId}:`, error);
+    return { token: null, username: null };
   }
 }

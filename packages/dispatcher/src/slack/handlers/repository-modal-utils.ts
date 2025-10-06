@@ -1,5 +1,5 @@
 import { createLogger } from "@peerbot/shared";
-import { generateGitHubAuthUrl } from "../../utils/github-utils";
+// GitHub utility imports are loaded dynamically when needed
 
 const logger = createLogger("dispatcher");
 
@@ -74,6 +74,9 @@ export async function openRepositoryModal({
         },
       });
 
+      const { generateGitHubAuthUrl } = await import(
+        "../../../../../modules/github/utils"
+      );
       const authUrl = generateGitHubAuthUrl(userId);
       blocks.push({
         type: "section",

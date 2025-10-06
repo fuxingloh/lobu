@@ -8,7 +8,6 @@ initSentry();
 import { join } from "node:path";
 import { App, ExpressReceiver, LogLevel } from "@slack/bolt";
 import { config as dotenvConfig } from "dotenv";
-import { GitHubRepositoryManager } from "./github/repository-manager";
 import { createLogger } from "@peerbot/shared";
 
 const logger = createLogger("dispatcher");
@@ -21,13 +20,12 @@ import { QueueProducer } from "./queue/task-queue-producer";
 import { setupHealthEndpoints } from "./simple-http";
 import { SlackEventHandlers } from "./slack/slack-event-handlers";
 import type { DispatcherConfig } from "./types";
+import { moduleRegistry } from "../../../modules";
 
 export class SlackDispatcher {
   private app: App;
   private queueProducer: QueueProducer;
   private threadResponseConsumer?: ThreadResponseConsumer;
-  private repoManager: GitHubRepositoryManager;
-  private eventHandlers?: SlackEventHandlers;
   private anthropicProxy?: AnthropicProxy;
   private config: DispatcherConfig;
 
@@ -95,10 +93,6 @@ export class SlackDispatcher {
     // Initialize queue producer - use DATABASE_URL for consistency
     logger.info("Initializing queue mode");
     this.queueProducer = new QueueProducer(config.queues.connectionString);
-    this.repoManager = new GitHubRepositoryManager(
-      config.github,
-      config.queues.connectionString
-    );
     // ThreadResponseConsumer will be created after event handlers are initialized
 
     this.setupErrorHandling();
@@ -131,6 +125,10 @@ export class SlackDispatcher {
 
       // Setup health endpoints will be called after event handlers are created
 
+      // Initialize modules
+      await moduleRegistry.initAll();
+      logger.info("✅ Modules initialized");
+
       // Start queue producer
       await this.queueProducer.start();
       logger.info("✅ Queue producer started");
@@ -145,11 +143,9 @@ export class SlackDispatcher {
       }
 
       // We'll test auth after starting the server
-      logger.info("Starting Slack app with token:", {
-        firstChars: this.config.slack.token?.substring(0, 10),
-        length: this.config.slack.token?.length,
-        signingSecretLength: this.config.slack.signingSecret?.length,
-      });
+      logger.debug(
+        `Starting Slack app in ${this.config.slack.socketMode ? "Socket Mode" : "HTTP Mode"}`
+      );
 
       if (this.config.slack.socketMode === false) {
         // In HTTP mode, start with the port
@@ -298,7 +294,6 @@ export class SlackDispatcher {
 
       // Log configuration
       logger.info("Configuration:");
-      logger.info(`- GitHub Organization: ${this.config.github.organization}`);
       logger.info(
         `- Session Timeout: ${this.config.sessionTimeoutMinutes} minutes`
       );
@@ -387,79 +382,16 @@ export class SlackDispatcher {
 
       // Initialize queue-based event handlers
       logger.info("Initializing queue-based event handlers");
-      this.eventHandlers = new SlackEventHandlers(
-        this.app,
-        this.queueProducer,
-        this.repoManager,
-        config
-      );
+      new SlackEventHandlers(this.app, this.queueProducer, config);
 
-      // Now create ThreadResponseConsumer with access to user mappings
+      // Now create ThreadResponseConsumer
       this.threadResponseConsumer = new ThreadResponseConsumer(
         config.queues.connectionString,
-        config.slack.token,
-        this.repoManager,
-        this.eventHandlers.getUserMappings()
+        config.slack.token
       );
 
-      // Setup health endpoints with home tab update callback
-      setupHealthEndpoints(
-        this.anthropicProxy,
-        config.queues.connectionString,
-        async (userId: string) => {
-          if (this.eventHandlers) {
-            const client = this.app.client;
-            await (this.eventHandlers as any).updateAppHome(userId, client);
-
-            // Send repository selection message after GitHub login
-            try {
-              const im = await client.conversations.open({ users: userId });
-              await client.chat.postMessage({
-                channel: im.channel?.id || userId,
-                text: "GitHub connected successfully!",
-                blocks: [
-                  {
-                    type: "section",
-                    text: {
-                      type: "mrkdwn",
-                      text: "✅ *GitHub connected successfully!*\n\nNow you can select a repository to work with:",
-                    },
-                  },
-                  {
-                    type: "actions",
-                    elements: [
-                      {
-                        type: "button",
-                        text: {
-                          type: "plain_text",
-                          text: "Select Repository",
-                          emoji: true,
-                        },
-                        action_id: "select_repository",
-                        style: "primary",
-                      },
-                    ],
-                  },
-                  {
-                    type: "context",
-                    elements: [
-                      {
-                        type: "mrkdwn",
-                        text: "You can also visit the Home tab to manage your repositories",
-                      },
-                    ],
-                  },
-                ],
-              });
-            } catch (error) {
-              logger.error(
-                "Failed to send repository selection message:",
-                error
-              );
-            }
-          }
-        }
-      );
+      // Setup health endpoints
+      setupHealthEndpoints(this.anthropicProxy);
     } catch (error) {
       logger.error("Failed to get bot info:", error);
       throw new Error("Failed to initialize bot - could not get bot user ID");
@@ -576,14 +508,6 @@ async function main() {
         allowedUsers: process.env.SLACK_ALLOWED_USERS?.split(","),
         allowedChannels: process.env.SLACK_ALLOWED_CHANNELS?.split(","),
       },
-      github: {
-        token: process.env.GITHUB_TOKEN || "", // Optional - users can use OAuth instead
-        organization: process.env.GITHUB_ORGANIZATION || "", // Empty string means use authenticated user
-        repository: process.env.GITHUB_REPOSITORY, // Optional override repository URL
-        clientId: process.env.GITHUB_CLIENT_ID, // GitHub OAuth App Client ID
-        clientSecret: process.env.GITHUB_CLIENT_SECRET, // GitHub OAuth App Client Secret
-        ingressUrl: process.env.INGRESS_URL, // Public URL for OAuth callbacks
-      },
       claude: {
         allowedTools: process.env.ALLOWED_TOOLS?.split(","),
         model: process.env.AGENT_DEFAULT_MODEL,
@@ -625,12 +549,6 @@ async function main() {
     // Validate required configuration
     if (!config.slack.token) {
       throw new Error("SLACK_BOT_TOKEN is required");
-    }
-    // GITHUB_TOKEN is optional - users can login with OAuth instead
-    if (!config.github.token) {
-      logger.warn(
-        "GITHUB_TOKEN not provided - users must login with GitHub OAuth to access repositories"
-      );
     }
     if (!config.queues.connectionString) {
       throw new Error("DATABASE_URL is required");

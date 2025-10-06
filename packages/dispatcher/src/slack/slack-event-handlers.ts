@@ -4,7 +4,6 @@ import type { App } from "@slack/bolt";
 import { createLogger } from "@peerbot/shared";
 
 const logger = createLogger("slack-events");
-import type { GitHubRepositoryManager } from "../github/repository-manager";
 import type { QueueProducer } from "../queue/task-queue-producer";
 import type { DispatcherConfig } from "../types";
 import {
@@ -17,7 +16,7 @@ import { setupTeamJoinHandler } from "./handlers/welcome-handler";
 import { MessageHandler } from "./handlers/message-handler";
 import { ActionHandler } from "./handlers/action-handler";
 import { ShortcutCommandHandler } from "./handlers/shortcut-command-handler";
-import { getUserGitHubInfo } from "./handlers/github-handler";
+// Dynamic module imports to avoid hardcoded dependencies
 
 /**
  * Queue-based Slack event handlers that route messages to appropriate queues
@@ -31,21 +30,11 @@ export class SlackEventHandlers {
   constructor(
     private app: App,
     queueProducer: QueueProducer,
-    repoManager: GitHubRepositoryManager,
     private config: DispatcherConfig
   ) {
     // Initialize specialized handlers
-    this.messageHandler = new MessageHandler(
-      queueProducer,
-      repoManager,
-      config
-    );
-    this.actionHandler = new ActionHandler(
-      repoManager,
-      queueProducer,
-      config,
-      this.messageHandler
-    );
+    this.messageHandler = new MessageHandler(queueProducer, config);
+    this.actionHandler = new ActionHandler(queueProducer, this.messageHandler);
     this.shortcutCommandHandler = new ShortcutCommandHandler(
       app,
       config,
@@ -68,57 +57,45 @@ export class SlackEventHandlers {
   private setupOptionsHandlers(): void {
     logger.info("Setting up options handlers for external selects");
 
-    // Handle repository search
+    // Handle repository search via GitHub module
     this.app.options("existing_repo_select", async ({ options, ack, body }) => {
       // Handle both initial load and search
       const query = options?.value || "";
       const userId = body.user?.id;
+
+      if (!userId) {
+        await ack({ options: [] });
+        return;
+      }
 
       logger.info(
         `Repository search triggered - query: "${query}", user: ${userId}`
       );
 
       try {
-        // Get user's GitHub token
-        logger.info(`Fetching GitHub info for user ${userId}`);
-        const githubUser = await getUserGitHubInfo(userId);
-        logger.info(
-          `GitHub user info retrieved: token=${!!githubUser.token}, username=${githubUser.username}`
-        );
+        // Delegate to GitHub module
+        let gitHubModule: any = null;
+        try {
+          const { moduleRegistry } = await import("../../../../modules");
+          gitHubModule = moduleRegistry.getModule("github");
+        } catch (error) {
+          logger.warn("Module registry not available");
+        }
 
-        if (!githubUser.token) {
-          // No token = no suggestions
-          logger.info(`No GitHub token found for user ${userId}`);
+        if (!gitHubModule || !("handleRepositorySearch" in gitHubModule)) {
+          logger.warn("GitHub module not available - returning empty options");
           await ack({ options: [] });
           return;
         }
 
-        // Search both user repos and org repos in parallel
-        const [userRepos, orgRepos] = await Promise.all([
-          this.searchUserRepos(query, githubUser.token),
-          this.searchOrgRepos(query, githubUser.token),
-        ]);
+        const options = await gitHubModule.handleRepositorySearch(
+          query,
+          userId
+        );
 
         logger.info(
-          `Found ${userRepos.length} user repos, ${orgRepos.length} org repos`
+          `Returning ${options.length} repository options from GitHub module`
         );
-
-        // Combine and deduplicate
-        const allRepos = [...userRepos, ...orgRepos];
-        const uniqueRepos = Array.from(
-          new Map(allRepos.map((repo) => [repo.html_url, repo])).values()
-        );
-
-        // Format for Slack (limit to 100)
-        const options = uniqueRepos.slice(0, 100).map((repo) => ({
-          text: {
-            type: "plain_text" as const,
-            text: repo.full_name, // Shows "owner/repo"
-          },
-          value: repo.html_url,
-        }));
-
-        logger.info(`Returning ${options.length} repository options`);
         await ack({ options });
       } catch (error) {
         // Log error but still return empty options
@@ -126,99 +103,6 @@ export class SlackEventHandlers {
         await ack({ options: [] });
       }
     });
-  }
-
-  /**
-   * Search user's accessible repositories
-   */
-  private async searchUserRepos(query: string, token: string): Promise<any[]> {
-    try {
-      let url: string;
-
-      if (query) {
-        // Search user's repos with query
-        url = `https://api.github.com/user/repos?per_page=100&sort=updated`;
-      } else {
-        // Get recent repos if no query
-        url = `https://api.github.com/user/repos?per_page=20&sort=updated`;
-      }
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      });
-
-      if (!response.ok) {
-        logger.warn(
-          `GitHub API error for user repos: ${response.status} ${response.statusText}`
-        );
-        return [];
-      }
-
-      const repos = (await response.json()) as any;
-
-      // Filter by query if provided
-      if (query) {
-        const lowerQuery = query.toLowerCase();
-        return repos.filter(
-          (repo: any) =>
-            repo.name.toLowerCase().includes(lowerQuery) ||
-            repo.full_name.toLowerCase().includes(lowerQuery)
-        );
-      }
-
-      return repos;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Search organization repositories
-   */
-  private async searchOrgRepos(query: string, token: string): Promise<any[]> {
-    const org = process.env.GITHUB_ORGANIZATION;
-
-    if (!org) return [];
-
-    try {
-      // Get organization repos
-      const response = await fetch(
-        `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
-        {
-          headers: {
-            Authorization: `token ${token}`,
-            Accept: "application/vnd.github.v3+json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        logger.warn(
-          `GitHub API error for org repos: ${response.status} ${response.statusText}`
-        );
-        return [];
-      }
-
-      const repos = (await response.json()) as any;
-
-      // Filter by query if provided
-      if (query) {
-        const lowerQuery = query.toLowerCase();
-        return repos.filter(
-          (repo: any) =>
-            repo.name.toLowerCase().includes(lowerQuery) ||
-            repo.full_name.toLowerCase().includes(lowerQuery)
-        );
-      }
-
-      // Return top 20 if no query
-      return repos.slice(0, 20);
-    } catch {
-      return [];
-    }
   }
 
   /**
@@ -544,22 +428,5 @@ export class SlackEventHandlers {
   cleanup(): void {
     logger.info("Cleaning up Slack event handlers");
     this.messageHandler.cleanupExpiredData();
-  }
-
-  /**
-   * Get user mappings (required by ThreadResponseConsumer)
-   */
-  getUserMappings(): Map<string, string> {
-    return this.messageHandler.getUserMappings();
-  }
-
-  /**
-   * Get or create user mapping (required by external components)
-   */
-  async getOrCreateUserMapping(
-    slackUserId: string,
-    client: any
-  ): Promise<string> {
-    return this.messageHandler.getOrCreateUserMapping(slackUserId, client);
   }
 }

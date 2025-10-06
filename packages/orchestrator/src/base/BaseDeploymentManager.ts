@@ -7,6 +7,7 @@ import {
 } from "../types";
 import type { BaseSecretManager } from "./BaseSecretManager";
 import { decrypt, createLogger } from "@peerbot/shared";
+import { buildModuleEnvVars } from "../module-integration";
 
 const logger = createLogger("orchestrator");
 
@@ -212,20 +213,20 @@ export abstract class BaseDeploymentManager {
   /**
    * Generate environment variables common to all deployment types
    */
-  protected generateEnvironmentVariables(
+  protected async generateEnvironmentVariables(
     username: string,
     userId: string,
     deploymentName: string,
     messageData?: any,
     includeSecrets: boolean = true,
     userEnvVars: Record<string, string> = {}
-  ): { [key: string]: string } {
+  ): Promise<{ [key: string]: string }> {
     // Parse database connection string to extract host and port
     const dbUrl = new URL(this.config.database.connectionString);
     const dbHost = dbUrl.hostname;
     const dbPort = dbUrl.port || "5432"; // Default PostgreSQL port
 
-    const envVars: { [key: string]: string } = {
+    let envVars: { [key: string]: string } = {
       USER_ID: userId,
       USERNAME: username,
       DEPLOYMENT_NAME: deploymentName,
@@ -253,10 +254,12 @@ export abstract class BaseDeploymentManager {
 
     // Include secrets from process.env for Docker deployments
     if (includeSecrets) {
-      if (process.env.GITHUB_TOKEN) {
-        envVars.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+      // Add module-specific environment variables
+      try {
+        envVars = await buildModuleEnvVars(userId, envVars);
+      } catch (error) {
+        logger.warn("Failed to build module environment variables:", error);
       }
-      // OAuth token is now always handled by the proxy in dispatcher
     }
 
     if (process.env.CLAUDE_ALLOWED_TOOLS) {

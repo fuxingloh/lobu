@@ -82,7 +82,7 @@ function generateEnvironmentSection(context: SessionContext): string {
   sections.push("## Working Environment");
 
   if (context.repositoryUrl) {
-    sections.push("You are working in a user-specific GitHub repository:");
+    sections.push("You are working in a user-specific repository:");
     sections.push(`- Repository: ${context.repositoryUrl}`);
     sections.push(
       `- Working Directory: ${context.workingDirectory || "/workspace"}`
@@ -101,7 +101,7 @@ function generateEnvironmentSection(context: SessionContext): string {
   sections.push("Container Information:");
   sections.push("- This is an ephemeral Kubernetes job container");
   sections.push("- Maximum execution time: 5 minutes");
-  sections.push("- Changes will be persisted to GitHub ");
+  sections.push("- Changes will be persisted to the repository");
   sections.push("- Progress updates are streamed to Slack in real-time");
 
   return `${sections.join("\n")}\n\n`;
@@ -118,7 +118,7 @@ You are responding to a user in Slack through a Kubernetes-based Claude Code sys
 1. **Progress Updates**: Your progress is automatically streamed to Slack
 2. **Thread Context**: This conversation may be part of an ongoing thread
 3. **File Changes**: After making any code changes, you MUST commit and push them using git commands (git add, git commit, git push)
-4. **Links**: Users will receive GitHub.dev links and PR creation links
+4. **Links**: Users will receive repository links and PR creation links when working with repositories
 5. **Timeout**: You have a 5-minute timeout - work efficiently
 
 Keep responses concise but helpful. Focus on solving the user's specific request.

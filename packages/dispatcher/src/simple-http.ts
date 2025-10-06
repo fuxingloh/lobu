@@ -1,20 +1,15 @@
 import http from "node:http";
 import express from "express";
 import { createLogger } from "@peerbot/shared";
+import { moduleRegistry } from "../../../modules";
 
 const logger = createLogger("http");
-import { GitHubOAuthHandler } from "./oauth/github-oauth-handler";
 import type { AnthropicProxy } from "./proxy/anthropic-proxy";
 
 let healthServer: http.Server | null = null;
 let proxyApp: express.Application | null = null;
-let oauthHandler: GitHubOAuthHandler | null = null;
 
-export function setupHealthEndpoints(
-  anthropicProxy?: AnthropicProxy,
-  databaseUrl?: string,
-  homeTabUpdateCallback?: (userId: string) => Promise<void>
-) {
+export function setupHealthEndpoints(anthropicProxy?: AnthropicProxy) {
   if (healthServer) return;
 
   // Create Express app for proxy and health endpoints
@@ -43,26 +38,9 @@ export function setupHealthEndpoints(
     logger.info("✅ Anthropic proxy enabled at :8080/api/anthropic");
   }
 
-  // Add GitHub OAuth endpoints if database URL is provided
-  if (databaseUrl && process.env.GITHUB_CLIENT_ID) {
-    oauthHandler = new GitHubOAuthHandler(databaseUrl, homeTabUpdateCallback);
-
-    proxyApp.get("/api/github/oauth/authorize", (req, res) =>
-      oauthHandler!.handleAuthorize(req, res)
-    );
-
-    proxyApp.get("/api/github/oauth/callback", (req, res) =>
-      oauthHandler!.handleCallback(req, res)
-    );
-
-    proxyApp.post("/api/github/logout", (req, res) =>
-      oauthHandler!.handleLogout(req, res)
-    );
-
-    logger.info(
-      "✅ GitHub OAuth endpoints enabled at :8080/api/github/oauth/*"
-    );
-  }
+  // Register module endpoints
+  moduleRegistry.registerEndpoints(proxyApp);
+  logger.info("✅ Module endpoints registered");
 
   // Create HTTP server with Express app
   healthServer = http.createServer(proxyApp);

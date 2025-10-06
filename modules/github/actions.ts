@@ -1,12 +1,24 @@
 #!/usr/bin/env bun
 
-import type { GitHubRepositoryManager } from "../github/repository-manager";
-import { generateGitHubAuthUrl } from "../utils/github-utils";
-import { getUserGitHubInfo } from "../slack/handlers/github-handler";
-import { generateDeterministicActionId } from "./blockkit-processor";
+import type { GitHubRepositoryManager } from "./repository-manager";
+import { generateGitHubAuthUrl } from "./utils";
+import { getUserGitHubInfo } from "./handlers";
+import { createHash } from "node:crypto";
 import { createLogger } from "@peerbot/shared";
 
-const logger = createLogger("dispatcher");
+const logger = createLogger("github-module");
+
+// Inline action ID generation to avoid cross-package dependencies
+function generateDeterministicActionId(
+  content: string,
+  prefix: string = "action"
+): string {
+  const hash = createHash("sha256")
+    .update(content)
+    .digest("hex")
+    .substring(0, 8);
+  return `${prefix}_${hash}`;
+}
 
 /**
  * Generate GitHub action buttons for the session branch
@@ -16,7 +28,6 @@ export async function generateGitHubActionButtons(
   gitBranch: string | undefined,
   hasGitChanges: boolean | undefined,
   pullRequestUrl: string | undefined,
-  userMappings: Map<string, string>,
   repoManager: GitHubRepositoryManager,
   slackClient?: any
 ): Promise<any[] | undefined> {
@@ -45,11 +56,9 @@ export async function generateGitHubActionButtons(
       return undefined;
     }
 
-    // Get GitHub username from Slack user ID
-    let githubUsername = userMappings.get(userId);
-    if (!githubUsername && slackClient) {
-      // Create user mapping on-demand if not found
-      logger.debug(`Creating on-demand user mapping for user ${userId}`);
+    // Generate GitHub username from Slack user ID
+    let githubUsername: string;
+    if (slackClient) {
       try {
         const userInfo = await slackClient.users.info({ user: userId });
         const user = userInfo.user;
@@ -66,22 +75,17 @@ export async function generateGitHubActionButtons(
           .replace(/[^a-z0-9-]/g, "-")
           .replace(/^-|-$/g, "");
 
-        username = `user-${username}`;
-        userMappings.set(userId, username);
-        githubUsername = username;
-
-        logger.info(`Created user mapping: ${userId} -> ${username}`);
+        githubUsername = `user-${username}`;
+        logger.debug(
+          `Generated GitHub username: ${userId} -> ${githubUsername}`
+        );
       } catch (error) {
-        logger.error(`Failed to create user mapping for ${userId}:`, error);
-        const fallbackUsername = `user-${userId.substring(0, 8)}`;
-        userMappings.set(userId, fallbackUsername);
-        githubUsername = fallbackUsername;
+        logger.error(`Failed to get user info for ${userId}:`, error);
+        githubUsername = `user-${userId.substring(0, 8)}`;
       }
-    }
-
-    if (!githubUsername) {
-      logger.debug(`No GitHub username mapping found for user ${userId}`);
-      return undefined;
+    } else {
+      // Fallback if no Slack client available
+      githubUsername = `user-${userId.substring(0, 8)}`;
     }
 
     // Get repository information, create if needed
