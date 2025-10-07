@@ -241,63 +241,6 @@ describe("Peerbot Integration Tests", () => {
     });
   });
 
-  describe("Demo Flow", () => {
-    it("should set repository correctly when clicking Try Demo button", async () => {
-      // Simulate demo button click
-      // This would normally come from a welcome message
-      const demoPayload = {
-        action_id: "try_demo",
-        value: "demo_repo",
-      };
-
-      // First send a message to get a thread started
-      const { ts } = await ctx.slackServer.simulateUserMessage(
-        "C123456",
-        "Hello",
-        "U123456_DEMO"
-      );
-
-      // Click the demo button
-      await ctx.slackServer.simulateButtonClick(
-        "try_demo",
-        "https://github.com/demo/sandbox",
-        ts,
-        "U123456_DEMO"
-      );
-
-      // Wait for repository to be set
-      await ctx.waitFor(async () => {
-        const repo = await ctx.getUserRepository("U123456_DEMO");
-        return repo !== null;
-      });
-
-      // Check repository was set correctly
-      const repo = await ctx.getUserRepository("U123456_DEMO");
-      expect(repo).toContain("github.com/demo/sandbox");
-
-      // Send a follow-up message to verify it's using the demo repo
-      ctx.claudeServer
-        .onMessage(/.*/)
-        .reply([
-          { type: "text", content: "Using demo repository: demo/sandbox" },
-        ]);
-
-      const { ts: ts2 } = await ctx.slackServer.simulateUserMessage(
-        "C123456",
-        "What repository am I using?",
-        "U123456_DEMO"
-      );
-
-      await ctx.waitFor(async () => {
-        const messages = ctx.slackServer.getThreadMessages(ts2);
-        return messages.some((m) => m.text?.includes("demo/sandbox"));
-      });
-
-      const messages = ctx.slackServer.getThreadMessages(ts2);
-      expect(messages.some((m) => m.text?.includes("demo/sandbox"))).toBe(true);
-    });
-  });
-
   describe("Queue and Worker Management", () => {
     it("should create pgboss job for each message", async () => {
       ctx.claudeServer

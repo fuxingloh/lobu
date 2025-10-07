@@ -144,7 +144,6 @@ deploy:
 		--set secrets.githubToken="$$GITHUB_TOKEN" \
 		--set secrets.claudeCodeOAuthToken="$$CLAUDE_CODE_OAUTH_TOKEN" \
 		--set secrets.postgresqlPassword="$$POSTGRESQL_PASSWORD" \
-		--set config.demoRepository="$$DEMO_REPOSITORY" \
 		--wait \
 		--timeout "$${HELM_TIMEOUT:-10m}"
 	@# Migrations are handled by orchestrator on startup, so just verify it's running

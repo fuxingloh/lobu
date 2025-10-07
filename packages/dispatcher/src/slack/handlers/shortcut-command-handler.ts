@@ -213,20 +213,6 @@ export class ShortcutCommandHandler {
               } as any,
             ];
 
-            // Only show Try Demo button if DEMO_REPOSITORY is configured
-            if (process.env.DEMO_REPOSITORY) {
-              elements.push({
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "🎮 Try Demo",
-                  emoji: true,
-                },
-                action_id: "try_demo",
-                value: "slash_command_demo",
-              } as any);
-            }
-
             return elements;
           })(),
         }
@@ -256,20 +242,6 @@ export class ShortcutCommandHandler {
                 action_id: "open_repository_modal",
               },
             ];
-
-            // Only show Try Demo button if DEMO_REPOSITORY is configured
-            if (process.env.DEMO_REPOSITORY) {
-              elements.push({
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "🎮 Try Demo",
-                  emoji: true,
-                },
-                action_id: "try_demo",
-                value: "slash_command_demo",
-              } as any);
-            }
 
             return elements;
           })(),

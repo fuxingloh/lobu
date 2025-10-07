@@ -645,15 +645,6 @@ export class QueueIntegration {
               type: "button",
               text: {
                 type: "plain_text",
-                text: "🎮 Try Demo",
-              },
-              action_id: "demo_mode",
-              value: "demo",
-            },
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
                 text: "❓ Get Help",
               },
               action_id: "welcome",

@@ -33,7 +33,7 @@ export type ProgressCallback = (update: ProgressUpdate) => Promise<void>;
 
 // Session management types
 export interface SessionContext {
-  platform: "slack" | "github";
+  platform: "slack";
   channelId: string;
   userId: string;
   userDisplayName?: string;

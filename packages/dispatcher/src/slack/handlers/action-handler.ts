@@ -5,8 +5,6 @@ const logger = createLogger("dispatcher");
 import type { QueueProducer } from "../../queue/task-queue-producer";
 import type { SlackContext } from "../../types";
 import type { MessageHandler } from "./message-handler";
-// Dynamic module imports to avoid hardcoded dependencies
-import { handleTryDemo } from "./demo-handler";
 import { openRepositoryModal } from "./repository-modal-utils";
 import {
   handleBlockkitForm,
@@ -79,27 +77,6 @@ export class ActionHandler {
           } catch (error) {
             logger.warn("GitHub module not available for repository modal");
           }
-          break;
-        }
-
-        case "try_demo": {
-          // Check if this is from the home tab (view type will be 'home')
-          const fromHomeTab = body.view?.type === "home";
-
-          // Get the message timestamp to keep demo response in same thread (if not from home)
-          const demoMessageTs = body.message?.ts;
-
-          // Pass the fromHomeTab flag to ensure DM is sent when clicked from home
-          await handleTryDemo(
-            userId,
-            channelId,
-            client,
-            demoMessageTs,
-            fromHomeTab
-          );
-
-          // Update home tab after demo setup
-          await this.updateAppHome(userId, client);
           break;
         }
 
@@ -269,19 +246,6 @@ export class ActionHandler {
     );
 
     try {
-      // Get GitHub connection status for demo purposes
-      let githubUser = { token: null, username: null };
-      try {
-        const { moduleRegistry } = await import("../../../../../modules");
-        const gitHubModule = moduleRegistry.getModule("github");
-        if (gitHubModule && "getUserInfo" in gitHubModule) {
-          githubUser = await (gitHubModule as any).getUserInfo(userId);
-        }
-      } catch (error) {
-        logger.warn("GitHub module not available for home tab");
-      }
-      const isGitHubConnected = !!githubUser.token;
-
       const blocks: any[] = [
         {
           type: "section",
@@ -313,31 +277,6 @@ export class ActionHandler {
             error
           );
         }
-      }
-
-      // Demo functionality (non-module specific)
-      if (process.env.DEMO_REPOSITORY && !isGitHubConnected) {
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "*🎮 Demo Mode*\nTry Peerbot with a demo repository",
-          },
-        });
-
-        blocks.push({
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "🎮 Try Demo" },
-              action_id: "try_demo",
-              style: "primary",
-            },
-          ],
-        });
-
-        blocks.push({ type: "divider" });
       }
 
       // Add quick tips
