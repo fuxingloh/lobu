@@ -223,7 +223,10 @@ async function startGateway({ env }: StartOptions = {}) {
           process.env.WORKER_IDLE_CLEANUP_MINUTES || "60",
           10
         ),
-        maxDeployments: parseInt(process.env.MAX_WORKER_DEPLOYMENTS || "0", 10),
+        maxDeployments: parseInt(
+          process.env.MAX_WORKER_DEPLOYMENTS || "100",
+          10
+        ),
       },
       kubernetes: {
         namespace: process.env.KUBERNETES_NAMESPACE || "peerbot",
