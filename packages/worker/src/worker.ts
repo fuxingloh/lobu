@@ -169,21 +169,27 @@ class ProgressProcessor {
         return this.formatFullUpdate();
       }
 
-      // Priority 2: Tool execution tracking (append to chronological output)
-      const toolExecution = this.extractToolExecution(dataToCheck);
-      if (toolExecution) {
-        logger.info(`🔧 Detected tool execution: ${toolExecution}`);
-        this.chronologicalOutput += `${toolExecution}\n`;
-        return this.formatFullUpdate();
-      }
+      // Priority 2: Extract text and tool uses from assistant messages
+      if (typeof data === "object" && data.type === "assistant" && data.message?.content) {
+        let hasUpdate = false;
 
-      // Priority 3: Regular text streaming (append to chronological output)
-      if (typeof data === "string" && data.trim()) {
-        this.chronologicalOutput += `${data}\n`;
-        return this.formatFullUpdate();
-      } else if (typeof data === "object" && data.content) {
-        this.chronologicalOutput += `${data.content}\n`;
-        return this.formatFullUpdate();
+        for (const contentItem of data.message.content) {
+          if (contentItem.type === "text" && contentItem.text?.trim()) {
+            // Append text to chronological output
+            this.chronologicalOutput += `${contentItem.text}\n`;
+            hasUpdate = true;
+          } else if (contentItem.type === "tool_use") {
+            // Format and append tool execution
+            const toolExecution = this.formatToolExecution(contentItem);
+            logger.info(`🔧 Detected tool execution: ${toolExecution}`);
+            this.chronologicalOutput += `${toolExecution}\n`;
+            hasUpdate = true;
+          }
+        }
+
+        if (hasUpdate) {
+          return this.formatFullUpdate();
+        }
       }
 
       return null;
@@ -224,29 +230,41 @@ class ProgressProcessor {
   }
 
   /**
-   * Extract tool execution details from Claude's JSON output
+   * Get the final formatted output including chronological history
    */
-  private extractToolExecution(data: string): string | null {
-    try {
-      const lines = data.split("\n");
-      for (const line of lines) {
-        if (line.trim().startsWith("{")) {
-          const parsed = JSON.parse(line);
+  getFinalOutput(finalSummary?: string): string {
+    const sections: string[] = [];
 
-          // Detect tool usage
-          if (parsed.type === "assistant" && parsed.message?.content) {
-            for (const content of parsed.message.content) {
-              if (content.type === "tool_use") {
-                return this.formatToolExecution(content);
-              }
-            }
-          }
+    // Section 1: Task Progress (if todos exist)
+    if (this.currentTodos.length > 0) {
+      const todoLines = this.currentTodos.map((todo) => {
+        const checkbox = todo.status === "completed" ? "☑️" : "☐";
+        if (todo.status === "in_progress") {
+          return `🪚 *${todo.activeForm}*`;
         }
-      }
-    } catch (_e) {
-      // Silently continue - not all lines are valid JSON
+        return `${checkbox} ${todo.content}`;
+      });
+      sections.push(`📝 **Task Progress**\n${todoLines.join("\n")}`);
     }
-    return null;
+
+    // Section 2: Chronological output (text and tools mixed in order)
+    if (this.chronologicalOutput.trim()) {
+      const divider = this.currentTodos.length > 0 ? "━━━━━━━━━━━━━━" : "";
+      sections.push(
+        divider
+          ? `${divider}\n${this.chronologicalOutput.trim()}`
+          : this.chronologicalOutput.trim()
+      );
+    }
+
+    // Section 3: Final summary (if provided)
+    if (finalSummary?.trim()) {
+      const divider = this.chronologicalOutput.trim() ? "\n━━━━━━━━━━━━━━" : "";
+      sections.push(`${divider}\n${finalSummary.trim()}`);
+    }
+
+    // Join all sections
+    return sections.filter((s) => s).join("\n");
   }
 
   /**
@@ -597,12 +615,16 @@ export class ClaudeWorker implements WorkerExecutor {
       this.gatewayIntegration.setModuleData(moduleData);
 
       if (result.success) {
-        const claudeResponse = this.formatClaudeResponse(result.output);
-        const finalMessage = claudeResponse?.trim()
-          ? claudeResponse
+        // Extract final summary from Claude's output
+        const finalSummary = this.formatClaudeResponse(result.output);
+
+        // Get complete output including chronological history + final summary
+        const completeMessage = this.progressProcessor.getFinalOutput(finalSummary);
+        const finalMessage = completeMessage?.trim()
+          ? completeMessage
           : "✅ Task completed successfully";
 
-        logger.info(`Sending final message via queue: ${finalMessage}...`);
+        logger.info(`Sending final message via queue: ${finalMessage.substring(0, 200)}...`);
         await this.gatewayIntegration.signalDone(finalMessage);
       } else {
         const errorMsg = result.error || "Unknown error";
