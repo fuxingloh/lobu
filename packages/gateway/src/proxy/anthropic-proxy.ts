@@ -148,10 +148,14 @@ export class AnthropicProxy {
       // Forward response headers
       response.headers.forEach((value: string, key: string) => {
         // Skip certain headers that shouldn't be forwarded
+        // Also skip content-encoding since we're decompressing the response
         if (
-          !["transfer-encoding", "connection", "upgrade"].includes(
-            key.toLowerCase()
-          )
+          ![
+            "transfer-encoding",
+            "connection",
+            "upgrade",
+            "content-encoding",
+          ].includes(key.toLowerCase())
         ) {
           res.setHeader(key, value);
         }
