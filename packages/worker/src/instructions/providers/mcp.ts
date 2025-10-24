@@ -1,4 +1,5 @@
 import { createLogger } from "@peerbot/core";
+import { ensureBaseUrl } from "../../utils/url";
 import type { InstructionContext, InstructionProvider } from "../types";
 
 const logger = createLogger("mcp-instructions");
@@ -74,10 +75,7 @@ export class McpInstructionProvider implements InstructionProvider {
     }
 
     try {
-      const url = new URL(
-        "/worker/mcp/status",
-        this.ensureBaseUrl(dispatcherUrl)
-      );
+      const url = new URL("/worker/mcp/status", ensureBaseUrl(dispatcherUrl));
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${workerToken}`,
@@ -102,12 +100,5 @@ export class McpInstructionProvider implements InstructionProvider {
       logger.error("Failed to fetch MCP status from gateway", { error });
       return null;
     }
-  }
-
-  private ensureBaseUrl(base: string): string {
-    if (!base.startsWith("http")) {
-      return `http://${base.replace(/^\/+/, "")}`;
-    }
-    return base;
   }
 }

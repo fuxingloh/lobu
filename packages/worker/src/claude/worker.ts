@@ -1,23 +1,23 @@
 #!/usr/bin/env bun
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type {
   McpServerConfig,
-  Options as SDKOptions,
   SDKMessage,
+  Options as SDKOptions,
 } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "@peerbot/core";
 import { BaseWorker } from "../base/base-worker";
-import type { WorkerConfig } from "../types";
-import type { InstructionProvider } from "../instructions/types";
-import { ClaudeCoreInstructionProvider } from "./instructions";
-import { ProgressProcessor } from "./processor";
-import { ensureBaseUrl } from "../utils/url";
 import type {
-  ProgressUpdate,
   ProgressCallback,
+  ProgressUpdate,
   SessionExecutionResult,
 } from "../base/types";
+import type { InstructionProvider } from "../instructions/types";
+import type { WorkerConfig } from "../types";
+import { ensureBaseUrl } from "../utils/url";
+import { ClaudeCoreInstructionProvider } from "./instructions";
+import { ProgressProcessor } from "./processor";
 
 const logger = createLogger("claude-worker");
 
@@ -27,14 +27,14 @@ const logger = createLogger("claude-worker");
 
 // Claude-specific execution options
 export interface ClaudeExecutionOptions {
-  allowedTools?: string;
-  disallowedTools?: string;
+  allowedTools?: string | string[];
+  disallowedTools?: string | string[];
   maxTurns?: string;
   systemPrompt?: string;
   appendSystemPrompt?: string;
   claudeEnv?: string;
   fallbackModel?: string;
-  timeoutMinutes?: string;
+  timeoutMinutes?: string | number;
   model?: string;
   sessionId?: string;
   resumeSessionId?: string;
@@ -274,6 +274,40 @@ async function getMCPServersForSDK(): Promise<
 // ============================================================================
 
 /**
+ * Create a custom fetch wrapper that injects userId header for Anthropic proxy
+ */
+function createAuthenticatedFetch(): typeof fetch {
+  const userId = process.env.USER_ID;
+  const originalFetch = globalThis.fetch;
+
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Only add header for requests to Anthropic API
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const isAnthropicRequest =
+      url.includes("/v1/messages") || url.includes("anthropic");
+
+    if (isAnthropicRequest && userId) {
+      const headers = new Headers(init?.headers || {});
+      headers.set("x-peerbot-user-id", userId);
+
+      logger.info(`Injecting userId header for Anthropic request: ${userId}`);
+
+      return originalFetch(input, {
+        ...init,
+        headers,
+      });
+    }
+
+    return originalFetch(input, init);
+  };
+}
+
+/**
  * Execute Claude session using the SDK
  */
 async function runClaudeWithSDK(
@@ -284,8 +318,34 @@ async function runClaudeWithSDK(
 ): Promise<ClaudeExecutionResult> {
   logger.info("Starting Claude SDK execution");
 
+  // Override global fetch to inject userId header
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = createAuthenticatedFetch();
+
   try {
     const mcpServers = await getMCPServersForSDK();
+
+    const normalizeToolList = (
+      value?: string | string[]
+    ): string[] | undefined => {
+      if (!value) {
+        return undefined;
+      }
+
+      const rawList = Array.isArray(value) ? value : value.split(/[,\n]/);
+
+      const cleaned = rawList
+        .map((entry) =>
+          typeof entry === "string" ? entry.trim() : String(entry).trim()
+        )
+        .filter((entry) => entry.length > 0);
+
+      if (cleaned.length === 0) {
+        return undefined;
+      }
+
+      return Array.from(new Set(cleaned));
+    };
 
     const sdkOptions: SDKOptions = {
       model: options.model,
@@ -326,15 +386,14 @@ async function runClaudeWithSDK(
     }
 
     // Add tool restrictions
-    if (options.allowedTools) {
-      sdkOptions.allowedTools = options.allowedTools
-        .split(",")
-        .map((t) => t.trim());
+    const allowedTools = normalizeToolList(options.allowedTools);
+    if (allowedTools) {
+      sdkOptions.allowedTools = allowedTools;
     }
-    if (options.disallowedTools) {
-      sdkOptions.disallowedTools = options.disallowedTools
-        .split(",")
-        .map((t) => t.trim());
+
+    const disallowedTools = normalizeToolList(options.disallowedTools);
+    if (disallowedTools) {
+      sdkOptions.disallowedTools = disallowedTools;
     }
 
     // Add max turns
@@ -506,6 +565,9 @@ async function runClaudeWithSDK(
       output: "",
       error: errorMessage,
     };
+  } finally {
+    // Restore original fetch
+    globalThis.fetch = originalFetch;
   }
 }
 

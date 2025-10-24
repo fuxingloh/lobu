@@ -1,10 +1,10 @@
 import {
   type ActionButton,
+  createLogger,
   type ModuleSessionContext,
   moduleRegistry,
   type SessionContext,
 } from "@peerbot/core";
-import { createLogger } from "@peerbot/core";
 
 const logger = createLogger("worker");
 

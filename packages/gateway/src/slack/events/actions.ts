@@ -2,8 +2,8 @@ import { createLogger } from "@peerbot/core";
 
 const logger = createLogger("dispatcher");
 
-import type { SlackContext, SlackWebClient, SlackActionBody } from "../types";
 import type { IModuleRegistry } from "@peerbot/core";
+import type { SlackActionBody, SlackContext, SlackWebClient } from "../types";
 import type { MessageHandler } from "./messages";
 
 /**

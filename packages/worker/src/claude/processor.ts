@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 
-import { createLogger } from "@peerbot/core";
 import type {
-  SDKMessage,
   SDKAssistantMessage,
+  SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { createLogger } from "@peerbot/core";
 
 const logger = createLogger("claude-processor");
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
+import http from "node:http";
 import { createLogger } from "@peerbot/core";
 import express from "express";
-import http from "node:http";
 import type { GatewayConfig } from "./config";
 
 const logger = createLogger("gateway-startup");
@@ -81,23 +81,30 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
 
   // Import dependencies (after config is loaded)
   const { Orchestrator } = await import("../orchestration");
-  const { SlackDispatcher } = await import("../slack");
+  const { Gateway } = await import("../gateway-main");
+  const { SlackPlatform } = await import("../platform/slack-platform");
 
   // Create and start orchestrator
   const orchestrator = new Orchestrator(config.orchestration);
   await orchestrator.start();
   logger.info("✅ Orchestrator started");
 
-  // Create and start dispatcher
-  const dispatcher = new SlackDispatcher(config);
-  await dispatcher.start();
-  logger.info("✅ Slack Dispatcher started");
+  // Create Gateway with Slack platform
+  const gateway = new Gateway(config);
+  gateway.registerPlatform(new SlackPlatform(config));
+
+  // Start gateway (initializes core services + platforms)
+  await gateway.start();
+  logger.info("✅ Gateway started");
+
+  // Get core services for health endpoints
+  const coreServices = gateway.getCoreServices();
 
   // Setup health endpoints on port 8080
   setupHealthEndpoints(
-    dispatcher.getAnthropicProxy(),
-    dispatcher.getWorkerGateway(),
-    dispatcher.getMcpProxy()
+    coreServices.getAnthropicProxy(),
+    coreServices.getWorkerGateway(),
+    coreServices.getMcpProxy()
   );
 
   logger.info("✅ Peerbot Gateway is running!");
@@ -109,7 +116,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   const cleanup = async () => {
     logger.info("Shutting down gateway...");
     await orchestrator.stop();
-    await dispatcher.stop();
+    await gateway.stop();
     if (healthServer) {
       healthServer.close();
     }
@@ -122,7 +129,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
 
   // Handle health checks
   process.on("SIGUSR1", () => {
-    const status = dispatcher.getStatus();
+    const status = gateway.getStatus();
     logger.info("Health check:", JSON.stringify(status, null, 2));
   });
 }

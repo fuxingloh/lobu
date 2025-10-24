@@ -2,10 +2,10 @@ export * from "./impl";
 export { MessageConsumer as QueueConsumer } from "./message-consumer";
 export * from "./types";
 
-import { moduleRegistry } from "@peerbot/core";
 import {
   type BaseDeploymentManager,
   createLogger,
+  moduleRegistry,
   type OrchestratorConfig,
 } from "@peerbot/core";
 import { buildModuleEnvVars } from "./deployment-utils";

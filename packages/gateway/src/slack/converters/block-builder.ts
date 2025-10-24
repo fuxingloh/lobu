@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
 import { createLogger } from "@peerbot/core";
+import { SLACK } from "../constants";
 import type { SlackBlock, SlackBlockElement } from "../types";
 import { convertMarkdownToSlack } from "./markdown";
-import { SLACK } from "../constants";
 
 const logger = createLogger("slack-block-builder");
 

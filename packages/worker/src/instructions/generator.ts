@@ -2,9 +2,9 @@ import { createLogger } from "@peerbot/core";
 import {
   InstructionBuilder,
   McpInstructionProvider,
-  SlackInstructionProvider,
-  ProjectsInstructionProvider,
   ProcessManagerInstructionProvider,
+  ProjectsInstructionProvider,
+  SlackInstructionProvider,
 } from "./index";
 import type { InstructionProvider } from "./types";
 

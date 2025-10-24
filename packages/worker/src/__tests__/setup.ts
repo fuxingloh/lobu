@@ -2,7 +2,7 @@
  * Test setup and configuration for base worker architecture tests
  */
 
-import { beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
 import type { WorkerConfig } from "../types";
 
 // Mock environment variables for testing

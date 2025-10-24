@@ -2,10 +2,10 @@
  * Tests for ClaudeWorker concrete implementation
  */
 
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ClaudeWorker } from "../claude/worker";
-import { TestHelpers, mockWorkerConfig } from "./setup";
 import type { WorkerConfig } from "../types";
+import { mockWorkerConfig, TestHelpers } from "./setup";
 
 // Mock the Claude Agent SDK
 const mockClaudeAgent = {

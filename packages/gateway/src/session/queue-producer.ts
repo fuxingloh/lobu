@@ -14,11 +14,6 @@ const logger = createLogger("dispatcher");
  * Handles both direct_message and thread_message queues with bot isolation
  */
 
-export interface BotContext {
-  botId: string;
-  platform: string;
-}
-
 export interface WorkerDeploymentPayload {
   userId: string;
   botId: string;

@@ -10,7 +10,7 @@ import {
   type QueueJobData,
 } from "@peerbot/core";
 import Docker from "dockerode";
-import { ResourceParser, buildPlatformMetadata } from "../deployment-utils";
+import { buildPlatformMetadata, ResourceParser } from "../deployment-utils";
 
 const logger = createLogger("orchestrator");
 

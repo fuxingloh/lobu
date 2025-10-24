@@ -1,26 +1,156 @@
 # Peerbot
 
-Peerbot lets you create your own AI agents with Claude Code and turn them into Slack bots.
+**Turn Claude Code into a Slack bot.** Create your own AI coding assistant that works directly in Slack threads.
 
-## Installation
+## Quick Start
 
-- Run `npx peerbot setup` to generate `.env` file
-- Run `npx peerbot dev` to start the application
+```bash
+# Create a new bot (interactive setup)
+npx create-peerbot my-slack-bot
 
-## 🎯 Key Features
+# Start the bot
+cd my-slack-bot
+npm run dev
+```
 
-### 💬 **Thread-Based Persistent Conversations**
+That's it! Your bot is now running and ready to help in Slack.
 
-- Each Slack thread becomes a dedicated AI coding session
-- Full conversation history preserved across interactions
-- Resume work exactly where you left off
+## What You Need
 
+1. **Slack App** with Socket Mode enabled ([Setup Guide](https://api.slack.com/apps))
+   - Bot Token (xoxb-...)
+   - App Token (xapp-...)
 
-## Development
+2. **Anthropic API Key** ([Get one here](https://console.anthropic.com/))
 
--- If you need to run QA tests (`./slack-qa-bot.js`), add these variables to your `.env` file:
+3. **Docker** installed and running
+
+## Features
+
+- 💬 **Thread-based conversations** - Each Slack thread = dedicated AI session
+- 🔄 **Persistent memory** - Full conversation history across interactions
+- 🛠️ **Customizable workers** - Add Python packages, system tools, custom scripts
+- 🔐 **MCP OAuth** - Authenticate external services via Slack home tab
+- 🚀 **Multi-platform** - Run locally (Docker), Kubernetes, or cloud providers
+
+## Worker Customization
+
+Peerbot supports two modes for customizing your AI workers:
+
+### Quick Start Mode (Recommended)
+Extend our base image with your tools:
+```dockerfile
+FROM buremba/peerbot-worker-base:0.1.0
+
+# Add Python packages
+RUN pip install pandas matplotlib
+
+# Add system tools
+RUN apt-get update && apt-get install -y postgresql-client
+```
+
+### Advanced Mode (Bring Your Own Base)
+Install the worker package in any base image:
+```dockerfile
+FROM your-company/approved-base:latest
+
+RUN npm install -g @peerbot/worker@^0.1.0
+RUN pip install pandas
+```
+
+Choose your mode during `npx create-peerbot` setup.
+
+## Commands
+
+```bash
+npm run dev      # Start the bot
+npm run logs     # View logs
+npm run down     # Stop the bot
+npm run rebuild  # Rebuild worker image
+```
+
+## Architecture
 
 ```
-QA_SLACK_BOT_TOKEN=your_qa_bot_token_here
-QA_TARGET_BOT_USERNAME=your_target_bot_username_here
+Slack Thread → Gateway → Worker Pod → Claude Code
+                  ↓
+              Redis (state)
 ```
+
+- **Gateway**: Manages Slack connections and worker orchestration
+- **Worker**: Isolated Claude Code environment per user/thread
+- **Redis**: Stores conversation state and OAuth credentials
+
+## Deployment
+
+### Local Development
+```bash
+npm run dev  # Uses Docker Compose
+```
+
+### Kubernetes (Production)
+```bash
+peerbot deploy --target kubernetes
+```
+
+### Other Platforms
+- AWS ECS/Fargate
+- GCP Cloud Run
+- Cloudflare Containers
+- Azure Container Apps
+
+See [CLI documentation](./packages/cli/README.md) for deployment guides.
+
+## Project Structure
+
+```
+peerbot/
+├── packages/
+│   ├── gateway/         # Slack integration & worker orchestration
+│   ├── worker/          # Claude Code runtime
+│   ├── cli/             # Deployment CLI tool
+│   └── create-peerbot/  # Project scaffolding
+├── charts/              # Helm chart for Kubernetes
+└── scripts/             # Development utilities
+```
+
+## Contributing
+
+This is a monorepo managed by Bun workspaces.
+
+```bash
+# Install dependencies
+bun install
+
+# Build packages
+bun run build
+
+# Run locally
+make dev
+
+# Run tests
+./slack-qa-bot.js "test prompt"
+```
+
+See [CLAUDE.md](./CLAUDE.md) for development guidelines.
+
+## Published Packages
+
+**NPM:**
+- [`@peerbot/cli`](https://www.npmjs.com/package/@peerbot/cli) - Deployment CLI
+- [`create-peerbot`](https://www.npmjs.com/package/create-peerbot) - Project generator
+- [`@peerbot/worker`](https://www.npmjs.com/package/@peerbot/worker) - Worker runtime
+
+**Docker Hub:**
+- [`buremba/peerbot-gateway`](https://hub.docker.com/r/buremba/peerbot-gateway)
+- [`buremba/peerbot-worker-base`](https://hub.docker.com/r/buremba/peerbot-worker-base)
+
+## License
+
+MIT
+
+## Support
+
+- [GitHub Issues](https://github.com/buremba/peerbot/issues)
+- [Documentation](./packages/cli/README.md)
+- [Custom Base Images Guide](./packages/worker/docs/custom-base-image.md)

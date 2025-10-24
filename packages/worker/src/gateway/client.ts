@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
 import { createLogger } from "@peerbot/core";
-import type { WorkerConfig } from "../types";
 import type {
-  WorkerExecutor,
   GatewayIntegrationInterface,
+  WorkerExecutor,
 } from "../interfaces";
+import type { WorkerConfig } from "../types";
 import { ActivityTracker } from "./activity-tracker";
 
 const logger = createLogger("gateway");
@@ -32,9 +32,9 @@ export interface AgentOptions {
   model?: string;
   maxTokens?: number;
   temperature?: number;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  timeoutMinutes?: number;
+  allowedTools?: string | string[];
+  disallowedTools?: string | string[];
+  timeoutMinutes?: number | string;
   [key: string]: string | number | boolean | string[] | undefined;
 }
 

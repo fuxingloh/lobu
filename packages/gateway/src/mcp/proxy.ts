@@ -1,21 +1,33 @@
-import { createLogger, verifyWorkerToken } from "@peerbot/core";
+import {
+  createLogger,
+  type IMessageQueue,
+  verifyWorkerToken,
+} from "@peerbot/core";
 import type { Request, Response } from "express";
-import type { McpCredentialStore } from "./credential-store";
 import type { McpConfigService } from "./config-service";
+import type { McpCredentialStore } from "./credential-store";
 import type { McpInputStore } from "./input-store";
 import { OAuth2Client } from "./oauth-client";
+import { substituteObject, substituteString } from "./string-substitution";
 
 const logger = createLogger("mcp-proxy");
 
 export class McpProxy {
-  private readonly sessions = new Map<string, string>(); // userId:mcpId -> sessionId
   private readonly oauth2Client = new OAuth2Client();
+  private readonly SESSION_TTL_SECONDS = 30 * 60; // 30 minutes
+  private readonly redisClient: any;
 
   constructor(
     private readonly configService: McpConfigService,
     private readonly credentialStore: McpCredentialStore,
-    private readonly inputStore: McpInputStore
-  ) {}
+    private readonly inputStore: McpInputStore,
+    queue: IMessageQueue
+  ) {
+    this.redisClient = queue.getRedisClient();
+    logger.info("MCP proxy initialized with Redis session storage", {
+      ttlMinutes: this.SESSION_TTL_SECONDS / 60,
+    });
+  }
 
   setupRoutes(app: any) {
     // Handle MCP HTTP protocol endpoints (Claude Code HTTP transport)
@@ -265,15 +277,15 @@ export class McpProxy {
     res: Response,
     httpServer: any,
     credentials: { accessToken: string; tokenType?: string } | null,
-    _inputValues: Record<string, string>,
+    inputValues: Record<string, string>,
     userId: string,
     mcpId: string
   ): Promise<void> {
-    const sessionKey = `${userId}:${mcpId}`;
-    const sessionId = this.sessions.get(sessionKey);
+    const sessionKey = `mcp:session:${userId}:${mcpId}`;
+    const sessionId = await this.getSession(sessionKey);
 
     // Get request body
-    const bodyText = await this.getRequestBodyAsText(req);
+    let bodyText = await this.getRequestBodyAsText(req);
 
     logger.info("Proxying MCP request", {
       mcpId,
@@ -281,6 +293,7 @@ export class McpProxy {
       method: req.method,
       hasSession: !!sessionId,
       bodyLength: bodyText.length,
+      hasInputValues: Object.keys(inputValues).length > 0,
     });
 
     // Build headers for upstream request
@@ -299,6 +312,31 @@ export class McpProxy {
       headers.Authorization = `Bearer ${credentials.accessToken}`;
     }
 
+    // Apply input substitution to headers and body if inputs are provided
+    if (Object.keys(inputValues).length > 0) {
+      // Substitute placeholders in all header values
+      for (const [key, value] of Object.entries(headers)) {
+        headers[key] = substituteString(value, inputValues);
+      }
+
+      // Substitute placeholders in request body
+      if (bodyText) {
+        try {
+          const bodyJson = JSON.parse(bodyText);
+          const substitutedBody = substituteObject(bodyJson, inputValues);
+          bodyText = JSON.stringify(substitutedBody);
+
+          logger.debug("Applied input substitution to request body", {
+            mcpId,
+            userId,
+          });
+        } catch {
+          // If body is not JSON, apply string substitution directly
+          bodyText = substituteString(bodyText, inputValues);
+        }
+      }
+    }
+
     // Forward to upstream MCP - stream response directly back
     const response = await fetch(httpServer.upstreamUrl, {
       method: req.method,
@@ -309,7 +347,7 @@ export class McpProxy {
     // Extract and store session ID from response
     const newSessionId = response.headers.get("Mcp-Session-Id");
     if (newSessionId) {
-      this.sessions.set(sessionKey, newSessionId);
+      await this.setSession(sessionKey, newSessionId);
       logger.debug("Stored MCP session ID", {
         mcpId,
         userId,
@@ -363,5 +401,38 @@ export class McpProxy {
     }
 
     return "";
+  }
+
+  /**
+   * Get session ID from Redis
+   */
+  private async getSession(key: string): Promise<string | null> {
+    try {
+      const sessionId = await this.redisClient.get(key);
+      if (sessionId) {
+        // Refresh TTL on access
+        await this.redisClient.expire(key, this.SESSION_TTL_SECONDS);
+      }
+      return sessionId;
+    } catch (error) {
+      logger.error("Failed to get MCP session from Redis", { key, error });
+      return null;
+    }
+  }
+
+  /**
+   * Store session ID in Redis with TTL
+   */
+  private async setSession(key: string, sessionId: string): Promise<void> {
+    try {
+      await this.redisClient.set(
+        key,
+        sessionId,
+        "EX",
+        this.SESSION_TTL_SECONDS
+      );
+    } catch (error) {
+      logger.error("Failed to store MCP session in Redis", { key, error });
+    }
   }
 }

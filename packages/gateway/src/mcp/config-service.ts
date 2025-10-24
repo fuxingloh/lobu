@@ -1,14 +1,14 @@
-import { createLogger, verifyWorkerToken } from "@peerbot/core";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createLogger, verifyWorkerToken } from "@peerbot/core";
 import { z } from "zod";
-import type {
-  McpOAuthDiscoveryService,
-  DiscoveredOAuthMetadata,
-} from "./oauth-discovery";
 import type { McpCredentialStore } from "./credential-store";
 import type { McpInputStore } from "./input-store";
+import type {
+  DiscoveredOAuthMetadata,
+  McpOAuthDiscoveryService,
+} from "./oauth-discovery";
 
 const logger = createLogger("mcp-config-service");
 

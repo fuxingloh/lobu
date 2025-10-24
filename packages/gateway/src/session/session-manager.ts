@@ -2,8 +2,8 @@
 
 import type { IMessageQueue } from "@peerbot/core";
 import { createLogger, type IRedisClient, RedisClient } from "@peerbot/core";
+import { DEFAULTS, REDIS_KEYS } from "../constants";
 import type { ThreadSession } from "../types";
-import { REDIS_KEYS, DEFAULTS } from "../constants";
 
 const logger = createLogger("session-manager");
 

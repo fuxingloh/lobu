@@ -10,8 +10,8 @@ import type {
   WorkerDeploymentPayload,
 } from "@peerbot/gateway/session/queue-producer";
 import type { SessionManager } from "@peerbot/gateway/session/session-manager";
-import type { ThreadSession } from "../../types";
 import type { GatewayConfig } from "../../cli/config";
+import type { ThreadSession } from "../../types";
 import type { SlackContext, SlackWebClient } from "../types";
 
 export class MessageHandler {

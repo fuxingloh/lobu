@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { ClaudeExecutionOptions, OrchestratorConfig } from "@peerbot/core";
 import { createLogger } from "@peerbot/core";
 import type { LogLevel } from "@slack/bolt";
 import { config as dotenvConfig } from "dotenv";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { DEFAULTS, TIME } from "../constants";
 
 const logger = createLogger("cli-config");
@@ -139,12 +139,14 @@ export function buildGatewayConfig(): GatewayConfig {
   const connectionString = getRequiredEnv("QUEUE_URL");
   const botToken = getRequiredEnv("SLACK_BOT_TOKEN");
 
-  // Anthropic API key (either direct or OAuth token)
+  // Anthropic API key (now optional - can use per-user OAuth instead)
   const anthropicApiKey =
     process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN;
+
   if (!anthropicApiKey) {
-    throw new ConfigError(
-      "Missing required environment variable: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN"
+    logger.warn(
+      "No system ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN configured. " +
+        "Users will need to authenticate via Claude OAuth in Slack home tab."
     );
   }
 

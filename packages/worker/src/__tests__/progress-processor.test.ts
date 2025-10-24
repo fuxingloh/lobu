@@ -2,7 +2,7 @@
  * Tests for ProgressProcessor message handling
  */
 
-import { describe, test, expect, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { ProgressProcessor } from "../claude/processor";
 
 describe("ProgressProcessor", () => {

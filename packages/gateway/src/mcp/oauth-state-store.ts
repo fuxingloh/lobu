@@ -1,5 +1,5 @@
-import type { IMessageQueue } from "@peerbot/core";
 import { randomBytes } from "node:crypto";
+import type { IMessageQueue } from "@peerbot/core";
 import { BaseRedisStore } from "../utils/redis-store";
 
 export interface OAuthStateData {

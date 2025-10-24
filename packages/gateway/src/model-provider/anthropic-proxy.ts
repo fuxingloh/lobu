@@ -1,21 +1,27 @@
 import { createLogger } from "@peerbot/core";
 import { type Request, type Response, Router } from "express";
 import fetch from "node-fetch";
+import type { ClaudeCredentialStore } from "../claude-oauth/credential-store";
 
 const logger = createLogger("dispatcher");
 
 export interface AnthropicProxyConfig {
   enabled: boolean;
-  anthropicApiKey: string;
+  anthropicApiKey?: string; // Now optional - may not be set if using OAuth
   anthropicBaseUrl?: string;
 }
 
 export class AnthropicProxy {
   private router: Router;
   private config: AnthropicProxyConfig;
+  private credentialStore?: ClaudeCredentialStore;
 
-  constructor(config: AnthropicProxyConfig) {
+  constructor(
+    config: AnthropicProxyConfig,
+    credentialStore?: ClaudeCredentialStore
+  ) {
     this.config = config;
+    this.credentialStore = credentialStore;
     this.router = Router();
     this.setupRoutes();
   }
@@ -60,8 +66,45 @@ export class AnthropicProxy {
   }
 
   private async forwardToAnthropic(req: Request, res: Response): Promise<void> {
+    // Get userId from custom header (set by worker)
+    const userId = req.headers["x-peerbot-user-id"] as string | undefined;
+
+    // Resolve API key/token: user token > system token > error
+    let apiKey: string | undefined;
+    let tokenSource: "user" | "system" | "none" = "none";
+
+    // Check for user credentials first
+    if (userId && this.credentialStore) {
+      const credentials = await this.credentialStore.getCredentials(userId);
+      if (credentials) {
+        apiKey = credentials.accessToken;
+        tokenSource = "user";
+        logger.info(`Using user OAuth token for ${userId}`);
+      }
+    }
+
+    // Fall back to system token if no user token
+    if (!apiKey && this.config.anthropicApiKey) {
+      apiKey = this.config.anthropicApiKey;
+      tokenSource = "system";
+      logger.info(`Using system API key`);
+    }
+
+    // No credentials available - return error
+    if (!apiKey) {
+      logger.warn(`No API key available for request`, { userId });
+      res.status(401).json({
+        error: {
+          type: "authentication_error",
+          message:
+            "No Claude authentication configured. Please login via Slack home tab or configure ANTHROPIC_API_KEY environment variable.",
+        },
+      });
+      return;
+    }
+
     // Check if we're using OAuth token (sk-ant-oat01-) vs API key (sk-ant-api03-)
-    const isOAuthToken = this.config.anthropicApiKey.startsWith("sk-ant-oat");
+    const isOAuthToken = apiKey.startsWith("sk-ant-oat");
 
     const anthropicUrl = `${this.config.anthropicBaseUrl || "https://api.anthropic.com"}${req.path}`;
 
@@ -96,7 +139,7 @@ export class AnthropicProxy {
         : undefined;
 
       // OAuth headers (Bearer, not x-api-key)
-      headers.Authorization = `Bearer ${this.config.anthropicApiKey}`;
+      headers.Authorization = `Bearer ${apiKey}`;
       headers["Content-Type"] = "application/json";
       headers.Accept = "application/json";
       headers["User-Agent"] = "claude-cli/1.0.98 (external, sdk-cli)";
@@ -115,12 +158,16 @@ export class AnthropicProxy {
       headers["anthropic-beta"] =
         "oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14";
 
-      logger.info(`🔧 Using OAuth token with passthrough body`);
+      logger.info(
+        `🔧 Using OAuth token with passthrough body (${tokenSource})`
+      );
     } else {
-      logger.info(`🔧 Using regular API key routing for public Anthropic API`);
+      logger.info(
+        `🔧 Using regular API key routing for public Anthropic API (${tokenSource})`
+      );
 
       // Standard API headers for regular API keys
-      headers["x-api-key"] = this.config.anthropicApiKey;
+      headers["x-api-key"] = apiKey;
       headers["Content-Type"] =
         req.headers["content-type"] || "application/json";
       headers["User-Agent"] = req.headers["user-agent"] || "peerbot-proxy/1.0";

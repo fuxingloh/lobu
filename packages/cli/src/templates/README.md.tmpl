@@ -1,0 +1,104 @@
+# {{PROJECT_NAME}}
+
+Peerbot instance created with `@peerbot/cli` v{{CLI_VERSION}}
+
+## Quick Start
+
+```bash
+# Start the bot
+npx peerbot dev
+
+# View logs
+npx peerbot logs
+
+# Stop the bot
+npx peerbot down
+```
+
+## Configuration
+
+### Environment Variables
+
+Edit `.env` to configure:
+- `SLACK_BOT_TOKEN` - Your Slack bot token
+- `SLACK_APP_TOKEN` - Your Slack app token
+- `ANTHROPIC_API_KEY` - Your Anthropic API key
+- `PEERBOT_PUBLIC_GATEWAY_URL` - Public URL for OAuth callbacks
+
+### Worker Customization
+
+{{#if CUSTOMIZE_WORKER}}
+Edit `Dockerfile.worker` to add custom tools and dependencies. Changes are automatically detected and rebuilt when running `peerbot dev`.
+
+Example customizations:
+```dockerfile
+# Add system packages
+RUN apt-get update && apt-get install -y postgresql-client
+
+# Add Python packages
+RUN pip install pandas matplotlib
+
+# Add Node.js packages
+RUN bun add @octokit/rest
+```
+{{else}}
+To customize the worker, run:
+```bash
+npx peerbot customize
+```
+
+This will create a `Dockerfile.worker` file you can edit.
+{{/if}}
+
+### Advanced Configuration
+
+Edit `peerbot.config.js` for advanced settings:
+- Resource limits (CPU, memory)
+- Volume mounts
+- Platform-specific overrides
+- Custom environment variables
+
+## Deployment
+
+### Local Development (Docker)
+
+```bash
+npx peerbot dev
+```
+
+### Production Deployment
+
+#### Kubernetes
+```bash
+npx peerbot deploy --target kubernetes
+```
+
+#### AWS ECS
+```bash
+npx peerbot deploy --target ecs
+```
+
+#### Cloudflare Containers
+```bash
+npx peerbot deploy --target cloudflare
+```
+
+## Commands
+
+- `peerbot init` - Initialize a new Peerbot project
+- `peerbot dev` - Start development server
+- `peerbot logs [service]` - View logs
+- `peerbot down` - Stop all services
+- `peerbot rebuild` - Rebuild worker image
+- `peerbot deploy [--target]` - Deploy to production
+
+## Learn More
+
+- [Peerbot Documentation](https://github.com/buremba/peerbot)
+- [CLI Reference](https://github.com/buremba/peerbot/tree/main/packages/cli)
+- [Examples](https://github.com/buremba/peerbot/tree/main/examples)
+
+## Support
+
+- [GitHub Issues](https://github.com/buremba/peerbot/issues)
+- [Discord Community](https://discord.gg/peerbot)

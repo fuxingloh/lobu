@@ -2,15 +2,15 @@
  * Tests for BaseWorker abstract class and template method pattern
  */
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { BaseWorker } from "../base/base-worker";
-import { TestHelpers, mockWorkerConfig } from "./setup";
+import type { InstructionProvider } from "../instructions/types";
 import type {
-  WorkerConfig,
   ProgressUpdate,
   SessionExecutionResult,
+  WorkerConfig,
 } from "../types";
-import type { InstructionProvider } from "../instructions/types";
+import { mockWorkerConfig, TestHelpers } from "./setup";
 
 // Mock concrete implementation for testing
 class TestWorker extends BaseWorker {

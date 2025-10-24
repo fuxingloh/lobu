@@ -40,16 +40,35 @@ jobs:
         
       - name: Build packages
         if: ${{ steps.release.outputs.release_created }}
-        run: bun run build
-        
+        run: |
+          bun run build
+          cd packages/cli && bun run build
+          cd ../create-peerbot && bun run build
+          cd ../worker && bun run build
+
       - name: Authenticate to npm
         if: ${{ steps.release.outputs.release_created }}
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
           npm whoami
-        
-      - name: Publish to NPM
+
+      - name: Publish @peerbot/cli to NPM
         if: ${{ steps.release.outputs.release_created }}
+        working-directory: packages/cli
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish create-peerbot to NPM
+        if: ${{ steps.release.outputs.release_created }}
+        working-directory: packages/create-peerbot
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @peerbot/worker to NPM
+        if: ${{ steps.release.outputs.release_created }}
+        working-directory: packages/worker
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

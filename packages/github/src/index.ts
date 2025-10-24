@@ -1,7 +1,7 @@
 import {
+  type ActionButton,
   BaseModule,
   createLogger,
-  type ActionButton,
   type DispatcherContext,
   type WorkerContext,
 } from "@peerbot/core";

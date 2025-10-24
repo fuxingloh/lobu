@@ -3,17 +3,17 @@
 import { createLogger } from "@peerbot/core";
 import * as Sentry from "@sentry/node";
 import { GatewayIntegration } from "../gateway/client";
-import type { WorkerConfig } from "../types";
-import type {
-  WorkerExecutor,
-  GatewayIntegrationInterface,
-} from "../interfaces";
-import { WorkspaceManager } from "../workspace";
 import { generateCustomInstructions } from "../instructions/generator";
 import type { InstructionProvider } from "../instructions/types";
+import type {
+  GatewayIntegrationInterface,
+  WorkerExecutor,
+} from "../interfaces";
+import type { WorkerConfig } from "../types";
+import { WorkspaceManager } from "../workspace";
 import { handleExecutionError } from "./error-handler";
 import { listAppDirectories } from "./project-scanner";
-import type { SessionExecutionResult, ProgressUpdate } from "./types";
+import type { ProgressUpdate, SessionExecutionResult } from "./types";
 
 const logger = createLogger("base-worker");
 

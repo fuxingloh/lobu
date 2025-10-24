@@ -3,9 +3,9 @@
 import type { IMessageQueue, WorkerTokenData } from "@peerbot/core";
 import { createLogger, verifyWorkerToken } from "@peerbot/core";
 import type { Request, Response } from "express";
+import type { McpConfigService } from "../mcp/config-service";
 import { WorkerConnectionManager } from "./connection-manager";
 import { WorkerJobRouter } from "./job-router";
-import type { McpConfigService } from "../mcp/config-service";
 
 const logger = createLogger("worker-gateway");
 

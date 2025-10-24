@@ -1,42 +1,28 @@
-import { moduleRegistry } from "@peerbot/core";
-import { createMessageQueue } from "@peerbot/core";
+import { createLogger, moduleRegistry } from "@peerbot/core";
 import { App, ExpressReceiver, LogLevel } from "@slack/bolt";
-import { createLogger } from "@peerbot/core";
 import type { GatewayConfig } from "../cli/config";
-import { WorkerGateway } from "../gateway";
-import { AnthropicProxy } from "../model-provider/anthropic-proxy";
-import { QueueProducer } from "../session/queue-producer";
-import { ThreadResponseConsumer } from "./thread-processor";
-import { SlackEventHandlers } from "./event-router";
-import { McpConfigService } from "../mcp/config-service";
-import { McpCredentialStore } from "../mcp/credential-store";
-import { McpProxy } from "../mcp/proxy";
-import { McpOAuthModule } from "../mcp/oauth-module";
-import { OAuthStateStore } from "../mcp/oauth-state-store";
-import { McpInputStore } from "../mcp/input-store";
 import { SocketHealthMonitor } from "../health/socket-health-monitor";
-import { McpOAuthDiscoveryService } from "../mcp/oauth-discovery";
+import type { PlatformAdapter } from "../platform/platform-adapter";
+import type { CoreServices } from "../services/core-services";
+import { SlackEventHandlers } from "./event-router";
+import { ThreadResponseConsumer } from "./thread-processor";
 
 const logger = createLogger("slack-dispatcher");
 
-export class SlackDispatcher {
+/**
+ * Slack platform adapter
+ * Implements PlatformAdapter interface to integrate Slack with the gateway
+ */
+export class SlackDispatcher implements PlatformAdapter {
+  readonly name = "slack";
+
   private app: App;
-  private queueProducer: QueueProducer;
+  private services!: CoreServices;
   private threadResponseConsumer?: ThreadResponseConsumer;
-  private anthropicProxy?: AnthropicProxy;
-  private workerGateway?: WorkerGateway;
-  private mcpProxy?: McpProxy;
-  private config: GatewayConfig;
-  private queue?: ReturnType<typeof createMessageQueue>;
   private socketHealthMonitor?: SocketHealthMonitor;
+  private isRunning = false;
 
-  constructor(config: GatewayConfig) {
-    this.config = config;
-
-    if (!config.queues?.connectionString) {
-      throw new Error("Queue connection string is required");
-    }
-
+  constructor(private readonly config: GatewayConfig) {
     // Initialize Slack app based on mode
     if (config.slack.socketMode === false) {
       // HTTP mode - use ExpressReceiver
@@ -50,14 +36,11 @@ export class SlackDispatcher {
       });
 
       // Add URL verification challenge handler BEFORE Slack middleware
-      // This is needed for initial Slack app Event Subscription setup
       receiver.router.use("/slack/events", (req, res, next) => {
-        // Check if this is a URL verification challenge
         if (req.body && req.body.type === "url_verification") {
           logger.info("Handling Slack URL verification challenge");
           return res.status(200).json({ challenge: req.body.challenge });
         }
-        // Otherwise, continue to normal Slack event handling
         next();
       });
 
@@ -65,10 +48,10 @@ export class SlackDispatcher {
         token: config.slack.token,
         receiver,
         logLevel: config.logLevel || LogLevel.DEBUG,
-        ignoreSelf: false, // We need to receive action events from our own messages
+        ignoreSelf: false,
       });
 
-      logger.info("Initialized Slack app in HTTP mode with ExpressReceiver");
+      logger.info("Initialized Slack app in HTTP mode");
     } else {
       // Socket mode
       const appConfig: any = {
@@ -77,7 +60,7 @@ export class SlackDispatcher {
         appToken: config.slack.appToken,
         port: config.slack.port || 3000,
         logLevel: config.logLevel || LogLevel.INFO,
-        ignoreSelf: false, // We need to receive action events from our own messages
+        ignoreSelf: false,
         processBeforeResponse: true,
       };
 
@@ -91,10 +74,6 @@ export class SlackDispatcher {
       logger.info("Initialized Slack app in Socket mode");
     }
 
-    // Initialize queue producer
-    logger.info("Initializing queue mode");
-    this.queueProducer = new QueueProducer(config.queues.connectionString);
-    // ThreadResponseConsumer will be created after event handlers are initialized
     this.setupErrorHandling();
     this.setupGracefulShutdown();
 
@@ -115,101 +94,17 @@ export class SlackDispatcher {
   }
 
   /**
-   * Initialize Anthropic proxy service
+   * Initialize the platform with core services (PlatformAdapter interface)
+   * This is called by Gateway after core services are initialized
    */
-  private async initializeAnthropicProxy(): Promise<void> {
-    this.anthropicProxy = new AnthropicProxy(this.config.anthropicProxy);
-    logger.info("✅ Anthropic proxy initialized");
-  }
+  async initialize(services: CoreServices): Promise<void> {
+    logger.info("Initializing Slack platform adapter...");
+    this.services = services;
 
-  /**
-   * Initialize MCP services (config, discovery, OAuth, proxy)
-   */
-  private async initializeMcpServices(): Promise<void> {
-    if (!this.queue) {
-      throw new Error("Queue must be initialized before MCP services");
-    }
+    // Initialize bot info and event handlers
+    await this.initializeBotInfo();
 
-    const redisClient = this.queue.getRedisClient();
-
-    // Initialize MCP OAuth Discovery Service
-    const mcpCredentialStore = new McpCredentialStore(this.queue);
-    const mcpDiscoveryService = new McpOAuthDiscoveryService({
-      cacheStore: {
-        get: async (key: string) => {
-          try {
-            const value = await redisClient.get(key);
-            return value;
-          } catch (error) {
-            logger.error("Failed to get from cache", { key, error });
-            return null;
-          }
-        },
-        set: async (key: string, value: string, ttl: number) => {
-          try {
-            await redisClient.set(key, value, "EX", ttl);
-          } catch (error) {
-            logger.error("Failed to set cache", { key, error });
-          }
-        },
-        delete: async (key: string) => {
-          try {
-            await redisClient.del(key);
-          } catch (error) {
-            logger.error("Failed to delete from cache", { key, error });
-          }
-        },
-      },
-      callbackUrl: this.config.mcp.callbackUrl,
-      protocolVersion: "2025-03-26",
-      cacheTtl: 86400, // 24 hours
-    });
-    logger.info("✅ MCP OAuth Discovery Service initialized");
-
-    const oauthStateStore = new OAuthStateStore(this.queue);
-    const mcpInputStore = new McpInputStore(this.queue);
-    const mcpConfigService = new McpConfigService({
-      configUrl: this.config.mcp.serversUrl,
-      discoveryService: mcpDiscoveryService,
-      credentialStore: mcpCredentialStore,
-      inputStore: mcpInputStore,
-    });
-    this.workerGateway = new WorkerGateway(
-      this.queue,
-      this.config.mcp.publicGatewayUrl,
-      mcpConfigService
-    );
-    this.mcpProxy = new McpProxy(
-      mcpConfigService,
-      mcpCredentialStore,
-      mcpInputStore
-    );
-    logger.info("✅ Worker gateway initialized");
-    logger.info("✅ MCP proxy initialized");
-
-    // Perform OAuth discovery for all MCP servers
-    logger.info("🔍 Discovering OAuth capabilities for MCP servers...");
-    await mcpConfigService.enrichWithDiscovery();
-    logger.info("✅ MCP OAuth discovery completed");
-
-    // Register MCP OAuth module for authentication flow
-    const mcpOAuthModule = new McpOAuthModule(
-      mcpConfigService,
-      mcpCredentialStore,
-      oauthStateStore,
-      mcpInputStore,
-      this.config.mcp.publicGatewayUrl,
-      this.config.mcp.callbackUrl
-    );
-    moduleRegistry.register(mcpOAuthModule);
-    logger.info("✅ MCP OAuth module registered");
-
-    // Discover and register available modules
-    await moduleRegistry.registerAvailableModules();
-
-    // Initialize all registered modules
-    await moduleRegistry.initAll();
-    logger.info("✅ Modules initialized");
+    logger.info("✅ Slack platform adapter initialized");
   }
 
   /**
@@ -294,9 +189,10 @@ export class SlackDispatcher {
       }, require("../constants").TIME.FIVE_SECONDS_MS);
 
       // Start health monitoring after successful connection
-      if (this.socketHealthMonitor && this.workerGateway) {
+      if (this.socketHealthMonitor) {
+        const workerGateway = this.services.getWorkerGateway();
         this.socketHealthMonitor.start(
-          () => this.workerGateway?.getActiveConnections().length || 0
+          () => workerGateway?.getActiveConnections().length || 0
         );
         logger.info("✅ Socket health monitoring enabled");
       }
@@ -373,29 +269,17 @@ export class SlackDispatcher {
   }
 
   /**
-   * Start the dispatcher
+   * Start the platform (PlatformAdapter interface)
+   * Connect to Slack API and start event listeners
    */
   async start(): Promise<void> {
     try {
-      // Initialize Anthropic proxy
-      await this.initializeAnthropicProxy();
+      logger.info("Starting Slack platform adapter...");
 
-      // Initialize Worker Gateway for SSE/HTTP worker communication
-      this.queue = createMessageQueue(this.config.queues.connectionString);
-      await this.queue.start();
-
-      // Initialize MCP services
-      await this.initializeMcpServices();
-
-      // Start queue producer
-      await this.queueProducer.start();
-      logger.info("✅ Queue producer started");
-
-      // CRITICAL: Get bot's own user ID and bot ID BEFORE initializing handlers
-      await this.initializeBotInfo(this.config);
-
+      // Start thread response consumer
       if (this.threadResponseConsumer) {
         await this.threadResponseConsumer.start();
+        logger.info("✅ Thread response consumer started");
       }
 
       // Start Slack app based on mode
@@ -410,12 +294,12 @@ export class SlackDispatcher {
         await this.initializeSocketMode();
       }
 
+      this.isRunning = true;
+
       const mode = this.config.slack.socketMode
         ? "Socket Mode"
         : `HTTP on port ${this.config.slack.port}`;
-      logger.info(
-        `🚀 Slack Dispatcher is running in ${mode}! (Local Development)`
-      );
+      logger.info(`🚀 Slack platform adapter is running in ${mode}!`);
 
       // Log configuration
       logger.info("Configuration:");
@@ -426,40 +310,47 @@ export class SlackDispatcher {
         `- Signing Secret: ${this.config.slack.signingSecret?.substring(0, 8)}...`
       );
     } catch (error) {
-      logger.error("Failed to start Slack dispatcher:", error);
-      process.exit(1);
+      logger.error("Failed to start Slack platform adapter:", error);
+      throw error;
     }
   }
 
   /**
-   * Stop the dispatcher
+   * Stop the platform gracefully (PlatformAdapter interface)
    */
   async stop(): Promise<void> {
     try {
+      logger.info("Stopping Slack platform adapter...");
+      this.isRunning = false;
+
       // Stop health monitor first
       if (this.socketHealthMonitor) {
         this.socketHealthMonitor.stop();
         logger.info("Socket health monitor stopped");
       }
 
+      // Stop Slack app
       await this.app.stop();
+      logger.info("Slack app stopped");
 
-      await this.queueProducer.stop();
-
+      // Stop thread response consumer
       if (this.threadResponseConsumer) {
         await this.threadResponseConsumer.stop();
+        logger.info("Thread response consumer stopped");
       }
 
-      // Shutdown worker gateway
-      if (this.workerGateway) {
-        this.workerGateway.shutdown();
-        logger.info("Worker gateway shutdown complete");
-      }
-
-      logger.info("Slack dispatcher stopped");
+      logger.info("✅ Slack platform adapter stopped");
     } catch (error) {
-      logger.error("Error stopping Slack dispatcher:", error);
+      logger.error("Error stopping Slack platform adapter:", error);
+      throw error;
     }
+  }
+
+  /**
+   * Check if platform is healthy and running (PlatformAdapter interface)
+   */
+  isHealthy(): boolean {
+    return this.isRunning && this.app !== undefined;
   }
 
   /**
@@ -471,7 +362,7 @@ export class SlackDispatcher {
     config: Partial<GatewayConfig>;
   } {
     return {
-      isRunning: true,
+      isRunning: this.isRunning,
       mode: "queue",
       config: {
         slack: {
@@ -486,39 +377,21 @@ export class SlackDispatcher {
   }
 
   /**
-   * Get Anthropic proxy instance
-   */
-  getAnthropicProxy() {
-    return this.anthropicProxy;
-  }
-
-  /**
-   * Get Worker Gateway instance
-   */
-  getWorkerGateway() {
-    return this.workerGateway;
-  }
-
-  getMcpProxy() {
-    return this.mcpProxy;
-  }
-
-  /**
    * Initialize bot info and event handlers
    * CRITICAL: This must be called BEFORE starting the app to ensure
    * all handlers have access to bot IDs during initialization
    */
-  private async initializeBotInfo(config: GatewayConfig): Promise<void> {
+  private async initializeBotInfo(): Promise<void> {
     try {
       // Validate bot IDs are set or fetch them
-      if (!config.slack.botUserId || !config.slack.botId) {
+      if (!this.config.slack.botUserId || !this.config.slack.botId) {
         logger.info("Bot IDs not configured, calling auth.test via HTTP...");
 
         // Use direct HTTP call instead of Slack Bolt client
-        const response = await fetch(`${config.slack.apiUrl}/auth.test`, {
+        const response = await fetch(`${this.config.slack.apiUrl}/auth.test`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${config.slack.token}`,
+            Authorization: `Bearer ${this.config.slack.token}`,
             "Content-Type": "application/json",
           },
         });
@@ -541,15 +414,15 @@ export class SlackDispatcher {
         }
 
         // Store bot info in config
-        config.slack.botUserId = authResult.user_id;
-        config.slack.botId = authResult.bot_id;
+        this.config.slack.botUserId = authResult.user_id;
+        this.config.slack.botId = authResult.bot_id;
 
         logger.info(
           `Bot initialized - User ID: ${authResult.user_id}, Bot ID: ${authResult.bot_id}`
         );
       } else {
         logger.info(
-          `Using configured bot IDs - User ID: ${config.slack.botUserId}, Bot ID: ${config.slack.botId}`
+          `Using configured bot IDs - User ID: ${this.config.slack.botUserId}, Bot ID: ${this.config.slack.botId}`
         );
       }
 
@@ -557,16 +430,16 @@ export class SlackDispatcher {
       logger.info("Initializing queue-based event handlers");
       new SlackEventHandlers(
         this.app,
-        this.queueProducer,
-        config,
+        this.services.getQueueProducer(),
+        this.config,
         moduleRegistry,
-        this.queue!
+        this.services.getQueue()
       );
 
-      // Create ThreadResponseConsumer with the started queue
+      // Create ThreadResponseConsumer with the queue from services
       this.threadResponseConsumer = new ThreadResponseConsumer(
-        this.queue!,
-        config.slack.token,
+        this.services.getQueue(),
+        this.config.slack.token,
         moduleRegistry
       );
     } catch (error) {

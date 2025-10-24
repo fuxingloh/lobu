@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
-import { initSentry } from "@peerbot/core";
-import { createLogger } from "@peerbot/core";
+import { createLogger, initSentry } from "@peerbot/core";
 import { Command } from "commander";
 import {
   buildGatewayConfig,

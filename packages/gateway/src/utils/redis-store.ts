@@ -1,8 +1,8 @@
 import {
-  RedisClient,
+  createLogger,
   type IMessageQueue,
   type IRedisClient,
-  createLogger,
+  RedisClient,
 } from "@peerbot/core";
 
 /**

@@ -9,13 +9,13 @@ import {
   RedisClient,
 } from "@peerbot/core";
 import { WebClient } from "@slack/web-api";
+import { DEFAULTS, REDIS_KEYS } from "../constants";
 import {
   type ModuleButton,
   SlackBlockBuilder,
 } from "../slack/converters/block-builder";
 import { extractCodeBlockActions } from "../slack/converters/blockkit";
 import { convertMarkdownToSlack } from "../slack/converters/markdown";
-import { REDIS_KEYS, DEFAULTS } from "../constants";
 import { setThreadStatus } from "../slack/utils/thread-status";
 
 const logger = createLogger("dispatcher");

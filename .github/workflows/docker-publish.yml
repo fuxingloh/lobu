@@ -26,6 +26,7 @@ jobs:
     outputs:
       gateway-image: ${{ steps.meta-gateway.outputs.tags }}
       worker-image: ${{ steps.meta-worker.outputs.tags }}
+      worker-base-image: ${{ steps.meta-worker-base.outputs.tags }}
       image-tag: ${{ steps.tag.outputs.tag }}
     
     steps:
@@ -37,10 +38,15 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
             TAG="${{ github.sha }}"
+          elif [[ "${{ github.event_name }}" == "repository_dispatch" && -n "${{ github.event.client_payload.version }}" ]]; then
+            TAG="${{ github.event.client_payload.version }}"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
           else
             TAG="manual-$(date +%Y%m%d-%H%M%S)"
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${TAG}" >> $GITHUB_OUTPUT
           echo "Using tag: ${TAG}"
 
       - name: Set up Docker Buildx
@@ -100,6 +106,32 @@ jobs:
           cache-to: |
             type=gha,mode=max
             type=registry,ref=${{ env.DOCKER_NAMESPACE }}/peerbot-worker:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Extract metadata for Worker Base
+        id: meta-worker-base
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_NAMESPACE }}/peerbot-worker-base
+          tags: |
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=raw,value=${{ steps.tag.outputs.version }},enable=${{ steps.tag.outputs.version != '' && (github.event_name == 'release' || github.event_name == 'repository_dispatch') }}
+
+      - name: Build and push Worker Base (for CLI)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.worker
+          push: true
+          tags: ${{ steps.meta-worker-base.outputs.tags }}
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ env.DOCKER_NAMESPACE }}/peerbot-worker-base:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ env.DOCKER_NAMESPACE }}/peerbot-worker-base:buildcache,mode=max
           platforms: linux/amd64
 
       - name: Trigger deployment

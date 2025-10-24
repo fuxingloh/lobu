@@ -5,17 +5,16 @@ import type { App } from "@slack/bolt";
 
 const logger = createLogger("slack-events");
 
-import type { IModuleRegistry } from "@peerbot/core";
-import type { createMessageQueue } from "@peerbot/core";
+import type { createMessageQueue, IModuleRegistry } from "@peerbot/core";
 import type { GatewayConfig } from "../cli/config";
 import type { QueueProducer } from "../session/queue-producer";
 import { RedisSessionStore, SessionManager } from "../session/session-manager";
 import { ActionHandler } from "./events/actions";
 import { handleBlockkitFormSubmission } from "./events/forms";
 import { MessageHandler } from "./events/messages";
-import type { SlackWebClient, SlackContext } from "./types";
 import { ShortcutCommandHandler } from "./events/shortcuts";
 import { setupTeamJoinHandler } from "./events/welcome";
+import type { SlackContext, SlackWebClient } from "./types";
 import { isSelfGeneratedEvent } from "./utils/event-filters";
 
 /**
@@ -67,43 +66,59 @@ export class SlackEventHandlers {
 
       // Handle message edits
       if (messageEvent.subtype === "message_changed") {
-        logger.info(
-          `Message changed: ${JSON.stringify(messageEvent, null, 2)}`
-        );
+        logger.debug("Message changed", {
+          channel: messageEvent.channel,
+          ts: messageEvent.ts,
+          user: messageEvent.message?.user,
+        });
       }
 
       // Handle message deletions
       if (messageEvent.subtype === "message_deleted") {
-        logger.info(
-          `Message deleted: ${JSON.stringify(messageEvent, null, 2)}`
-        );
+        logger.debug("Message deleted", {
+          channel: messageEvent.channel,
+          ts: messageEvent.deleted_ts,
+        });
       }
     });
 
     // Setup file event handlers
     this.app.event("file_shared", async ({ event }) => {
-      logger.info(`File shared: ${JSON.stringify(event, null, 2)}`);
+      logger.debug("File shared", {
+        channel: (event as any).channel_id,
+        fileId: (event as any).file_id,
+        user: (event as any).user_id,
+      });
     });
 
     this.app.event("file_deleted", async ({ event }) => {
-      logger.info(`File deleted: ${JSON.stringify(event, null, 2)}`);
+      logger.debug("File deleted", {
+        fileId: (event as any).file_id,
+      });
     });
 
     // Setup user event handlers
     this.app.event("team_join", async ({ event }) => {
-      logger.info(`Team join: ${JSON.stringify(event, null, 2)}`);
+      logger.debug("Team join", {
+        user: (event as any).user?.id,
+      });
     });
 
     this.app.event("presence_change", async ({ event }) => {
-      logger.info(`Presence change: ${JSON.stringify(event, null, 2)}`);
+      logger.debug("Presence change", {
+        user: (event as any).user,
+        presence: (event as any).presence,
+      });
     });
 
     this.app.event("member_joined_channel", async ({ event, client }) => {
-      logger.info(`Member joined channel: ${JSON.stringify(event, null, 2)}`);
+      const memberEvent = event as any;
+      logger.debug("Member joined channel", {
+        user: memberEvent.user,
+        channel: memberEvent.channel,
+      });
 
       try {
-        const memberEvent = event as any;
-
         // Skip if it's a bot joining
         if (memberEvent.user.startsWith("B")) {
           logger.info(`Skipping welcome for bot user: ${memberEvent.user}`);

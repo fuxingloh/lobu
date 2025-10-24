@@ -2,6 +2,8 @@
   "name": "@peerbot/cli",
   "version": "1.0.6",
   "workspaces": [
+    "packages/cli",
+    "packages/create-peerbot",
     "packages/gateway",
     "packages/github",
     "packages/core",

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { createLogger } from "@peerbot/core";
-import type { SlackWebClient, SlackContext, SlackView } from "../types";
+import type { SlackContext, SlackView, SlackWebClient } from "../types";
 
 const logger = createLogger("dispatcher");
 

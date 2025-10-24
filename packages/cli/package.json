@@ -1,0 +1,44 @@
+{
+  "name": "@peerbot/cli",
+  "version": "0.1.0",
+  "description": "CLI for deploying and managing Peerbot across multiple platforms",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "peerbot": "./bin/peerbot.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "peerbot",
+    "slack",
+    "ai",
+    "claude",
+    "cli"
+  ],
+  "author": "Burak Emre",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.0.0",
+    "inquirer": "^9.2.14",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1",
+    "chokidar": "^3.6.0",
+    "yaml": "^2.3.4",
+    "execa": "^8.0.1",
+    "dotenv": "^16.4.1",
+    "semver": "^7.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/inquirer": "^9.0.7",
+    "@types/semver": "^7.5.6",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,15 +1,15 @@
-import { BaseModule, createLogger, encrypt, decrypt } from "@peerbot/core";
+import { BaseModule, createLogger, decrypt, encrypt } from "@peerbot/core";
 import type { Request, Response } from "express";
-import type { McpConfigService } from "./config-service";
-import type { McpCredentialStore } from "./credential-store";
-import type { OAuthStateStore } from "./oauth-state-store";
-import { OAuth2Client } from "./oauth-client";
-import type { McpInputStore } from "./input-store";
 import {
   formatMcpName,
-  renderOAuthSuccessPage,
   renderOAuthErrorPage,
+  renderOAuthSuccessPage,
 } from "../utils/oauth-templates";
+import type { McpConfigService } from "./config-service";
+import type { McpCredentialStore } from "./credential-store";
+import type { McpInputStore } from "./input-store";
+import { OAuth2Client } from "./oauth-client";
+import type { OAuthStateStore } from "./oauth-state-store";
 
 const logger = createLogger("mcp-oauth-module");
 

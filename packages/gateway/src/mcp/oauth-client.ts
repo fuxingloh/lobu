@@ -1,8 +1,8 @@
-import { createLogger } from "@peerbot/core";
 import type {
-  OAuthTokens,
   OAuthErrorResponse,
+  OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { createLogger } from "@peerbot/core";
 import type { OAuth2Config } from "./config-service";
 import type { McpCredentialRecord } from "./credential-store";
 
