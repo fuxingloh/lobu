@@ -4,14 +4,6 @@ CLI tool for deploying and managing Peerbot across multiple platforms.
 
 ## Installation
 
-### Via create-peerbot (Recommended)
-
-```bash
-npx create-peerbot my-slack-bot
-cd my-slack-bot
-npm run dev
-```
-
 ### Standalone
 
 ```bash
@@ -238,7 +230,7 @@ CMD ["peerbot-worker"]
 
 ```bash
 # 1. Create project
-npx create-peerbot my-bot
+npx peerbot init my-bot
 cd my-bot
 
 # 2. Choose worker mode during init
@@ -313,9 +305,6 @@ docker pull buremba/peerbot-worker:0.1.0
 # CLI tool
 npm install -g @peerbot/cli@0.1.0
 
-# Scaffolding tool
-npx create-peerbot@0.1.0 my-bot
-
 # Worker runtime (for custom base images)
 npm install -g @peerbot/worker@0.1.0
 ```
@@ -325,7 +314,7 @@ npm install -g @peerbot/worker@0.1.0
 ```
 User creates project
         ↓
-npx create-peerbot my-bot
+npx peerbot init my-bot
         ↓
 Choose: Base image or Package?
         ↓

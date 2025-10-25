@@ -5,14 +5,14 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createLogger } from "@peerbot/core";
-import type { ProcessInfo, ProcessManagerInstance } from "./types.js";
-import { startTunnel } from "./tunnel-manager.js";
+import type { ProcessInfo, ProcessManagerInstance } from "./types";
+import { startTunnel } from "./tunnel-manager";
 import {
   createMCPServer,
   startHTTPServer,
   setProcessManagerInstance,
   getProcessManagerInstance,
-} from "./mcp-server.js";
+} from "./mcp-server";
 
 const logger = createLogger("worker");
 

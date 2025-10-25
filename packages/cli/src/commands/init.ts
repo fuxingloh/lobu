@@ -1,12 +1,109 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import ora from "ora";
+import YAML from "yaml";
 import { AVAILABLE_TARGETS, TARGET_LABELS } from "../providers/index.js";
 import type { DeploymentTarget } from "../types.js";
 import { checkConfigExists } from "../utils/config.js";
 import { renderTemplate } from "../utils/template.js";
+
+const DEFAULT_SLACK_MANIFEST = {
+  display_information: {
+    name: "Peerbot",
+    description: "Hire AI peers to work with you, using your environments",
+    background_color: "#4a154b",
+    long_description:
+      "This bot integrates Claude Code SDK with Slack to provide AI-powered coding assistance directly in your workspace. You can generate apps/AI peers that will appear as new handles.",
+  },
+  features: {
+    app_home: {
+      home_tab_enabled: true,
+      messages_tab_enabled: true,
+      messages_tab_read_only_enabled: false,
+    },
+    bot_user: {
+      display_name: "Peerbot",
+      always_online: true,
+    },
+    slash_commands: [
+      {
+        command: "/peerbot",
+        description:
+          "Peerbot commands - manage repositories and authentication",
+        usage_hint: "connect | login | help",
+      },
+    ],
+    assistant_view: {
+      assistant_description:
+        "It can generate Claude Code session working on public Github data",
+      suggested_prompts: [
+        {
+          title: "Create a project",
+          message: "Create a new project",
+        },
+        {
+          title: "Start working on a feature",
+          message:
+            "List me projects and let me tell you what I want to develop on which project",
+        },
+        {
+          title: "Fix a bug",
+          message:
+            "List me projects and let me tell you what I want to develop on which project",
+        },
+        {
+          title: "Ask a question to the codebase",
+          message:
+            "List me projects and let me tell you what I want to develop on which project",
+        },
+      ],
+    },
+  },
+  oauth_config: {
+    redirect_urls: [],
+    scopes: {
+      bot: [
+        "app_mentions:read",
+        "assistant:write",
+        "channels:history",
+        "channels:read",
+        "chat:write",
+        "chat:write.public",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "im:write",
+        "mpim:read",
+        "reactions:read",
+        "reactions:write",
+        "users:read",
+        "commands",
+      ],
+    },
+  },
+  settings: {
+    event_subscriptions: {
+      bot_events: [
+        "app_home_opened",
+        "app_mention",
+        "team_join",
+        "member_joined_channel",
+        "message.channels",
+        "message.groups",
+        "message.im",
+      ],
+    },
+    interactivity: {
+      is_enabled: true,
+    },
+    org_deploy_enabled: false,
+    socket_mode_enabled: true,
+    token_rotation_enabled: false,
+  },
+} as const;
 
 export async function initCommand(cwd: string = process.cwd()): Promise<void> {
   console.log(chalk.bold.cyan("\n🤖 Welcome to Peerbot!\n"));
@@ -33,7 +130,7 @@ export async function initCommand(cwd: string = process.cwd()): Promise<void> {
   const cliVersion = await getCliVersion();
 
   // Interactive prompts
-  const answers = await inquirer.prompt([
+  const baseAnswers = await inquirer.prompt([
     {
       type: "input",
       name: "projectName",
@@ -79,6 +176,96 @@ export async function initCommand(cwd: string = process.cwd()): Promise<void> {
         answers.target === "docker" || answers.target === "kubernetes",
     },
     {
+      type: "input",
+      name: "publicUrl",
+      message: "Public Gateway URL (for MCP OAuth callbacks)?",
+      default: "",
+    },
+  ]);
+
+  const { slackAppOption } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "slackAppOption",
+      message: "Slack app setup?",
+      choices: [
+        {
+          name: "Create a new Slack app using the Peerbot manifest",
+          value: "create",
+        },
+        {
+          name: "Use an existing Slack app",
+          value: "existing",
+        },
+      ],
+      default: "create",
+    },
+  ]);
+
+  if (slackAppOption === "create") {
+    const manifestUrl = await getSlackManifestUrl();
+    console.log(chalk.bold("\n🔗 Create your Slack app"));
+    console.log(
+      `Open this link to create the app with the recommended manifest:\n${chalk.cyan(
+        chalk.underline(manifestUrl)
+      )}\n`
+    );
+    await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "slackAppCreated",
+        message:
+          "Press enter after clicking “Create” and returning here to continue.",
+        default: true,
+      },
+    ]);
+  }
+
+  const { slackAppId } = await inquirer.prompt([
+    {
+      type: "input",
+      name: "slackAppId",
+      message: "Slack App ID (optional)?",
+      default: "",
+    },
+  ]);
+
+  const trimmedAppId = slackAppId.trim();
+  const appIdForLinks = trimmedAppId !== "" ? trimmedAppId : "<YOUR_APP_ID>";
+  const appDashboardUrl = `https://api.slack.com/apps/${appIdForLinks}`;
+  const oauthUrl = `${appDashboardUrl}/oauth`;
+
+  console.log(chalk.bold("\n🔐 Collect your Slack credentials"));
+  console.log(
+    `Signing Secret & App-Level Tokens: ${chalk.cyan(
+      chalk.underline(appDashboardUrl)
+    )}`
+  );
+  console.log(
+    `OAuth Tokens (Bot Token): ${chalk.cyan(chalk.underline(oauthUrl))} You should install the app first.\n`
+  );
+  if (trimmedAppId === "") {
+    console.log(
+      chalk.dim(
+        "Replace <YOUR_APP_ID> in the links above once you locate your Slack app ID."
+      )
+    );
+    console.log();
+  }
+
+  const credentialAnswers = await inquirer.prompt([
+    {
+      type: "password",
+      name: "slackSigningSecret",
+      message: "Slack Signing Secret?",
+      validate: (input: string) => {
+        if (!input) {
+          return "Please enter your Slack signing secret.";
+        }
+        return true;
+      },
+    },
+    {
       type: "password",
       name: "slackBotToken",
       message: "Slack Bot Token (xoxb-...)?",
@@ -100,24 +287,52 @@ export async function initCommand(cwd: string = process.cwd()): Promise<void> {
         return true;
       },
     },
+  ]);
+
+  const { aiKeyStrategy } = await inquirer.prompt([
     {
-      type: "password",
-      name: "anthropicApiKey",
-      message: "Anthropic API Key (sk-ant-...)?",
-      validate: (input: string) => {
-        if (!input || !input.startsWith("sk-ant-")) {
-          return "Please enter a valid Anthropic API key starting with sk-ant-";
-        }
-        return true;
-      },
-    },
-    {
-      type: "input",
-      name: "publicUrl",
-      message: "Public Gateway URL (for OAuth callbacks)?",
-      default: "",
+      type: "list",
+      name: "aiKeyStrategy",
+      message: "How should teammates access Claude/OpenAI?",
+      choices: [
+        {
+          name: "Each user brings their own API keys",
+          value: "user-provided",
+        },
+        {
+          name: "Provide shared keys now so the bot works out of the box",
+          value: "shared",
+        },
+      ],
+      default: "user-provided",
     },
   ]);
+
+  let anthropicApiKey = "";
+  if (aiKeyStrategy === "shared") {
+    const { sharedAnthropicApiKey } = await inquirer.prompt([
+      {
+        type: "password",
+        name: "sharedAnthropicApiKey",
+        message: "Shared Anthropic (Claude) API Key (sk-ant-...)?",
+      },
+    ]);
+    anthropicApiKey = sharedAnthropicApiKey;
+  }
+  if (anthropicApiKey === "") {
+    console.log(
+      chalk.dim(
+        "\nℹ With no shared API key, teammates authorize Claude/OpenAI from the Slack Home tab on first use.\n"
+      )
+    );
+  }
+
+  const answers = {
+    ...baseAnswers,
+    slackAppId: trimmedAppId,
+    ...credentialAnswers,
+    anthropicApiKey,
+  };
 
   const spinner = ora("Creating Peerbot project...").start();
 
@@ -130,6 +345,7 @@ export async function initCommand(cwd: string = process.cwd()): Promise<void> {
       CLI_VERSION: cliVersion,
       WORKER_CUSTOMIZATION: customization,
       WORKER_MODE: workerMode,
+      SLACK_SIGNING_SECRET: answers.slackSigningSecret,
       SLACK_BOT_TOKEN: answers.slackBotToken,
       SLACK_APP_TOKEN: answers.slackAppToken,
       ANTHROPIC_API_KEY: answers.anthropicApiKey,
@@ -230,6 +446,26 @@ export async function initCommand(cwd: string = process.cwd()): Promise<void> {
   } catch (error) {
     spinner.fail("Failed to create project");
     throw error;
+  }
+}
+
+async function getSlackManifestUrl(): Promise<string> {
+  const manifestYaml = await loadSlackManifestYaml();
+  const encodedManifest = encodeURIComponent(manifestYaml);
+  return `https://api.slack.com/apps?new_app=1&manifest_yaml=${encodedManifest}`;
+}
+
+async function loadSlackManifestYaml(): Promise<string> {
+  try {
+    const manifestUrl = new URL(
+      "../../../../slack-app-manifest.json",
+      import.meta.url
+    );
+    const manifestContent = await readFile(manifestUrl, "utf-8");
+    const manifest = JSON.parse(manifestContent);
+    return YAML.stringify(manifest).trim();
+  } catch {
+    return YAML.stringify(DEFAULT_SLACK_MANIFEST).trim();
   }
 }
 

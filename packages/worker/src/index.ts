@@ -1,15 +1,10 @@
 #!/usr/bin/env bun
 
-import { createLogger, initSentry } from "@peerbot/core";
-
-// Initialize Sentry monitoring (fire and forget - won't block startup)
-initSentry().catch(console.error);
-
-import { moduleRegistry } from "@peerbot/core";
+import { createLogger, moduleRegistry } from "@peerbot/core";
 
 const logger = createLogger("worker");
 
-import { GatewayClient } from "./gateway/client";
+import { GatewayClient } from "./gateway/sse-client";
 import { startProcessManager, stopProcessManager } from "./mcp/process-manager";
 import { setupWorkspaceEnv } from "./core/workspace";
 

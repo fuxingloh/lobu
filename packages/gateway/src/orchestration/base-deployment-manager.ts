@@ -215,8 +215,10 @@ export abstract class BaseDeploymentManager {
   ): Promise<{ [key: string]: string }> {
     const threadId = messageData?.threadId || "";
 
-    // Generate worker authentication token
-    const workerToken = generateWorkerToken(userId, threadId, deploymentName);
+    // Generate worker authentication token with platform info
+    const workerToken = generateWorkerToken(userId, threadId, deploymentName, {
+      platform: messageData?.platform,
+    });
 
     let envVars: { [key: string]: string } = {
       USER_ID: userId,

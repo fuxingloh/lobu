@@ -1,7 +1,15 @@
 #!/usr/bin/env bun
 
 import { createLogger } from "@peerbot/core";
-import type { SlackContext, View, WebClient, AnyBlock } from "../types";
+import type { ActionsBlock, ContextBlock, SectionBlock } from "@slack/types";
+import type {
+  SlackContext,
+  View,
+  WebClient,
+  AnyBlock,
+  ModalView,
+} from "../types";
+import { sendSlackMessage, type SlackMessagePayload } from "./message-utils";
 
 const logger = createLogger("dispatcher");
 
@@ -30,6 +38,7 @@ export async function handleBlockkitFormSubmission(
   const channelId = metadata.channel_id;
   const threadTs = metadata.thread_ts;
   const buttonText = metadata.button_text || "Form";
+  const modalView = view as ModalView;
 
   if (!channelId || !threadTs) {
     logger.error(
@@ -40,10 +49,10 @@ export async function handleBlockkitFormSubmission(
 
   // Form processing
   // Extract input fields from state values
-  const inputFieldsData = extractViewInputs(view.state?.values || {});
+  const inputFieldsData = extractViewInputs(modalView.state?.values || {});
 
   // Extract action selections from view blocks (for button-based forms)
-  const actionSelections = extractActionSelections(view);
+  const actionSelections = extractActionSelections(modalView);
 
   // Combine both input fields and action selections
   const userInput = [inputFieldsData, actionSelections]
@@ -58,87 +67,32 @@ export async function handleBlockkitFormSubmission(
     );
 
     // Extract text content from the modal blocks
-    const modalContent = extractModalContent(view.blocks);
+    const modalContent = extractModalContent(modalView.blocks || []);
     const userInput = modalContent || `Selected "${buttonText}"`;
-
-    const formattedInput = `> 📝 *Form submitted from "${buttonText}" button*\n\n${userInput}`;
-
-    const inputMessage = await client.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: formattedInput,
-      blocks: [
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `<@${userId}> submitted form from "${buttonText}" button`,
-            } as any,
-          ],
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: userInput,
-          },
-        },
-      ] as any,
-    });
-
-    const context = {
+    await dispatchFormSubmission(
+      client,
+      metadata,
       channelId,
+      threadTs,
       userId,
-      userDisplayName: metadata.user_display_name || "Unknown User",
-      teamId: metadata.team_id || "",
-      messageTs: inputMessage.ts as string,
-      threadTs: threadTs,
-      text: userInput,
-    };
-
-    await handleUserRequestFn(context, userInput, client);
+      buttonText,
+      userInput,
+      handleUserRequestFn
+    );
     return;
   }
 
   try {
-    const formattedInput = `> 📝 *Form submitted from "${buttonText}" button*\n\n${userInput}`;
-
-    const inputMessage = await client.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text: formattedInput,
-      blocks: [
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `<@${userId}> submitted form from "${buttonText}" button`,
-            } as any,
-          ],
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: userInput,
-          },
-        },
-      ] as any,
-    });
-
-    const context = {
+    await dispatchFormSubmission(
+      client,
+      metadata,
       channelId,
+      threadTs,
       userId,
-      userDisplayName: metadata.user_display_name || "Unknown User",
-      teamId: metadata.team_id || "",
-      messageTs: inputMessage.ts as string,
-      threadTs: threadTs,
-      text: userInput,
-    };
-
-    await handleUserRequestFn(context, userInput, client);
+      buttonText,
+      userInput,
+      handleUserRequestFn
+    );
   } catch (error) {
     logger.error(`Failed to handle blockkit form submission:`, error);
     await client.chat.postMessage({
@@ -147,6 +101,70 @@ export async function handleBlockkitFormSubmission(
       text: `❌ Failed to process form submission: ${error instanceof Error ? error.message : "Unknown error"}`,
     });
   }
+}
+
+function buildFormSubmissionPayload(
+  userId: string,
+  buttonText: string,
+  userInput: string
+): SlackMessagePayload {
+  const formattedInput = `> 📝 *Form submitted from "${buttonText}" button*\n\n${userInput}`;
+
+  return {
+    text: formattedInput,
+    blocks: [
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `<@${userId}> submitted form from "${buttonText}" button`,
+          } as any,
+        ],
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: userInput,
+        },
+      },
+    ] as AnyBlock[],
+  };
+}
+
+async function dispatchFormSubmission(
+  client: WebClient,
+  metadata: Record<string, any>,
+  channelId: string,
+  threadTs: string,
+  userId: string,
+  buttonText: string,
+  userInput: string,
+  handler: (
+    context: SlackContext,
+    input: string,
+    client: WebClient
+  ) => Promise<void>
+): Promise<void> {
+  const payload = buildFormSubmissionPayload(userId, buttonText, userInput);
+  const inputMessage = await sendSlackMessage(
+    client,
+    { type: "channel", channelId, threadTs },
+    payload
+  );
+
+  const context = {
+    channelId,
+    userId,
+    userDisplayName: metadata.user_display_name || "Unknown User",
+    teamId: metadata.team_id || "",
+    messageTs: inputMessage.ts as string,
+    threadTs: threadTs,
+    text: userInput,
+  };
+
+  await handler(context, userInput, client);
 }
 
 /**
@@ -242,6 +260,18 @@ function extractViewInputs(
 /**
  * Extract text content from modal blocks (for display-only forms)
  */
+function isSectionBlock(block: AnyBlock): block is SectionBlock {
+  return block.type === "section";
+}
+
+function isContextBlock(block: AnyBlock): block is ContextBlock {
+  return block.type === "context";
+}
+
+function isActionsBlock(block: AnyBlock): block is ActionsBlock {
+  return block.type === "actions";
+}
+
 function extractModalContent(blocks: AnyBlock[]): string {
   const content: string[] = [];
 
@@ -250,7 +280,7 @@ function extractModalContent(blocks: AnyBlock[]): string {
   }
 
   for (const block of blocks) {
-    if (block.type === "section" && block.text?.text) {
+    if (isSectionBlock(block) && block.text?.text) {
       // Extract section text content
       let text = block.text.text;
       // Clean up markdown formatting for plain text
@@ -258,7 +288,7 @@ function extractModalContent(blocks: AnyBlock[]): string {
       text = text.replace(/\*(.+?)\*/g, "$1"); // Italic
       text = text.replace(/`(.+?)`/g, "$1"); // Code
       content.push(text);
-    } else if (block.type === "context" && block.elements) {
+    } else if (isContextBlock(block) && block.elements) {
       // Extract context elements
       for (const element of block.elements) {
         if (element.type === "mrkdwn" && element.text) {
@@ -285,7 +315,7 @@ function extractActionSelections(view: View): string {
   }
 
   for (const block of view.blocks) {
-    if (block.type === "actions" && block.elements) {
+    if (isActionsBlock(block) && block.elements) {
       // This is an action block with buttons/elements
       for (const element of block.elements) {
         if (element.type === "button" && element.text?.text) {
@@ -300,7 +330,7 @@ function extractActionSelections(view: View): string {
           selections.push(`Option available: ${element.placeholder.text}`);
         }
       }
-    } else if (block.type === "section" && block.text?.text) {
+    } else if (isSectionBlock(block) && block.text?.text) {
       // Capture section text as context
       const text = block.text.text;
       if (text && !text.includes("Would you like to")) {

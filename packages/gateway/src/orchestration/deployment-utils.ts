@@ -1,5 +1,11 @@
 import { moduleRegistry } from "@peerbot/core";
+import { platformRegistry } from "../platform";
 import type { PlatformAdapter } from "../platform";
+import type {
+  DeploymentInfo,
+  OrchestratorConfig,
+  QueueJobData,
+} from "./base-deployment-manager";
 
 /**
  * Shared types and utilities for deployment managers
@@ -135,4 +141,77 @@ export async function buildModuleEnvVars(
   }
 
   return envVars;
+}
+
+export const BASE_WORKER_LABELS = {
+  "app.kubernetes.io/name": "peerbot",
+  "app.kubernetes.io/component": "worker",
+  "peerbot/managed-by": "orchestrator",
+} as const;
+
+export const WORKER_SELECTOR_LABELS = {
+  "app.kubernetes.io/name": BASE_WORKER_LABELS["app.kubernetes.io/name"],
+  "app.kubernetes.io/component":
+    BASE_WORKER_LABELS["app.kubernetes.io/component"],
+} as const;
+
+export function resolvePlatformDeploymentMetadata(
+  messageData?: QueueJobData
+): Record<string, string> {
+  if (
+    !messageData?.platform ||
+    !messageData.channelId ||
+    !messageData.threadId ||
+    !messageData.platformMetadata
+  ) {
+    return {};
+  }
+
+  const platform = platformRegistry.get(messageData.platform);
+  if (!platform) {
+    return {};
+  }
+
+  return buildPlatformMetadata(
+    platform,
+    messageData.threadId,
+    messageData.channelId,
+    messageData.platformMetadata
+  );
+}
+
+export function getVeryOldThresholdDays(config: OrchestratorConfig): number {
+  return (config.cleanup?.veryOldDays as number | undefined) || 7;
+}
+
+export function buildDeploymentInfoSummary({
+  deploymentName,
+  deploymentId,
+  lastActivity,
+  now,
+  idleThresholdMinutes,
+  veryOldDays,
+  replicas,
+}: {
+  deploymentName: string;
+  deploymentId: string;
+  lastActivity: Date;
+  now: number;
+  idleThresholdMinutes: number;
+  veryOldDays: number;
+  replicas: number;
+}): DeploymentInfo {
+  const minutesIdle = (now - lastActivity.getTime()) / (1000 * 60);
+  const daysSinceActivity = minutesIdle / (60 * 24);
+
+  return {
+    deploymentName,
+    deploymentId,
+    lastActivity,
+    minutesIdle,
+    daysSinceActivity,
+    replicas,
+    isIdle: minutesIdle >= idleThresholdMinutes,
+    isVeryOld: daysSinceActivity >= veryOldDays,
+  };
 }

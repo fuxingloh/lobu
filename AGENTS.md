@@ -1,7 +1,21 @@
 ## Project Structure & Module Organization
-- Monorepo managed by Bun workspaces: `packages/gateway`, `packages/orchestrator`, `packages/worker`, `packages/shared`.
-- Top-level tooling and ops: `Makefile`, `bin/` (CLI and setup scripts), `docker-compose*.yml`, `charts/peerbot` (Helm), `workspaces/` (local volumes), `.env*`.
-- TypeScript sources under `packages/*/src`. Tests live in `packages/*/src/__tests__` and `packages/shared/tests`.
+
+### Package Architecture
+- **`packages/core`**: Shared code between gateway and worker (interfaces, utils, types). Any code reused by both must live here.
+- **`packages/gateway`**: Platform-agnostic gateway. Slack code under `src/slack/`. Future chat platforms (Discord, Teams) will live alongside as separate modules in dispatcher pattern.
+- **`packages/worker`**: Claude-specific logic in `src/claude/`. Worker talks only to gateway and agent (Claude CLI). No Slack/platform knowledge.
+- **`packages/orchestrator`**: Deployment engine only. Talks to compute (Docker/K8s) and Redis queues. No platform knowledge.
+
+### Module Boundaries
+- Gateway: Slack → `src/slack/`, future platforms → `src/dispatcher/{platform}/`
+- Worker: Platform-agnostic, Claude logic isolated to `src/claude/`
+- Core: Shared interfaces, utils, types for gateway+worker
+- Orchestrator: Compute engine (Docker/K8s) + Redis only
+
+### Repository Layout
+- Monorepo managed by Bun workspaces: `packages/gateway`, `packages/orchestrator`, `packages/worker`, `packages/core`.
+- Top-level: `Makefile`, `bin/` (CLI/setup), `docker-compose*.yml`, `charts/peerbot` (Helm), `workspaces/`, `.env*`.
+- TypeScript sources under `packages/*/src`. Tests in `packages/*/src/__tests__` and `packages/core/tests`.
 - **ALWAYS prefer `bun` commands over `npm`**
 - When fixing unused parameter errors, remove the parameter entirely if possible rather than prefixing with underscore
 - Worker prompt delivery: Claude CLI reads prompts from stdin via direct pipe from prompt file (no named pipes used)
@@ -73,10 +87,6 @@ MCP (Model Context Protocol) servers can be authenticated via OAuth. Users authe
 
 1. **Set public gateway URL** (required for OAuth callbacks):
 ```bash
-# For Tailscale users:
-PEERBOT_PUBLIC_GATEWAY_URL=https://buraks-macbook-pro.brill-kanyu.ts.net
-
-# For other deployments:
 PEERBOT_PUBLIC_GATEWAY_URL=https://your-domain.com
 ```
 

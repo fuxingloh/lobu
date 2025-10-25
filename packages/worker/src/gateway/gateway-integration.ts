@@ -63,45 +63,6 @@ export class GatewayIntegration implements GatewayIntegrationInterface {
     this.moduleData = moduleData;
   }
 
-  /**
-   * Add emoji prefix to activity based on content
-   */
-  private addEmojiToActivity(activity: string): string {
-    // If already has emoji, return as-is
-    if (/^[\u{1F300}-\u{1F9FF}]|^[\u{2600}-\u{26FF}]/u.test(activity)) {
-      return activity;
-    }
-
-    // Add appropriate emoji based on activity type
-    if (activity.includes("running") || activity.includes("executing"))
-      return `⚡ ${activity}`;
-    if (activity.includes("reading") || activity.includes("loading"))
-      return `📖 ${activity}`;
-    if (activity.includes("writing") || activity.includes("saving"))
-      return `📝 ${activity}`;
-    if (activity.includes("editing")) return `✏️ ${activity}`;
-    if (activity.includes("searching") || activity.includes("finding"))
-      return `🔍 ${activity}`;
-    if (activity.includes("thinking") || activity.includes("analyzing"))
-      return `💭 ${activity}`;
-    if (activity.includes("launching") || activity.includes("starting"))
-      return `🚀 ${activity}`;
-    if (activity.includes("fetching") || activity.includes("downloading"))
-      return `🌐 ${activity}`;
-    if (activity.includes("asking")) return `❓ ${activity}`;
-    if (activity.includes("updating")) return `🔄 ${activity}`;
-    if (
-      activity.includes("setting up") ||
-      activity.includes("preparing") ||
-      activity.includes("resuming")
-    )
-      return `⚙️ ${activity}`;
-    if (activity.includes("burning")) return `🔥 ${activity}`;
-
-    // Default emoji
-    return `🔧 ${activity}`;
-  }
-
   async updateStatus(
     status: string,
     loadingMessages?: string[]
@@ -115,8 +76,7 @@ export class GatewayIntegration implements GatewayIntegrationInterface {
 
     // Add status to recent activities if non-empty
     if (status && status.trim() !== "") {
-      const activityWithEmoji = this.addEmojiToActivity(status);
-      this.recentActivities.push(activityWithEmoji);
+      this.recentActivities.push(status);
 
       // Keep only last N activities
       if (this.recentActivities.length > this.maxActivities) {

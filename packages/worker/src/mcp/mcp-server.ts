@@ -11,8 +11,8 @@ import type {
   ProcessInfo,
   ProcessManagerInstance,
   ResourceParams,
-} from "./types.js";
-import type { ProcessManager } from "./process-manager.js";
+} from "./types";
+import type { ProcessManager } from "./process-manager";
 
 const logger = createLogger("worker");
 

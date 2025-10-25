@@ -87,9 +87,6 @@ export interface SlackMessageEvent extends GenericMessageEvent {
 // Helper type for action body (from middleware args)
 export type SlackActionBody = SlackActionMiddlewareArgs<BlockAction>["body"];
 
-// Helper type for view submission body
-export type SlackViewSubmissionBody = SlackViewMiddlewareArgs["body"];
-
 // Module action context (app-specific)
 export interface ModuleActionContext {
   channelId: string;

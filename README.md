@@ -6,7 +6,7 @@
 
 ```bash
 # Create a new bot (interactive setup)
-npx create-peerbot my-slack-bot
+npx peerbot init my-slack-bot
 
 # Start the bot
 cd my-slack-bot
@@ -55,7 +55,6 @@ RUN npm install -g @peerbot/worker@^0.1.0
 RUN pip install pandas
 ```
 
-Choose your mode during `npx create-peerbot` setup.
 
 ## Commands
 
@@ -107,7 +106,6 @@ make dev
 
 **NPM:**
 - [`@peerbot/cli`](https://www.npmjs.com/package/@peerbot/cli) - Deployment CLI
-- [`create-peerbot`](https://www.npmjs.com/package/create-peerbot) - Project generator
 - [`@peerbot/worker`](https://www.npmjs.com/package/@peerbot/worker) - Worker runtime
 
 **Docker Hub:**

@@ -1,0 +1,18 @@
+title = "Peerbot Gitleaks Configuration"
+extends = "github://gitleaks/gitleaks/v8/config/gitleaks.toml"
+
+[allowlist]
+description = "Ignore generated and third-party directories"
+paths = [
+  '''node_modules/''',
+  '''dist/''',
+  '''charts/''',
+  '''workspaces/''',
+  '''examples/''',
+  '''bin/''',
+  '''integration-tests/''',
+  '''my-app/''',
+  '''\.bun/''',
+  '''\.turbo/'''
+]
+

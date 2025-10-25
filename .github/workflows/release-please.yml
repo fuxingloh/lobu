@@ -43,7 +43,6 @@ jobs:
         run: |
           bun run build
           cd packages/cli && bun run build
-          cd ../create-peerbot && bun run build
           cd ../worker && bun run build
 
       - name: Authenticate to npm
@@ -55,13 +54,6 @@ jobs:
       - name: Publish @peerbot/cli to NPM
         if: ${{ steps.release.outputs.release_created }}
         working-directory: packages/cli
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish create-peerbot to NPM
-        if: ${{ steps.release.outputs.release_created }}
-        working-directory: packages/create-peerbot
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

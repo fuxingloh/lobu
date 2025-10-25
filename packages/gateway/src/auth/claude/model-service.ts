@@ -36,10 +36,12 @@ export class ClaudeModelService {
     },
   ];
 
-  constructor(
-    private redis: Redis,
-    private systemApiKey?: string
-  ) {}
+  constructor(_redis: Redis, _systemApiKey?: string) {
+    // Dependencies are kept for future use (e.g., dynamic model discovery)
+    // but currently unused in the hardcoded implementation.
+    void _redis;
+    void _systemApiKey;
+  }
 
   /**
    * Get available models

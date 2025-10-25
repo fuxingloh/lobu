@@ -5,6 +5,7 @@ export { downCommand } from "./commands/down.js";
 export { initCommand } from "./commands/init.js";
 export { logsCommand } from "./commands/logs.js";
 export { rebuildCommand } from "./commands/rebuild.js";
+export { setupCommand } from "./commands/setup.js";
 // Export providers
 export * from "./providers/index.js";
 // Export types

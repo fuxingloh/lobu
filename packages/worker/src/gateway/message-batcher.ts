@@ -44,7 +44,9 @@ export class MessageBatcher {
         `Starting ${this.batchWindowMs}ms batch window (${this.messageQueue.length} message(s))`
       );
       this.batchTimer = setTimeout(() => {
-        this.processBatch();
+        void this.processBatch().catch(() => {
+          // Error already logged in processBatch
+        });
       }, this.batchWindowMs);
     } else {
       logger.info(
@@ -82,7 +84,9 @@ export class MessageBatcher {
           `Starting new batch window for ${this.messageQueue.length} queued messages`
         );
         this.batchTimer = setTimeout(() => {
-          this.processBatch();
+          void this.processBatch().catch(() => {
+            // Error already logged in processBatch
+          });
         }, this.batchWindowMs);
       }
     } catch (error) {

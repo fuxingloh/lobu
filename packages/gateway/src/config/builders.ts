@@ -7,7 +7,7 @@ import { createLogger, TIME } from "@peerbot/core";
 import type { OrchestratorConfig } from "../orchestration/base-deployment-manager";
 import { config as dotenvConfig } from "dotenv";
 import { DEFAULTS } from "../config";
-import type { SlackConfig } from "../slack/config";
+import type { SlackConfig } from "../slack";
 
 const logger = createLogger("cli-config");
 

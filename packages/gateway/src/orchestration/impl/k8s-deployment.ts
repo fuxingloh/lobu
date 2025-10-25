@@ -7,8 +7,13 @@ import {
   type OrchestratorConfig,
   type QueueJobData,
 } from "../base-deployment-manager";
-import { buildPlatformMetadata } from "../deployment-utils";
-import { platformRegistry } from "../../platform";
+import {
+  BASE_WORKER_LABELS,
+  WORKER_SELECTOR_LABELS,
+  buildDeploymentInfoSummary,
+  getVeryOldThresholdDays,
+  resolvePlatformDeploymentMetadata,
+} from "../deployment-utils";
 
 const logger = createLogger("k8s-deployment");
 
@@ -208,6 +213,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
 
       const now = Date.now();
       const idleThresholdMinutes = this.config.worker.idleCleanupMinutes;
+      const veryOldDays = getVeryOldThresholdDays(this.config);
 
       const response = k8sDeployments as {
         body?: { items?: k8s.V1Deployment[] };
@@ -226,22 +232,16 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
           const lastActivity = lastActivityStr
             ? new Date(lastActivityStr)
             : new Date();
-          const minutesIdle = (now - lastActivity.getTime()) / (1000 * 60);
-          const daysSinceActivity = minutesIdle / (60 * 24);
           const replicas = deployment.spec?.replicas || 0;
-          const veryOldDays =
-            (this.config.cleanup?.veryOldDays as number | undefined) || 7;
-
-          return {
+          return buildDeploymentInfoSummary({
             deploymentName,
             deploymentId,
             lastActivity,
-            minutesIdle,
-            daysSinceActivity,
+            now,
+            idleThresholdMinutes,
+            veryOldDays,
             replicas,
-            isIdle: minutesIdle >= idleThresholdMinutes,
-            isVeryOld: daysSinceActivity >= veryOldDays,
-          };
+          });
         }
       );
     } catch (error) {
@@ -281,46 +281,21 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
       metadata: {
         name: deploymentName,
         namespace: this.config.kubernetes.namespace,
-        labels: {
-          "app.kubernetes.io/name": "peerbot",
-          "app.kubernetes.io/component": "worker",
-          "peerbot/managed-by": "orchestrator",
-        },
+        labels: { ...BASE_WORKER_LABELS },
       },
       spec: {
         replicas: 1,
         selector: {
-          matchLabels: {
-            "app.kubernetes.io/name": "peerbot",
-            "app.kubernetes.io/component": "worker",
-          },
+          matchLabels: { ...WORKER_SELECTOR_LABELS },
         },
         template: {
           metadata: {
             annotations: {
               // Add platform-specific metadata
-              ...(messageData?.platform &&
-              messageData?.channelId &&
-              messageData?.threadId &&
-              messageData?.platformMetadata
-                ? (() => {
-                    const platform = platformRegistry.get(messageData.platform);
-                    return platform
-                      ? buildPlatformMetadata(
-                          platform,
-                          messageData.threadId,
-                          messageData.channelId,
-                          messageData.platformMetadata
-                        )
-                      : {};
-                  })()
-                : {}),
+              ...resolvePlatformDeploymentMetadata(messageData),
               "peerbot.io/created": new Date().toISOString(),
             },
-            labels: {
-              "app.kubernetes.io/name": "peerbot",
-              "app.kubernetes.io/component": "worker",
-            },
+            labels: { ...BASE_WORKER_LABELS },
           },
           spec: {
             serviceAccountName: "peerbot-worker",

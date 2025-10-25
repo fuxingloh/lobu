@@ -4,7 +4,7 @@ import http from "node:http";
 import { createLogger } from "@peerbot/core";
 import express from "express";
 import type { GatewayConfig } from "../config";
-import type { SlackConfig } from "../slack/config";
+import type { SlackConfig } from "../slack";
 
 const logger = createLogger("gateway-startup");
 
@@ -86,7 +86,7 @@ export async function startGateway(
   // Import dependencies (after config is loaded)
   const { Orchestrator } = await import("../orchestration");
   const { Gateway } = await import("../gateway-main");
-  const { SlackPlatform } = await import("../slack/platform");
+  const { SlackPlatform } = await import("../slack");
 
   // Create and start orchestrator
   const orchestrator = new Orchestrator(config.orchestration);

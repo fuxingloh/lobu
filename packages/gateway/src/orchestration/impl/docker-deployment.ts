@@ -8,8 +8,13 @@ import {
   type OrchestratorConfig,
   type QueueJobData,
 } from "../base-deployment-manager";
-import { buildPlatformMetadata, ResourceParser } from "../deployment-utils";
-import { platformRegistry } from "../../platform";
+import {
+  BASE_WORKER_LABELS,
+  ResourceParser,
+  buildDeploymentInfoSummary,
+  getVeryOldThresholdDays,
+  resolvePlatformDeploymentMetadata,
+} from "../deployment-utils";
 
 const logger = createLogger("orchestrator");
 
@@ -63,6 +68,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
 
       const now = Date.now();
       const idleThresholdMinutes = this.config.worker.idleCleanupMinutes;
+      const veryOldDays = getVeryOldThresholdDays(this.config);
 
       return containers.map((containerInfo: Docker.ContainerInfo) => {
         const deploymentName = containerInfo.Names[0]?.substring(1) || ""; // Remove leading '/'
@@ -77,22 +83,16 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         const lastActivity = lastActivityStr
           ? new Date(lastActivityStr)
           : new Date(containerInfo.Created * 1000);
-        const minutesIdle = (now - lastActivity.getTime()) / (1000 * 60);
-        const daysSinceActivity = minutesIdle / (60 * 24);
         const replicas = containerInfo.State === "running" ? 1 : 0;
-        const veryOldDays =
-          (this.config.cleanup?.veryOldDays as number | undefined) || 7;
-
-        return {
+        return buildDeploymentInfoSummary({
           deploymentName,
           deploymentId,
           lastActivity,
-          minutesIdle,
-          daysSinceActivity,
+          now,
+          idleThresholdMinutes,
+          veryOldDays,
           replicas,
-          isIdle: minutesIdle >= idleThresholdMinutes,
-          isVeryOld: daysSinceActivity >= veryOldDays,
-        };
+        });
       });
     } catch (error) {
       throw new OrchestratorError(
@@ -105,12 +105,14 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
   }
 
   async createDeployment(
-    deploymentName: string,
-    username: string,
-    userId: string,
-    messageData?: QueueJobData,
-    userEnvVars: Record<string, string> = {}
+    ...args: Parameters<BaseDeploymentManager["createDeployment"]>
   ): Promise<void> {
+    const [deploymentName, username, userId, messageDataRaw, userEnvVarsRaw] =
+      args;
+    const messageData = messageDataRaw as QueueJobData | undefined;
+    const userEnvVars =
+      (userEnvVarsRaw as Record<string, string> | undefined) ?? {};
+
     try {
       // Extract thread ID from deployment name for per-thread workspace isolation
       const threadId = deploymentName.replace("peerbot-worker-", "");
@@ -164,31 +166,14 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
         Image: `${this.config.worker.image.repository}:${this.config.worker.image.tag}`,
         Env: envVars,
         Labels: {
-          "app.kubernetes.io/name": "peerbot",
-          "app.kubernetes.io/component": "worker",
-          "peerbot/managed-by": "orchestrator",
+          ...BASE_WORKER_LABELS,
           "peerbot.io/created": new Date().toISOString(),
           // Docker Compose labels to associate with the project
           "com.docker.compose.project": composeProjectName,
           "com.docker.compose.service": deploymentName, // Use unique service name
           "com.docker.compose.oneoff": "False",
           // Add platform-specific metadata
-          ...(messageData?.platform &&
-          messageData?.channelId &&
-          messageData?.threadId &&
-          messageData?.platformMetadata
-            ? (() => {
-                const platform = platformRegistry.get(messageData.platform);
-                return platform
-                  ? buildPlatformMetadata(
-                      platform,
-                      messageData.threadId,
-                      messageData.channelId,
-                      messageData.platformMetadata
-                    )
-                  : {};
-              })()
-            : {}),
+          ...resolvePlatformDeploymentMetadata(messageData),
         },
         HostConfig: {
           Binds:

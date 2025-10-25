@@ -47,23 +47,3 @@ export class SlackApiError extends DispatcherError {
     };
   }
 }
-
-/**
- * Error factory for creating errors from Slack API responses
- */
-export function createSlackError(error: unknown): SlackApiError {
-  if (typeof error === "object" && error !== null) {
-    const errorObj = error as {
-      code?: string;
-      data?: { error?: string };
-      message?: string;
-    };
-
-    const slackErrorCode = errorObj.data?.error || errorObj.code || "unknown";
-    const message = errorObj.message || `Slack API error: ${slackErrorCode}`;
-
-    return new SlackApiError(message, slackErrorCode, errorObj.data);
-  }
-
-  return new SlackApiError(String(error), "unknown", undefined);
-}

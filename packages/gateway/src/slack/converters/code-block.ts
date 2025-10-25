@@ -142,15 +142,3 @@ export function validateContentLength(
 ): boolean {
   return content.length <= maxLength;
 }
-
-/**
- * Validate blockkit content can be parsed as JSON
- */
-export function validateBlockkitContent(content: string): boolean {
-  try {
-    JSON.parse(content.trim());
-    return true;
-  } catch {
-    return false;
-  }
-}

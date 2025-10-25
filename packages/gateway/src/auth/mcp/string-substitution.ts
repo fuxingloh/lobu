@@ -93,26 +93,3 @@ export function extractPlaceholders(
 
   return placeholders;
 }
-
-/**
- * Validates that all required inputs have values
- * Returns missing input IDs
- */
-export function validateInputs(
-  template: string | Record<string, any>,
-  inputs: InputValues
-): string[] {
-  const templateStr =
-    typeof template === "string" ? template : JSON.stringify(template);
-
-  const placeholders = extractPlaceholders(templateStr);
-  const missingInputs: string[] = [];
-
-  for (const placeholder of placeholders) {
-    if (placeholder.type === "input" && !inputs[placeholder.key]) {
-      missingInputs.push(placeholder.key);
-    }
-  }
-
-  return missingInputs;
-}

@@ -1,4 +1,4 @@
-import { BaseModule, createLogger } from "@peerbot/core";
+import { BaseModule, createLogger, decrypt } from "@peerbot/core";
 import type { Request, Response } from "express";
 import type { ClaudeCredentialStore } from "./credential-store";
 import type { ClaudeModelPreferenceStore } from "./model-preference-store";
@@ -76,6 +76,34 @@ export class ClaudeOAuthModule extends BaseModule {
     return envVars;
   }
 
+  /**
+   * Validate and decode the secure token generated for OAuth init links
+   * Returns the userId if valid, null otherwise
+   */
+  private validateSecureToken(token: string): string | null {
+    try {
+      const decrypted = decrypt(token);
+      const data = JSON.parse(decrypted) as {
+        userId?: string;
+        expiresAt?: number;
+      };
+
+      if (!data.userId || !data.expiresAt) {
+        logger.warn("Token missing required fields");
+        return null;
+      }
+
+      if (Date.now() > data.expiresAt) {
+        logger.warn("Token expired", { userId: data.userId });
+        return null;
+      }
+
+      return data.userId;
+    } catch (error) {
+      logger.error("Failed to validate secure token", { error });
+      return null;
+    }
+  }
 
   /**
    * Register OAuth endpoints
@@ -171,7 +199,7 @@ export class ClaudeOAuthModule extends BaseModule {
               type: "button",
               text: {
                 type: "plain_text",
-                text: "Logout",
+                text: "Logout from Claude",
               },
               style: "danger",
               action_id: "claude_logout",

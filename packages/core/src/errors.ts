@@ -45,12 +45,7 @@ export abstract class BaseError extends Error {
   }
 }
 
-/**
- * Error class for worker-related operations
- */
-export class WorkerError extends BaseError {
-  readonly name = "WorkerError";
-
+abstract class OperationError extends BaseError {
   constructor(
     public operation: string,
     message: string,
@@ -59,56 +54,33 @@ export class WorkerError extends BaseError {
     super(message, cause);
   }
 
-  toJSON(): Record<string, any> {
+  override toJSON(): Record<string, any> {
     return {
       ...super.toJSON(),
       operation: this.operation,
     };
   }
+}
+
+/**
+ * Error class for worker-related operations
+ */
+export class WorkerError extends OperationError {
+  override readonly name = "WorkerError";
 }
 
 /**
  * Error class for workspace-related operations
  */
-export class WorkspaceError extends BaseError {
-  readonly name = "WorkspaceError";
-
-  constructor(
-    public operation: string,
-    message: string,
-    cause?: Error
-  ) {
-    super(message, cause);
-  }
-
-  toJSON(): Record<string, any> {
-    return {
-      ...super.toJSON(),
-      operation: this.operation,
-    };
-  }
+export class WorkspaceError extends OperationError {
+  override readonly name = "WorkspaceError";
 }
 
 /**
  * Error class for Slack-related operations
  */
-export class SlackError extends BaseError {
-  readonly name = "SlackError";
-
-  constructor(
-    public operation: string,
-    message: string,
-    cause?: Error
-  ) {
-    super(message, cause);
-  }
-
-  toJSON(): Record<string, any> {
-    return {
-      ...super.toJSON(),
-      operation: this.operation,
-    };
-  }
+export class SlackError extends OperationError {
+  override readonly name = "SlackError";
 }
 
 /**
@@ -138,23 +110,20 @@ export class SessionError extends BaseError {
 /**
  * Worker error variant with workerId for core operations
  */
-export class CoreWorkerError extends BaseError {
-  readonly name = "WorkerError";
-
+export class CoreWorkerError extends WorkerError {
   constructor(
     public workerId: string,
-    public operation: string,
+    operation: string,
     message: string,
     cause?: Error
   ) {
-    super(message, cause);
+    super(operation, message, cause);
   }
 
-  toJSON(): Record<string, any> {
+  override toJSON(): Record<string, any> {
     return {
       ...super.toJSON(),
       workerId: this.workerId,
-      operation: this.operation,
     };
   }
 }
@@ -162,23 +131,8 @@ export class CoreWorkerError extends BaseError {
 /**
  * Error class for dispatcher-related operations
  */
-export class DispatcherError extends BaseError {
-  readonly name = "DispatcherError";
-
-  constructor(
-    public operation: string,
-    message: string,
-    cause?: Error
-  ) {
-    super(message, cause);
-  }
-
-  toJSON(): Record<string, any> {
-    return {
-      ...super.toJSON(),
-      operation: this.operation,
-    };
-  }
+export class DispatcherError extends OperationError {
+  override readonly name = "DispatcherError";
 }
 
 // ErrorCode enum from orchestrator package

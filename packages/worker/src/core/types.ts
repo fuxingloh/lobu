@@ -176,10 +176,3 @@ export interface ExecuteSessionOptions {
   options: AgentExecuteOptions;
   onProgress?: ProgressCallback;
 }
-
-// ============================================================================
-// ERRORS
-// ============================================================================
-
-// Re-export from shared package
-export { SlackError, WorkerError, WorkspaceError } from "@peerbot/core";

@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createLogger } from "@peerbot/core";
-import type { ProcessInfo } from "./types.js";
+import type { ProcessInfo } from "./types";
 
 const logger = createLogger("worker");
 

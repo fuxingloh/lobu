@@ -18,7 +18,7 @@ import { handleBlockkitFormSubmission } from "./events/forms";
 import { MessageHandler } from "./events/messages";
 import { ShortcutCommandHandler } from "./events/shortcuts";
 import { setupTeamJoinHandler } from "./events/welcome";
-import type { SlackContext, WebClient } from "./types";
+import type { SlackContext, WebClient, SlackMessageEvent } from "./types";
 import { isSelfGeneratedEvent } from "./utils";
 
 /**

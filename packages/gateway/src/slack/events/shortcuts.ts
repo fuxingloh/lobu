@@ -1,6 +1,7 @@
 import { createLogger } from "@peerbot/core";
 import type { App } from "@slack/bolt";
 import type { AnyBlock, View, WebClient } from "../types";
+import { sendSlackMessage } from "./message-utils";
 
 const logger = createLogger("dispatcher");
 
@@ -42,50 +43,50 @@ export class ShortcutCommandHandler {
   private setupShortcuts(): void {
     logger.info("Setting up shortcut handlers...");
 
-    // Handle "Experiment feature" shortcut
-    this.app.shortcut("develop_feature", async ({ ack, body, client }) => {
-      await ack();
-      const userId = body.user.id;
-      logger.info(`Develop feature shortcut triggered by ${userId}`);
+    const shortcutDefinitions: Array<{
+      id: string;
+      logLabel: string;
+      message: string;
+    }> = [
+      {
+        id: "develop_feature",
+        logLabel: "Develop feature",
+        message:
+          "🚀 Ready to experiment with a new feature! Start by describing what you want to build.",
+      },
+      {
+        id: "fix_bug",
+        logLabel: "Fix bug",
+        message:
+          "🐛 Let's fix that bug! Describe the issue you're experiencing.",
+      },
+      {
+        id: "ask_question",
+        logLabel: "Ask question",
+        message: "❓ What would you like to know about your codebase?",
+      },
+    ];
 
-      const im = await client.conversations.open({ users: userId });
-      if (im.channel?.id) {
-        await client.chat.postMessage({
-          channel: im.channel.id,
-          text: "🚀 Ready to experiment with a new feature! Start by describing what you want to build.",
-        });
-      }
-    });
+    for (const { id, logLabel, message } of shortcutDefinitions) {
+      this.app.shortcut(id, async ({ ack, body, client }) => {
+        await ack();
+        const userId = body.user.id;
+        logger.info(`${logLabel} shortcut triggered by ${userId}`);
 
-    // Handle "Fix bug" shortcut
-    this.app.shortcut("fix_bug", async ({ ack, body, client }) => {
-      await ack();
-      const userId = body.user.id;
-      logger.info(`Fix bug shortcut triggered by ${userId}`);
-
-      const im = await client.conversations.open({ users: userId });
-      if (im.channel?.id) {
-        await client.chat.postMessage({
-          channel: im.channel.id,
-          text: "🐛 Let's fix that bug! Describe the issue you're experiencing.",
-        });
-      }
-    });
-
-    // Handle "Ask question" shortcut
-    this.app.shortcut("ask_question", async ({ ack, body, client }) => {
-      await ack();
-      const userId = body.user.id;
-      logger.info(`Ask question shortcut triggered by ${userId}`);
-
-      const im = await client.conversations.open({ users: userId });
-      if (im.channel?.id) {
-        await client.chat.postMessage({
-          channel: im.channel.id,
-          text: "❓ What would you like to know about your codebase?",
-        });
-      }
-    });
+        try {
+          await sendSlackMessage(
+            client as WebClient,
+            { type: "dm", userId },
+            { text: message }
+          );
+        } catch (error) {
+          logger.error(
+            `Failed to deliver ${logLabel.toLowerCase()} shortcut message for ${userId}`,
+            error
+          );
+        }
+      });
+    }
   }
 
   /**

@@ -2,7 +2,7 @@
 
 import { createLogger, type InstructionProvider } from "@peerbot/core";
 import * as Sentry from "@sentry/node";
-import { GatewayIntegration } from "../gateway/client";
+import { GatewayIntegration } from "../gateway/gateway-integration";
 import { generateCustomInstructions } from "../instructions/builder";
 import { WorkspaceManager } from "./workspace";
 import { handleExecutionError } from "./error-handler";

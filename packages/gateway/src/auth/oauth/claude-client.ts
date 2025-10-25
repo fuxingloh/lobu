@@ -2,6 +2,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { BaseOAuth2Client } from "./base-client";
 import type { ClaudeCredentials } from "../claude/credential-store";
 
+interface ClaudeTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in: number;
+  scope?: string;
+}
+
 /**
  * Claude-specific OAuth client with PKCE support
  * Uses public client ID (no client secret needed)
@@ -15,6 +23,14 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
     "https://console.anthropic.com/v1/oauth/token";
   private static readonly REDIRECT_URI_BASE =
     "https://console.anthropic.com/oauth/code/callback";
+  private static readonly BROWSER_HEADERS = {
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    Referer: "https://claude.ai/",
+    Origin: "https://claude.ai",
+  } as const;
 
   constructor() {
     super("claude-oauth-client");
@@ -84,38 +100,20 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
     }
 
     // Add browser-like headers required by Claude's OAuth server
-    const browserHeaders = {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Referer: "https://claude.ai/",
-      Origin: "https://claude.ai",
-    };
-
-    const tokenData = await this.exchangeToken<{
-      access_token: string;
-      refresh_token: string;
-      token_type: string;
-      expires_in: number;
-      scope: string;
-    }>(ClaudeOAuthClient.TOKEN_URL, body, "json", browserHeaders);
-
-    const expiresAt = this.calculateExpiresAt(tokenData.expires_in)!;
-    const scopes = this.parseScopes(tokenData.scope);
-
-    this.logger.info(
-      `Token exchange successful, expires_in: ${tokenData.expires_in}s`,
-      { scopes }
+    const tokenData = await this.exchangeToken<ClaudeTokenResponse>(
+      ClaudeOAuthClient.TOKEN_URL,
+      body,
+      "json",
+      ClaudeOAuthClient.BROWSER_HEADERS
     );
 
-    return {
-      accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token,
-      tokenType: tokenData.token_type || "Bearer",
-      expiresAt,
-      scopes,
-    };
+    const credentials = this.buildCredentials(tokenData);
+    this.logger.info(
+      `Token exchange successful, expires_in: ${tokenData.expires_in}s`,
+      { scopes: credentials.scopes }
+    );
+
+    return credentials;
   }
 
   /**
@@ -129,33 +127,42 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
     };
 
     // Add browser-like headers for token refresh as well
-    const browserHeaders = {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "en-US,en;q=0.9",
-      Referer: "https://claude.ai/",
-      Origin: "https://claude.ai",
-    };
+    const tokenData = await this.refreshAccessToken<ClaudeTokenResponse>(
+      ClaudeOAuthClient.TOKEN_URL,
+      body,
+      "json",
+      ClaudeOAuthClient.BROWSER_HEADERS
+    );
 
-    const tokenData = await this.refreshAccessToken<{
-      access_token: string;
-      refresh_token?: string;
-      token_type: string;
-      expires_in: number;
-      scope: string;
-    }>(ClaudeOAuthClient.TOKEN_URL, body, "json", browserHeaders);
-
-    const expiresAt = this.calculateExpiresAt(tokenData.expires_in)!;
-    const scopes = this.parseScopes(tokenData.scope);
-
+    const credentials = this.buildCredentials(tokenData, refreshToken);
     this.logger.info(
       `Token refresh successful, expires_in: ${tokenData.expires_in}s`
     );
 
+    return credentials;
+  }
+
+  private buildCredentials(
+    tokenData: {
+      access_token: string;
+      refresh_token?: string;
+      token_type?: string;
+      expires_in: number;
+      scope?: string;
+    },
+    fallbackRefreshToken?: string
+  ): ClaudeCredentials {
+    const expiresAt = this.calculateExpiresAt(tokenData.expires_in)!;
+    const scopes = this.parseScopes(tokenData.scope);
+    const refreshToken = tokenData.refresh_token ?? fallbackRefreshToken;
+
+    if (!refreshToken) {
+      throw new Error("Claude OAuth response missing refresh token");
+    }
+
     return {
       accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token || refreshToken, // Keep old if not provided
+      refreshToken,
       tokenType: tokenData.token_type || "Bearer",
       expiresAt,
       scopes,

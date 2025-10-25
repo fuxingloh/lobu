@@ -38,11 +38,6 @@
       "@peerbot/worker/*": ["packages/worker/src/*"]
     }
   },
-  "include": [
-    "packages/*/src/**/*",
-    "packages/*/__tests__/**/*",
-    "src/**/*",
-    "test/**/*"
-  ],
-  "exclude": ["node_modules"]
+  "include": ["packages/*/src/**/*", "src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "packages/*/src/__tests__/**/*"]
 }

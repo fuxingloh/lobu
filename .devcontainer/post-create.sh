@@ -26,14 +26,6 @@ export PATH="/usr/local/bun/bin:$PATH"
 export BUN_INSTALL="/usr/local/bun"
 export PATH="/home/node/.bun/install/global/node_modules/.bin:$PATH"
 
-# Kubernetes aliases
-alias k="kubectl"
-alias kp="kubectl get pods"
-alias kl="kubectl logs"
-alias kd="kubectl describe"
-alias ka="kubectl apply -f"
-alias kx="kubectl exec -it"
-
 # Docker aliases
 alias d="docker"
 alias dc="docker compose"
@@ -49,22 +41,6 @@ if [ -f "/workspace/packages/worker/mcp-config.json" ]; then
     mkdir -p /home/node/.claude
     cp /workspace/packages/worker/mcp-config.json /home/node/.claude/settings.mcp.json
     echo "✅ MCP server configuration deployed"
-fi
-
-# Setup k3s if needed (only if not in Docker-in-Docker)
-if command -v k3s &> /dev/null; then
-    echo "☸️ Setting up k3s..."
-    sudo k3s server --write-kubeconfig-mode 644 --disable traefik --disable metrics-server &
-    sleep 10
-    sudo cp /etc/rancher/k3s/k3s.yaml /home/node/.kube/config
-    sudo chown node:node /home/node/.kube/config
-    echo "✅ k3s is running"
-fi
-
-# Create namespace if kubectl is available
-if command -v kubectl &> /dev/null; then
-    echo "📊 Creating peerbot namespace..."
-    kubectl create namespace peerbot 2>/dev/null || true
 fi
 
 # Setup environment files
@@ -92,7 +68,7 @@ This is a development environment for the Peerbot running in a VS Code DevContai
 
 - Bun package manager installed
 - Claude Code CLI available globally
-- Kubernetes tools (kubectl, helm) and Docker installed
+- Docker installed
 - MCP Process Manager server configured
 
 ## MCP Server
@@ -120,11 +96,9 @@ echo "🛠️ Available Tools:"
 echo "  - Claude Code CLI: $(claude --version 2>/dev/null || echo 'Run: bun install -g @anthropic-ai/claude-code')"
 echo "  - Bun: $(bun --version)"
 echo "  - Node: $(node --version)"
-echo "  - Kubectl: $(kubectl version --client --short 2>/dev/null || echo 'Not available')"
 echo "  - Docker: $(docker --version 2>/dev/null || echo 'Not available')"
 echo ""
 echo "💡 Tips:"
 echo "  - The MCP process manager is configured for Claude Code"
-echo "  - Use 'k' as alias for kubectl (k get pods, k logs, etc.)"
 echo "  - Ports 3000-3002, 8080-8081 are forwarded"
 echo ""
