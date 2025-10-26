@@ -12,6 +12,7 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -51,7 +52,7 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
           npm whoami
 
-      - name: Publish @peerbot/cli to NPM
+      - name: Publish create-peerbot to NPM
         if: ${{ steps.release.outputs.release_created }}
         working-directory: packages/cli
         run: npm publish --access public

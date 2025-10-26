@@ -1,11 +1,11 @@
 {
-  "name": "@peerbot/cli",
+  "name": "create-peerbot",
   "version": "0.1.0",
   "description": "CLI for deploying and managing Peerbot across multiple platforms",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "peerbot": "./bin/peerbot.js"
+    "create-peerbot": "./bin/create-peerbot.js"
   },
   "scripts": {
     "build": "tsc && node -e \"const fs=require('node:fs');const src='src/templates';const dest='dist/templates';if(fs.existsSync(src)){fs.rmSync(dest,{recursive:true,force:true});fs.cpSync(src,dest,{recursive:true});}\"",

@@ -1,4 +1,4 @@
-# @peerbot/cli
+# create-peerbot
 
 CLI tool for initializing Peerbot projects with Docker Compose.
 
@@ -7,11 +7,19 @@ CLI tool for initializing Peerbot projects with Docker Compose.
 ### Standalone
 
 ```bash
-npm install -g @peerbot/cli
+npm install -g create-peerbot
 
 mkdir my-peerbot
 cd my-peerbot
-peerbot init
+npm create peerbot my-peerbot
+docker compose up -d
+```
+
+### npx/npm create (Recommended)
+
+```bash
+npm create peerbot my-peerbot
+cd my-peerbot
 docker compose up -d
 ```
 
@@ -83,7 +91,7 @@ See [Worker Package Documentation](../worker/docs/custom-base-image.md) for deta
 
 ## Commands
 
-### `peerbot init`
+### `create-peerbot`
 
 Initialize a new Peerbot project in the current directory.
 
@@ -103,7 +111,7 @@ Initialize a new Peerbot project in the current directory.
 
 ## Usage
 
-After running `peerbot init`:
+After running `npm create peerbot`:
 
 ```bash
 # Start services
@@ -166,7 +174,7 @@ CMD ["peerbot-worker"]
 # 1. Create project
 mkdir my-bot
 cd my-bot
-peerbot init
+npm create peerbot
 
 # 2. Choose worker mode during init
 #    - Base image (recommended)
@@ -228,7 +236,7 @@ docker pull buremba/peerbot-worker:0.1.0
 **NPM Registry:**
 ```bash
 # CLI tool
-npm install -g @peerbot/cli@0.1.0
+npm install -g create-peerbot@0.1.0
 
 # Worker runtime (for custom base images)
 npm install -g @peerbot/worker@0.1.0
@@ -241,7 +249,7 @@ User creates project
         ↓
 mkdir my-bot && cd my-bot
         ↓
-peerbot init
+npm create peerbot
         ↓
 Choose: Base image or Package?
         ↓
