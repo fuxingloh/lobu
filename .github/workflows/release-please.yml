@@ -42,8 +42,9 @@ jobs:
       - name: Build packages
         if: ${{ steps.release.outputs.release_created }}
         run: |
-          bun run build
-          cd packages/cli && bun run build
+          # Build core first (dependency for both cli and worker)
+          cd packages/core && bun run build
+          cd ../cli && bun run build
           cd ../worker && bun run build
 
       - name: Authenticate to npm
