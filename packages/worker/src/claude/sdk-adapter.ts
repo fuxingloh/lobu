@@ -6,7 +6,7 @@ import { createLogger } from "@peerbot/core";
 import type { ProgressCallback } from "../core/types";
 import { ensureBaseUrl } from "../core/url-utils";
 import { getSessionContext } from "./session-manager";
-import { createCustomToolsServer } from "./custom-tools";
+// import { createCustomToolsServer } from "./custom-tools";
 
 const logger = createLogger("claude-sdk");
 
@@ -274,16 +274,16 @@ export async function runClaudeWithSDK(
     const allMcpServers = { ...mcpServers };
 
     // Add custom tools server if config provided
-    if (customToolsConfig && dispatcherUrl && workerToken) {
-      const customTools = createCustomToolsServer(
-        dispatcherUrl,
-        workerToken,
-        customToolsConfig.channelId,
-        customToolsConfig.threadId
-      );
-      allMcpServers["peerbot"] = customTools;
-      logger.info("Added custom tools server: peerbot");
-    }
+    // if (customToolsConfig && dispatcherUrl && workerToken) {
+    //   const customTools = createCustomToolsServer(
+    //     dispatcherUrl,
+    //     workerToken,
+    //     customToolsConfig.channelId,
+    //     customToolsConfig.threadId
+    //   );
+    //   allMcpServers["peerbot"] = customTools;
+    //   logger.info("Added custom tools server: peerbot");
+    // }
 
     if (Object.keys(allMcpServers).length > 0) {
       sdkOptions.mcpServers = allMcpServers;

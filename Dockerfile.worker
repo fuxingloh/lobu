@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get update \
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/* \
+    && pip3 install matplotlib \
     && ln -sf /bin/bash /bin/sh
 
 # Install cloudflared for multiple architectures
