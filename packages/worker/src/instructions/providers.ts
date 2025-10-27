@@ -36,7 +36,7 @@ export class ProjectsInstructionProvider implements InstructionProvider {
     }
 
     const projectList = context.availableProjects
-      .map((project) => `  - ${project}`)
+      .map((project: string) => `  - ${project}`)
       .join("\n");
 
     return `**Available projects:**

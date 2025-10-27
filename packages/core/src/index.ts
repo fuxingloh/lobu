@@ -8,6 +8,11 @@ export * from "./errors";
 export * from "./logger";
 // Export module system
 export * from "./modules";
+// Export module types explicitly (needed for TypeScript bundling)
+export type {
+  ActionButton,
+  ModuleSessionContext,
+} from "./modules";
 // Export Sentry
 export { initSentry } from "./sentry";
 // Export core types
