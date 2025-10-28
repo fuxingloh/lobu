@@ -72,24 +72,24 @@ export class McpProxy {
     });
 
     if (!mcpId) {
-      res.status(400).json({ error: "missing_mcp_id" });
+      this.sendJsonRpcError(res, -32600, "Missing MCP ID");
       return;
     }
 
     if (!sessionToken) {
-      res.status(401).json({ error: "missing_token" });
+      this.sendJsonRpcError(res, -32600, "Missing authentication token");
       return;
     }
 
     const tokenData = verifyWorkerToken(sessionToken);
     if (!tokenData) {
-      res.status(401).json({ error: "invalid_token" });
+      this.sendJsonRpcError(res, -32600, "Invalid authentication token");
       return;
     }
 
     const httpServer = await this.configService.getHttpServer(mcpId!);
     if (!httpServer) {
-      res.status(404).json({ error: "unknown_mcp" });
+      this.sendJsonRpcError(res, -32601, `MCP server '${mcpId}' not found`);
       return;
     }
 
@@ -114,11 +114,11 @@ export class McpProxy {
           userId: tokenData.userId,
           mcpId,
         });
-        res.status(401).json({
-          error: "not_authenticated",
-          message:
-            "OAuth authentication required. Please authenticate via home tab.",
-        });
+        this.sendJsonRpcError(
+          res,
+          -32002,
+          `MCP '${mcpId}' requires authentication. Please authenticate via the Slack app home tab.`
+        );
         return;
       }
 
@@ -193,11 +193,11 @@ export class McpProxy {
               userId: tokenData.userId,
               mcpId,
             });
-            res.status(401).json({
-              error: "token_refresh_failed",
-              message:
-                "Failed to refresh expired token. Please re-authenticate via home tab.",
-            });
+            this.sendJsonRpcError(
+              res,
+              -32002,
+              `MCP '${mcpId}' authentication expired. Please re-authenticate via the Slack app home tab.`
+            );
             return;
           }
         } else {
@@ -205,10 +205,11 @@ export class McpProxy {
             userId: tokenData.userId,
             mcpId,
           });
-          res.status(401).json({
-            error: "token_expired",
-            message: "Token expired. Please re-authenticate via home tab.",
-          });
+          this.sendJsonRpcError(
+            res,
+            -32002,
+            `MCP '${mcpId}' authentication expired. Please re-authenticate via the Slack app home tab.`
+          );
           return;
         }
       }
@@ -223,11 +224,11 @@ export class McpProxy {
           userId: tokenData.userId,
           mcpId,
         });
-        res.status(401).json({
-          error: "not_configured",
-          message:
-            "Input values not configured. Please configure via home tab.",
-        });
+        this.sendJsonRpcError(
+          res,
+          -32002,
+          `MCP '${mcpId}' requires configuration. Please configure via the Slack app home tab.`
+        );
         return;
       }
     }
@@ -244,8 +245,32 @@ export class McpProxy {
       );
     } catch (error) {
       logger.error("Failed to proxy MCP request", { error, mcpId });
-      res.status(502).json({ error: "proxy_failure" });
+      this.sendJsonRpcError(
+        res,
+        -32603,
+        `Failed to connect to MCP '${mcpId}': ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
+  }
+
+  /**
+   * Send a JSON-RPC 2.0 error response with 200 status code
+   * This allows the MCP SDK to handle errors gracefully instead of failing
+   */
+  private sendJsonRpcError(
+    res: Response,
+    code: number,
+    message: string,
+    id: any = null
+  ): void {
+    res.status(200).json({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code,
+        message,
+      },
+    });
   }
 
   private extractSessionToken(req: Request): string | null {

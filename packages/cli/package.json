@@ -1,6 +1,6 @@
 {
   "name": "create-peerbot",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "description": "CLI for deploying and managing Peerbot across multiple platforms",
   "type": "module",
   "main": "dist/index.js",
@@ -8,9 +8,9 @@
     "create-peerbot": "./bin/create-peerbot.js"
   },
   "scripts": {
-    "build": "tsc && node -e \"const fs=require('node:fs');const src='src/templates';const dest='dist/templates';if(fs.existsSync(src)){fs.rmSync(dest,{recursive:true,force:true});fs.cpSync(src,dest,{recursive:true});}\"",
+    "build": "tsc && node scripts/build.cjs",
     "dev": "tsc --watch",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "peerbot",
@@ -30,10 +30,15 @@
     "dotenv": "^16.4.1"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
+    "@types/node": "^20.0.0",
     "@types/inquirer": "^9.0.7",
-    "typescript": "^5.3.3"
+    "typescript": "^5.8.3"
   },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18.0.0"
   }

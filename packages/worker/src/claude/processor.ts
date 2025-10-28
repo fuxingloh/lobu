@@ -234,6 +234,25 @@ export class ProgressProcessor {
   }
 
   /**
+   * Format tool names from prefix__something__something to prefix.something.something
+   * Examples: mcp__github__get_me -> mcp.github.get_me
+   *           custom__server__action -> custom.server.action
+   */
+  private formatMcpToolName(toolName: string): string {
+    // Match pattern: anything__something__something
+    const pattern = /^([^_]+)__([^_]+)__(.+)$/;
+    const match = toolName.match(pattern);
+
+    if (match) {
+      const [, prefix, server, tool] = match;
+      return `${prefix}.${server}.${tool}`;
+    }
+
+    // Return as-is if pattern doesn't match
+    return toolName;
+  }
+
+  /**
    * Format tool execution for user-friendly display in bullet lists
    */
   private formatToolExecution(toolUse: ToolUseBlock): string {
@@ -247,7 +266,8 @@ export class ProgressProcessor {
 
     const config = TOOL_DISPLAY_CONFIG[toolName];
     if (!config) {
-      return `└ 🔧 **Using** ${toolName}`;
+      const formattedName = this.formatMcpToolName(toolName);
+      return `└ 🔧 **Using** ${formattedName}`;
     }
 
     const param = config.getParam(params);

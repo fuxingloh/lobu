@@ -32,7 +32,7 @@
     "packages/cli": {
       "changelog-path": "CHANGELOG.md",
       "release-type": "node",
-      "package-name": "@peerbot/cli",
+      "package-name": "create-peerbot",
       "include-component-in-tag": true,
       "include-v-in-tag": false
     },

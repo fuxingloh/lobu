@@ -107,19 +107,6 @@ fi
 
 echo ""
 echo "✅ GitHub secrets configuration complete!"
-echo ""
-echo "📝 Next steps:"
-echo "1. Verify secrets are set correctly:"
-echo "   gh secret list -R $REPO"
-echo ""
-echo "2. If you have environments configured, set them up:"
-echo "   gh secret list --env community -R $REPO"
-echo ""
-echo "3. Trigger deployment workflow:"
-echo "   gh workflow run deploy-community.yml"
-echo ""
-echo "4. Or push to main branch to trigger automatic deployment"
-echo ""
 
 # Clean up temporary file
 rm -f /tmp/kubeconfig-base64.txt

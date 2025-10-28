@@ -47,11 +47,17 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
     oauth: OAuth2Config,
     redirectUri: string
   ): Promise<McpCredentialRecord> {
-    const clientSecret = this.resolveClientSecret(oauth.clientSecret);
-    if (!clientSecret) {
-      throw new Error(
-        `Client secret could not be resolved from: ${oauth.clientSecret}`
-      );
+    // Check if PKCE flow (no client secret required)
+    const isPKCE = oauth.tokenEndpointAuthMethod === "none";
+
+    let clientSecret = "";
+    if (!isPKCE) {
+      clientSecret = this.resolveClientSecret(oauth.clientSecret);
+      if (!clientSecret) {
+        throw new Error(
+          `Client secret could not be resolved from: ${oauth.clientSecret}`
+        );
+      }
     }
 
     // Build request body
@@ -59,9 +65,13 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
       grant_type: oauth.grantType || "authorization_code",
       code,
       client_id: oauth.clientId,
-      client_secret: clientSecret,
       redirect_uri: redirectUri,
     });
+
+    // Only add client_secret if not using PKCE
+    if (!isPKCE && clientSecret) {
+      body.set("client_secret", clientSecret);
+    }
 
     const tokenData = await this.exchangeToken<
       OAuthTokens | OAuthErrorResponse
@@ -100,19 +110,29 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
     refreshToken: string,
     oauth: OAuth2Config
   ): Promise<McpCredentialRecord> {
-    const clientSecret = this.resolveClientSecret(oauth.clientSecret);
-    if (!clientSecret) {
-      throw new Error(
-        `Client secret could not be resolved from: ${oauth.clientSecret}`
-      );
+    // Check if PKCE flow (no client secret required)
+    const isPKCE = oauth.tokenEndpointAuthMethod === "none";
+
+    let clientSecret = "";
+    if (!isPKCE) {
+      clientSecret = this.resolveClientSecret(oauth.clientSecret);
+      if (!clientSecret) {
+        throw new Error(
+          `Client secret could not be resolved from: ${oauth.clientSecret}`
+        );
+      }
     }
 
     const body = new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
       client_id: oauth.clientId,
-      client_secret: clientSecret,
     });
+
+    // Only add client_secret if not using PKCE
+    if (!isPKCE && clientSecret) {
+      body.set("client_secret", clientSecret);
+    }
 
     const tokenData = await this.refreshAccessToken<
       OAuthTokens | OAuthErrorResponse

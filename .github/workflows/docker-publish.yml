@@ -135,10 +135,10 @@ jobs:
             type=registry,ref=${{ env.DOCKER_NAMESPACE }}/peerbot-worker-base:buildcache,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: Trigger deployment
-        if: success() && github.ref == 'refs/heads/main'
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: deploy-community
-          client-payload: '{"tag": "${{ steps.tag.outputs.tag }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
+      # - name: Trigger deployment
+      #   if: success() && github.ref == 'refs/heads/main'
+      #   uses: peter-evans/repository-dispatch@v2
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     event-type: deploy-community
+      #     client-payload: '{"tag": "${{ steps.tag.outputs.tag }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'

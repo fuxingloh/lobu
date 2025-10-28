@@ -2,6 +2,7 @@ import { createLogger } from "@peerbot/core";
 import { type Request, type Response, Router } from "express";
 import fetch from "node-fetch";
 import type { ClaudeCredentialStore } from "../../auth/claude/credential-store";
+import { ClaudeOAuthClient } from "../../auth/oauth/claude-client";
 
 const logger = createLogger("dispatcher");
 
@@ -15,6 +16,8 @@ export class AnthropicProxy {
   private router: Router;
   private config: AnthropicProxyConfig;
   private credentialStore?: ClaudeCredentialStore;
+  private oauthClient: ClaudeOAuthClient;
+  private refreshLocks: Map<string, Promise<string | null>>; // userId -> refresh promise
 
   constructor(
     config: AnthropicProxyConfig,
@@ -22,12 +25,84 @@ export class AnthropicProxy {
   ) {
     this.config = config;
     this.credentialStore = credentialStore;
+    this.oauthClient = new ClaudeOAuthClient();
+    this.refreshLocks = new Map();
     this.router = Router();
     this.setupRoutes();
   }
 
   getRouter(): Router {
     return this.router;
+  }
+
+  /**
+   * Refresh an expired OAuth token for a user
+   * Uses locking to prevent concurrent refresh attempts for the same user
+   * Returns the new access token or null if refresh failed
+   */
+  private async refreshUserToken(userId: string): Promise<string | null> {
+    // Check if there's already a refresh in progress for this user
+    const existingRefresh = this.refreshLocks.get(userId);
+    if (existingRefresh) {
+      logger.info(`Waiting for existing token refresh for user ${userId}`);
+      return existingRefresh;
+    }
+
+    // Create a new refresh promise and store it
+    const refreshPromise = this.performTokenRefresh(userId);
+    this.refreshLocks.set(userId, refreshPromise);
+
+    try {
+      const result = await refreshPromise;
+      return result;
+    } finally {
+      // Clean up the lock after refresh completes (success or failure)
+      this.refreshLocks.delete(userId);
+    }
+  }
+
+  /**
+   * Perform the actual token refresh
+   */
+  private async performTokenRefresh(userId: string): Promise<string | null> {
+    if (!this.credentialStore) {
+      logger.error("Cannot refresh token: credential store not available");
+      return null;
+    }
+
+    try {
+      // Get current credentials to access refresh token
+      const credentials = await this.credentialStore.getCredentials(userId);
+      if (!credentials || !credentials.refreshToken) {
+        logger.warn(`No refresh token available for user ${userId}`);
+        return null;
+      }
+
+      logger.info(`Refreshing expired token for user ${userId}`);
+
+      // Use ClaudeOAuthClient to refresh the token
+      const newCredentials = await this.oauthClient.refreshToken(
+        credentials.refreshToken
+      );
+
+      // Store the new credentials
+      await this.credentialStore.setCredentials(userId, newCredentials);
+
+      logger.info(`Successfully refreshed token for user ${userId}`);
+      return newCredentials.accessToken;
+    } catch (error) {
+      logger.error(`Failed to refresh token for user ${userId}`, { error });
+
+      // If refresh failed, delete the invalid credentials
+      try {
+        await this.credentialStore.deleteCredentials(userId);
+        logger.info(`Deleted invalid credentials for user ${userId}`);
+      } catch (deleteError) {
+        logger.error(`Failed to delete invalid credentials`, { deleteError });
+      }
+
+      return null;
+    }
   }
 
   private setupRoutes(): void {
@@ -103,9 +178,35 @@ export class AnthropicProxy {
     if (userId && this.credentialStore) {
       const credentials = await this.credentialStore.getCredentials(userId);
       if (credentials) {
-        apiKey = credentials.accessToken;
-        tokenSource = "user";
-        logger.info(`Using user OAuth token for ${userId}`);
+        // Check if token is expired (with 5 minute buffer)
+        const expiryBuffer = 5 * 60 * 1000; // 5 minutes in milliseconds
+        const isExpired = credentials.expiresAt <= Date.now() + expiryBuffer;
+
+        if (isExpired) {
+          logger.info(
+            `Token expired for user ${userId}, attempting refresh`,
+            {
+              expiresAt: new Date(credentials.expiresAt).toISOString(),
+              now: new Date().toISOString(),
+            }
+          );
+
+          // Attempt to refresh the token
+          const refreshedToken = await this.refreshUserToken(userId);
+          if (refreshedToken) {
+            apiKey = refreshedToken;
+            tokenSource = "user";
+            logger.info(`Using refreshed OAuth token for ${userId}`);
+          } else {
+            // Refresh failed - will fall back to system token or return error
+            logger.warn(`Token refresh failed for ${userId}, falling back`);
+          }
+        } else {
+          // Token is still valid
+          apiKey = credentials.accessToken;
+          tokenSource = "user";
+          logger.info(`Using user OAuth token for ${userId}`);
+        }
       }
     }
 

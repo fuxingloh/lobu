@@ -133,25 +133,44 @@ export async function getSessionContext(): Promise<{
       `Received session context: ${Object.keys(data.mcpConfig?.mcpServers || {}).length} MCPs, ${data.platformInstructions.length} chars platform instructions, ${data.mcpStatus.length} MCP status entries`
     );
 
-    // Convert gateway MCP format to SDK format
+    // Convert gateway MCP format to SDK format, filtering out unauthenticated MCPs
     const sdkServers: Record<string, McpServerConfig> = {};
 
     if (data.mcpConfig?.mcpServers) {
       for (const [name, config] of Object.entries(data.mcpConfig.mcpServers)) {
+        // Check if this MCP is authenticated/configured in status data
+        const status = data.mcpStatus.find((s) => s.id === name);
+        if (status) {
+          // Skip if requires auth but not authenticated
+          if (status.requiresAuth && !status.authenticated) {
+            logger.info(
+              `⏭️ Skipping MCP ${name} - authentication required but not authenticated`
+            );
+            continue;
+          }
+          // Skip if requires input but not configured
+          if (status.requiresInput && !status.configured) {
+            logger.info(
+              `⏭️ Skipping MCP ${name} - configuration required but not configured`
+            );
+            continue;
+          }
+        }
+
         if (config.type === "sse" && config.url) {
           sdkServers[name] = {
             type: "http",
             url: config.url,
             headers: config.headers || {},
           };
-          logger.info(`Including HTTP MCP server: ${name}`);
+          logger.info(`✅ Including HTTP MCP server: ${name}`);
         } else if (config.command) {
           sdkServers[name] = {
             command: config.command,
             args: config.args || [],
             env: config.env || {},
           };
-          logger.info(`Including stdio MCP server: ${name}`);
+          logger.info(`✅ Including stdio MCP server: ${name}`);
         } else {
           logger.warn(
             `Skipping MCP ${name} - no type=sse or command property`,

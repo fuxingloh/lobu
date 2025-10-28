@@ -76,6 +76,7 @@ class StreamSession {
       this.stream = (this.slackClient as any).chatStream({
         channel: this.channelId,
         thread_ts: this.threadTs,
+        buffer_size: 10,
         recipient_user_id: this.userId,
         markdown_text: delta,
         ...(this.teamId ? { recipient_team_id: this.teamId } : {}),
@@ -304,7 +305,13 @@ export class ThreadResponseConsumer {
     if (hasActiveStream) {
       logger.info(`Completing active stream for session ${sessionKey}`);
       await this.streamSessionManager.completeSession(sessionKey);
-      // Don't set status - streaming completion handles it
+      // Clear status after stream completes
+      await setThreadStatus(
+        this.slackClient,
+        data.channelId,
+        data.threadId,
+        ""
+      );
     } else {
       // Clear status for non-streaming completion
       await setThreadStatus(

@@ -236,24 +236,6 @@ export async function runClaudeWithSDK(
       },
       stderr: (message: string) => {
         logger.error(`[Claude CLI stderr] ${message}`);
-
-        // Detect any error messages from Claude CLI (skip MCP connection errors)
-        // Hacky but Claude Code SDK hangs in this case, it doesn't exit si we have this approach.
-        if (message.includes("[ERROR]") && !message.includes("MCP server")) {
-          // Try to extract the error message from JSON if present
-          const jsonMatch = message.match(/"message":"([^"]+)"/);
-          if (jsonMatch) {
-            stderrError = new Error(jsonMatch[1]);
-            logger.error(`Error detected from stderr: ${jsonMatch[1]}`);
-          } else {
-            // Extract error text after [ERROR]
-            const errorMatch = message.match(/\[ERROR\]\s*(.+)/);
-            if (errorMatch) {
-              stderrError = new Error(errorMatch[1]);
-              logger.error(`Error detected from stderr: ${errorMatch[1]}`);
-            }
-          }
-        }
       },
     };
 
@@ -340,31 +322,19 @@ export async function runClaudeWithSDK(
     let lastMessageTime = Date.now();
     let hasSuccessfulResult = false;
 
-    // Track last activity for timeout detection
-    const STALL_TIMEOUT_MS = 5000; // 5 seconds without messages = stalled
-
     // Process streaming responses with timeout check
     const messageIterator = response[Symbol.asyncIterator]();
     let iteratorDone = false;
 
     while (!iteratorDone) {
-      // Check if stderr detected an error
-      if (stderrError) {
-        logger.error("Detected error from stderr, throwing error");
-        throw stderrError;
-      }
+      // Don't check for stderr errors here - we need to process all messages first
+      // Errors will be checked after the loop completes
 
-      // Use Promise.race to implement timeout
       const messagePromise = messageIterator.next();
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          if (stderrError) {
-            reject(stderrError);
-          }
-        }, STALL_TIMEOUT_MS);
-      });
 
-      const result = await Promise.race([messagePromise, timeoutPromise]);
+      const result = await Promise.race([messagePromise, 
+        // timeoutPromise
+      ]);
 
       if (result.done) {
         iteratorDone = true;

@@ -26,6 +26,7 @@ export interface OAuth2Config {
   scopes?: string[];
   grantType?: string;
   responseType?: string;
+  tokenEndpointAuthMethod?: string; // e.g., "none" for PKCE, "client_secret_post" for client secret
 }
 
 export interface McpInput {
@@ -99,7 +100,7 @@ export class McpConfigService {
 
   /**
    * Return MCP config tailored for a worker request.
-   * Returns ALL MCPs - worker/SDK will gracefully handle auth failures
+   * Returns ALL MCPs - worker will filter them based on status
    */
   async getWorkerConfig(options: {
     baseUrl: string;
@@ -124,7 +125,7 @@ export class McpConfigService {
       const httpServer = config.httpServers.get(id);
 
       if (httpServer) {
-        // Configure HTTP MCP - send ALL MCPs regardless of auth status
+        // Configure HTTP MCP - send ALL MCPs, worker will filter based on status
         // Since Claude Code HTTP transport strips paths, use root URL with X-Mcp-Id header
         logger.info(`🔧 Configuring MCP ${id}: baseUrl=${baseUrl}`);
         cloned.url = baseUrl; // Use base URL only (e.g., http://gateway:8080)

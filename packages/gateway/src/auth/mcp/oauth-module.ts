@@ -588,6 +588,7 @@ export class McpOAuthModule extends BaseModule {
           });
 
           // Build OAuth config from discovered metadata
+          // If no client_secret (PKCE flow), set to empty string
           oauthConfig = {
             authUrl: discoveredOAuth.metadata.authorization_endpoint,
             tokenUrl: discoveredOAuth.metadata.token_endpoint,
@@ -596,11 +597,18 @@ export class McpOAuthModule extends BaseModule {
             scopes: discoveredOAuth.metadata.scopes_supported || [],
             grantType: "authorization_code",
             responseType: "code",
+            tokenEndpointAuthMethod: clientCredentials.token_endpoint_auth_method,
           };
         } else {
           res.status(404).json({ error: "MCP has no OAuth configuration" });
           return;
         }
+      }
+
+      // Check if we have valid OAuth config
+      if (!oauthConfig) {
+        res.status(400).json({ error: "No OAuth configuration available for this MCP" });
+        return;
       }
 
       // Generate and store state
@@ -675,12 +683,55 @@ export class McpOAuthModule extends BaseModule {
 
       // Exchange code for token
       let credentials;
+      let oauthConfig = httpServer.oauth;
 
-      if (httpServer.oauth) {
+      // If no static OAuth config, check for discovered OAuth
+      if (!oauthConfig) {
+        const discoveredOAuth = await this.configService.getDiscoveredOAuth(
+          stateData.mcpId
+        );
+        if (discoveredOAuth?.metadata) {
+          logger.info(
+            `Using discovered OAuth for ${stateData.mcpId} from ${discoveredOAuth.metadata.issuer}`
+          );
+
+          // Get or create client credentials via dynamic registration
+          const discoveryService = this.configService.getDiscoveryService();
+          if (discoveryService) {
+            const clientCredentials =
+              await discoveryService.getOrCreateClientCredentials(
+                stateData.mcpId,
+                discoveredOAuth.metadata
+              );
+
+            if (clientCredentials?.client_id) {
+              logger.info(`Using client credentials for ${stateData.mcpId}`, {
+                client_id: clientCredentials.client_id,
+                has_secret: !!clientCredentials.client_secret,
+              });
+
+              // Build OAuth config from discovered metadata
+              // If no client_secret (PKCE flow), set to empty string
+              oauthConfig = {
+                authUrl: discoveredOAuth.metadata.authorization_endpoint,
+                tokenUrl: discoveredOAuth.metadata.token_endpoint,
+                clientId: clientCredentials.client_id,
+                clientSecret: clientCredentials.client_secret || "",
+                scopes: discoveredOAuth.metadata.scopes_supported || [],
+                grantType: "authorization_code",
+                responseType: "code",
+                tokenEndpointAuthMethod: clientCredentials.token_endpoint_auth_method,
+              };
+            }
+          }
+        }
+      }
+
+      if (oauthConfig) {
         // Full OAuth2 token exchange
         credentials = await this.oauth2Client.exchangeCodeForToken(
           code as string,
-          httpServer.oauth,
+          oauthConfig,
           this.callbackUrl
         );
       } else {
@@ -713,7 +764,11 @@ export class McpOAuthModule extends BaseModule {
       // Show success page
       res.send(renderOAuthSuccessPage(formatMcpName(stateData.mcpId)));
     } catch (error) {
-      logger.error("Failed to handle OAuth callback", { error });
+      logger.error("Failed to handle OAuth callback", {
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
       res
         .status(500)
         .send(
