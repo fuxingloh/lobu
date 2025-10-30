@@ -27,7 +27,7 @@ annotations:
     - name: peerbot-dispatcher
       image: buremba/peerbot-dispatcher:latest
     - name: peerbot-worker
-      image: buremba/peerbot-worker:latest
+      image: buremba/peerbot-worker-base:latest
   artifacthub.io/links: |
     - name: GitHub Repository
       url: https://github.com/buremba/peerbot

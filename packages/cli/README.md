@@ -228,9 +228,6 @@ docker pull buremba/peerbot-gateway:0.1.0
 
 # For quick start (extend this)
 docker pull buremba/peerbot-worker-base:0.1.0
-
-# For production workers
-docker pull buremba/peerbot-worker:0.1.0
 ```
 
 **NPM Registry:**

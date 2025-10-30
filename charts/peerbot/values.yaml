@@ -81,7 +81,7 @@ worker:
   enabled: false
   runtimeClassName: "kata"
   image:
-    repository: buremba/peerbot-worker
+    repository: buremba/peerbot-worker-base
     pullPolicy: Always
     tag: latest
   resources:
