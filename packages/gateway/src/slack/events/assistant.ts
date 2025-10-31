@@ -22,11 +22,13 @@ export function setupAssistantHandlers(
 
   const assistant = new Assistant({
     // Called when a user starts a new assistant thread
-    threadStarted: async ({ say, setSuggestedPrompts }) => {
+    threadStarted: async ({ say, setSuggestedPrompts, setTitle }) => {
       logger.info("Assistant thread started");
 
+      say("👋 Hi! I'm Peerbot, your AI assistant. How can I help you today?");
+
       // Set suggested prompts for the user
-      await setSuggestedPrompts({
+      setSuggestedPrompts({
         prompts: [
           {
             title: "Create a project",
@@ -43,10 +45,7 @@ export function setupAssistantHandlers(
         ],
       });
 
-      // Send welcome message
-      await say(
-        "👋 Hi! I'm Peerbot, your AI assistant. How can I help you today?"
-      );
+      await setTitle("Peerbot");
     },
 
     // Called when the context changes (e.g., user switches channels)

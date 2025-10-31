@@ -84,12 +84,15 @@ RUN --mount=type=cache,target=/root/.bun/install/cache bun install
 COPY packages/ ./packages/
 COPY scripts/ ./scripts/
 
-# Build core package in all modes (required for worker imports)
-# Core must be built since worker imports from it via package.json main field
+# Build core and github packages in all modes (required for worker imports)
+# These must be built since worker imports from them via package.json main field
 RUN echo "Building @peerbot/core package..."; \
-    cd /app/packages/core && bun run build && \
+    cd /app/packages/core && rm -f tsconfig.tsbuildinfo && bun run build && \
     # Create symlink so built core can resolve its dependencies from root node_modules \
-    ln -sf /app/node_modules /app/packages/core/node_modules
+    ln -sf /app/node_modules /app/packages/core/node_modules && \
+    echo "Building @peerbot/github package..."; \
+    cd /app/packages/github && rm -f tsconfig.tsbuildinfo && bun run build && \
+    ln -sf /app/node_modules /app/packages/github/node_modules
 
 # For production mode, also build worker during image creation
 # For dev mode, worker runs from source but still needs core built
@@ -109,9 +112,11 @@ RUN mkdir -p /workspace && \
     chmod 755 /workspace && \
     # Create dist directories for TypeScript compilation
     mkdir -p /app/packages/core/dist && \
+    mkdir -p /app/packages/github/dist && \
     mkdir -p /app/packages/worker/dist && \
     # Only chown specific directories that claude needs write access to
     chown -R claude:claude /app/packages/core/dist && \
+    chown -R claude:claude /app/packages/github/dist && \
     chown -R claude:claude /app/packages/worker/dist && \
     chown -R claude:claude /app/packages/worker/scripts 2>/dev/null || true && \
     chown -R claude:claude /app

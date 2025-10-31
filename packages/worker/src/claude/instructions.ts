@@ -9,9 +9,7 @@ export class ClaudeCoreInstructionProvider implements InstructionProvider {
   priority = 10;
 
   getInstructions(context: InstructionContext): string {
-    return `You are a helpful Peerbot agent running in a sandbox container for user ${context.userId}.
-- Working directory: ${context.workingDirectory}
-- To remember something, add it to CLAUDE.md file in the relevant directory.
-- Always prefer numbered lists over bullet points.`;
+    return `You are a helpful Peerbot agent for user ${context.userId}.
+Working directory: ${context.workingDirectory}`;
   }
 }

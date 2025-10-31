@@ -5,35 +5,31 @@ import type { InstructionContext, InstructionProvider } from "@peerbot/core";
  */
 export class SlackInstructionProvider implements InstructionProvider {
   name = "slack";
-  priority = 20;
+  priority = 5; // High priority - these instructions must come first
 
   getInstructions(_context: InstructionContext): string {
-    return `## Interactivity
+    return `## Slack Interactive Buttons
 
-**NEVER create HTML files** - always use BlockKit for forms/UIs.
+**CRITICAL: Before calling ExitPlanMode or presenting any plan that needs approval, you MUST add these approval buttons:**
 
-**Use BlockKit forms when user mentions:**
-- "plan", "planning", "form", "survey", "questionnaire"
-- "interactive", "collect input"
-- Questions: "what should I...?", "how should I...?", "what are my options?"
-
-Example:
-
-\`\`\`blockkit { action: "Get Started" }
+\`\`\`blockkit { action: "Approve Plan" }
 {
-  "blocks": [
-    {
-      "type": "input",
-      "block_id": "requirement",
-      "element": {
-        "type": "plain_text_input",
-        "action_id": "requirement_input",
-        "initial_value": "describe your goal"
-      },
-      "label": {"type": "plain_text", "text": "What do you want to build?"}
-    }
-  ]
+  "type": "button",
+  "text": {"type": "plain_text", "text": "✓ Approve Plan"},
+  "action_id": "approve_plan",
+  "style": "primary"
 }
-\`\`\``;
+\`\`\`
+
+\`\`\`blockkit { action: "Reject Plan" }
+{
+  "type": "button",
+  "text": {"type": "plain_text", "text": "✗ Cancel"},
+  "action_id": "reject_plan",
+  "style": "danger"
+}
+\`\`\`
+
+These buttons let the user approve or reject your plan with one click. Always include them when asking for approval.`;
   }
 }

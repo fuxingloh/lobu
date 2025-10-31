@@ -95,7 +95,7 @@ export async function runClaudeWithSDK(
     const sdkOptions: SDKOptions = {
       model: options.model,
       cwd: workingDirectory || process.cwd(),
-      permissionMode: "bypassPermissions",
+      permissionMode: "plan",
       strictMcpConfig: false, // Allow MCP failures without stopping execution
       env: {
         ...process.env,
@@ -135,6 +135,9 @@ export async function runClaudeWithSDK(
       sdkOptions.systemPrompt = mergedInstructions;
       logger.info(
         `Using merged instructions: gateway (${gatewayInstructions.length} chars) + worker (${options.appendSystemPrompt?.length || 0} chars)`
+      );
+      console.log(
+        `\n========== FULL MERGED INSTRUCTIONS (${mergedInstructions.length} chars) ==========\n${mergedInstructions}\n========== END INSTRUCTIONS ==========\n`
       );
     } else if (options.systemPrompt) {
       sdkOptions.systemPrompt = options.systemPrompt;

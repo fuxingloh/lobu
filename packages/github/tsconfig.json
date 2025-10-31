@@ -1,19 +1,19 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "module": "commonjs",
     "moduleResolution": "node",
     "esModuleInterop": true,
-    "verbatimModuleSyntax": false,
     "noEmit": false,
-    "allowImportingTsExtensions": false,
     "downlevelIteration": true,
     "target": "ES2017",
-    "skipLibCheck": true
+    "strict": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/__tests__/**"]
