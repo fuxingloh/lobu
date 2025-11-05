@@ -3,12 +3,9 @@ import { createLogger } from "@peerbot/core";
 const logger = createLogger("dispatcher");
 
 import type { IModuleRegistry } from "@peerbot/core";
-import type {
-  AnyBlock,
-  SlackActionBody,
-  SlackContext,
-  WebClient,
-} from "../types";
+import type { AnyBlock } from "@slack/types";
+import type { WebClient } from "@slack/web-api";
+import type { SlackActionBody, SlackContext } from "../types";
 import type { MessageHandler } from "./messages";
 
 /**
@@ -19,7 +16,7 @@ import type { MessageHandler } from "./messages";
  * Handle executable code block button clicks
  * Sends the code content back to Claude for execution
  */
-export async function handleExecutableCodeBlock(
+async function handleExecutableCodeBlock(
   actionId: string,
   userId: string,
   channelId: string,
@@ -106,7 +103,7 @@ export async function handleExecutableCodeBlock(
  * Handle blockkit form button clicks
  * Opens a modal with the blockkit form content
  */
-export async function handleBlockkitForm(
+async function handleBlockkitForm(
   actionId: string,
   channelId: string,
   messageTs: string,

@@ -4,40 +4,12 @@ import {
   createLogger,
   type InteractionOptions,
   type InteractionType,
+  retryWithBackoff,
   TIME,
   type UserInteractionResponse,
 } from "@peerbot/core";
 
 const logger = createLogger("interaction-client");
-
-/**
- * Retry a function with exponential backoff
- */
-async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-
-      if (attempt < maxRetries) {
-        const delay = baseDelay * 2 ** attempt;
-        logger.warn(
-          `Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError;
-}
 
 /**
  * Pending interaction state

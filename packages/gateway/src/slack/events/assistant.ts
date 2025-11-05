@@ -3,8 +3,9 @@
 import { createLogger } from "@peerbot/core";
 import type { App } from "@slack/bolt";
 import { Assistant } from "@slack/bolt";
+import type { WebClient } from "@slack/web-api";
 import type { MessageHandlerConfig } from "../config";
-import type { SlackContext, WebClient } from "../types";
+import type { SlackContext } from "../types";
 import type { MessageHandler } from "./messages";
 
 const logger = createLogger("slack-assistant");

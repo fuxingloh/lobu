@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { mkdir } from "node:fs/promises";
-import { createLogger, WorkspaceError } from "@peerbot/core";
+import { createLogger, sanitizeThreadId, WorkspaceError } from "@peerbot/core";
 import type { WorkspaceInfo, WorkspaceSetupConfig } from "./types";
 
 const logger = createLogger("workspace");
@@ -31,7 +31,7 @@ function getWorkspacePathForThread(
   threadId: string
 ): string {
   // Sanitize thread ID for filesystem
-  const sanitizedThreadId = threadId.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const sanitizedThreadId = sanitizeThreadId(threadId);
   return `${baseDirectory}/${sanitizedThreadId}`;
 }
 

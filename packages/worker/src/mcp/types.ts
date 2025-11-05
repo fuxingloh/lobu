@@ -36,3 +36,17 @@ export interface ProcessManagerInstance {
   close: () => Promise<void>;
   stop: () => Promise<void>;
 }
+
+export interface ProcessManagerApi {
+  startProcess(
+    id: string,
+    command: string,
+    description: string,
+    port?: number,
+    workingDirectory?: string
+  ): Promise<ProcessInfo>;
+  stopProcess(id: string): Promise<void>;
+  restartProcess(id: string, workingDirectory?: string): Promise<ProcessInfo>;
+  getStatus(id?: string): ProcessInfo | ProcessInfo[] | null;
+  getLogs(id: string, lines?: number): Promise<string>;
+}

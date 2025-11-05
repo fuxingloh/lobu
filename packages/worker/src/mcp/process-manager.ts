@@ -7,7 +7,11 @@ import path from "node:path";
 import { createLogger } from "@peerbot/core";
 import { createMCPServer, startHTTPServer } from "./mcp-server";
 import { startTunnel } from "./tunnel-manager";
-import type { ProcessInfo, ProcessManagerInstance } from "./types";
+import type {
+  ProcessInfo,
+  ProcessManagerApi,
+  ProcessManagerInstance,
+} from "./types";
 
 const logger = createLogger("worker");
 
@@ -17,11 +21,11 @@ const logger = createLogger("worker");
 
 let processManagerInstance: ProcessManagerInstance | null = null;
 
-export function getProcessManagerInstance(): ProcessManagerInstance | null {
+function getProcessManagerInstance(): ProcessManagerInstance | null {
   return processManagerInstance;
 }
 
-export function setProcessManagerInstance(
+function setProcessManagerInstance(
   instance: ProcessManagerInstance | null
 ): void {
   processManagerInstance = instance;
@@ -31,7 +35,7 @@ export function setProcessManagerInstance(
 // PROCESS MANAGER
 // ============================================================================
 
-export class ProcessManager {
+class ProcessManager implements ProcessManagerApi {
   private processes: Map<string, ProcessInfo> = new Map();
   private processDir = "/tmp/agent-processes";
   private logsDir = "/tmp/claude-logs";

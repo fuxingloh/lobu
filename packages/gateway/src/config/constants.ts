@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { DEFAULTS as CORE_DEFAULTS, REDIS_KEYS, TIME } from "@peerbot/core";
+import { DEFAULTS as CORE_DEFAULTS, TIME } from "@peerbot/core";
 
 /**
  * Gateway-specific constants
@@ -8,11 +8,8 @@ import { DEFAULTS as CORE_DEFAULTS, REDIS_KEYS, TIME } from "@peerbot/core";
  * This file contains gateway-specific configuration values
  */
 
-// Re-export core constants
-export { TIME, REDIS_KEYS };
-
 // Gateway-specific default configuration values
-export const GATEWAY_DEFAULTS = {
+const GATEWAY_DEFAULTS = {
   /** Default HTTP server port */
   HTTP_PORT: 3000,
   /** Default Slack API URL */
@@ -58,29 +55,6 @@ export const GATEWAY_DEFAULTS = {
 export const DEFAULTS = {
   ...CORE_DEFAULTS,
   ...GATEWAY_DEFAULTS,
-} as const;
-
-// OAuth constants
-export const OAUTH = {
-  /** OAuth state TTL in seconds (5 minutes) */
-  STATE_TTL_SECONDS: 5 * 60,
-  /** OAuth grant types */
-  GRANT_TYPE_AUTHORIZATION_CODE: "authorization_code",
-  GRANT_TYPE_REFRESH_TOKEN: "refresh_token",
-  /** OAuth response types */
-  RESPONSE_TYPE_CODE: "code",
-} as const;
-
-// HTTP status codes
-export const HTTP_STATUS = {
-  OK: 200,
-  BAD_REQUEST: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  INTERNAL_SERVER_ERROR: 500,
-  BAD_GATEWAY: 502,
-  SERVICE_UNAVAILABLE: 503,
 } as const;
 
 // Display formatting

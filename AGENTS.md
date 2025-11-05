@@ -35,7 +35,7 @@ TypeScript packages must be compiled from `src/` → `dist/`. If you modify any 
 1. Have the bot running via `make dev` running in the background for development. This uses Docker Compose with hot reload enabled when NODE_ENV=development.
 2. Test the bot using curl with the messaging API endpoint:
 ```bash
-curl -X POST http://localhost:8080/api/messaging/send \
+source .env && curl -X POST http://localhost:8080/api/messaging/send \
   -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"platform":"slack","channel":"$TEST_CHANNEL","message":"@me test prompt"}'

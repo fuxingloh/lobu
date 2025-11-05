@@ -9,7 +9,7 @@ interface McpOAuthStateData {
   redirectPath?: string;
 }
 
-export interface OAuthStateData extends McpOAuthStateData {
+interface OAuthStateData extends McpOAuthStateData {
   createdAt: number;
 }
 

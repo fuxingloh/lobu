@@ -4,6 +4,10 @@ import {
   generateWorkerToken,
   OrchestratorError,
 } from "@peerbot/core";
+import type { MessagePayload } from "../infrastructure/queue/queue-producer";
+
+// Re-export MessagePayload for use by deployment implementations
+export type { MessagePayload };
 
 const logger = createLogger("orchestrator");
 
@@ -63,27 +67,6 @@ export interface OrchestratorConfig {
   };
 }
 
-// Queue job data structure
-export interface QueueJobData {
-  userId: string;
-  threadId: string;
-  channelId: string;
-  messageId: string;
-  content: string;
-  platform?: string; // Platform name (e.g., "slack")
-  platformMetadata?: {
-    teamId?: string;
-    originalMessageTs?: string;
-    botResponseTs?: string;
-  };
-  routingMetadata?: {
-    targetThreadId?: string;
-    deploymentName?: string;
-    userId?: string;
-    timestamp?: string;
-  };
-}
-
 export interface DeploymentInfo {
   deploymentName: string;
   deploymentId: string;
@@ -120,7 +103,7 @@ export abstract class BaseDeploymentManager {
     deploymentName: string,
     username: string,
     userId: string,
-    messageData?: QueueJobData,
+    messageData?: MessagePayload,
     userEnvVars?: Record<string, string>
   ): Promise<void>;
   abstract scaleDeployment(
@@ -142,7 +125,7 @@ export abstract class BaseDeploymentManager {
   async createWorkerDeployment(
     userId: string,
     threadId: string,
-    messageData?: QueueJobData
+    messageData?: MessagePayload
   ): Promise<void> {
     const deploymentName = generateDeploymentName(userId, threadId);
 
@@ -206,7 +189,7 @@ export abstract class BaseDeploymentManager {
     username: string,
     userId: string,
     deploymentName: string,
-    messageData?: QueueJobData,
+    messageData?: MessagePayload,
     includeSecrets: boolean = true,
     userEnvVars: Record<string, string> = {}
   ): Promise<{ [key: string]: string }> {

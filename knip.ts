@@ -1,7 +1,10 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
-  entry: ["packages/*/src/**/*.{ts,tsx,js,jsx,cjs,mjs}"],
+  entry: [
+    "packages/*/src/**/*.{ts,tsx,js,jsx,cjs,mjs}",
+    "packages/*/bin/**/*.{js,cjs,mjs}",
+  ],
   ignore: [
     "**/dist/**",
     "charts/**",
@@ -11,8 +14,10 @@ const config: KnipConfig = {
     "workspaces/**",
     "my-app/**",
     "docker-compose*.yml",
+    "scripts/**",
   ],
-  ignoreBinaries: ["bun", "ts-node", "tsx"],
+  ignoreBinaries: ["helm"],
+  ignoreDependencies: ["@peerbot/github"],
 };
 
 export default config;

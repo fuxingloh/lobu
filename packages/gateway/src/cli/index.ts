@@ -1,11 +1,10 @@
 #!/usr/bin/env bun
 
-import { createLogger, initSentry } from "@peerbot/core";
+import { ConfigError, createLogger, initSentry } from "@peerbot/core";
 import { Command } from "commander";
 import {
   buildGatewayConfig,
   buildSlackConfig,
-  ConfigError,
   displayConfig,
   loadEnvFile,
 } from "../config";
@@ -58,7 +57,10 @@ async function main() {
           logger.error("❌ Configuration error:", error.message);
           process.exit(1);
         }
-        logger.error("❌ Failed to start gateway:", error);
+        logger.error(
+          "❌ Failed to start gateway:",
+          error instanceof Error ? error.message : String(error)
+        );
         process.exit(1);
       }
     });

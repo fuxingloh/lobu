@@ -1,14 +1,14 @@
 import { createLogger, DEFAULTS } from "@peerbot/core";
+import type { WebClient } from "@slack/web-api";
 import type {
   QueueProducer,
-  ThreadMessagePayload,
-  WorkerDeploymentPayload,
+  MessagePayload,
 } from "../../infrastructure/queue/queue-producer";
 import type { InteractionService } from "../../interactions";
 import type { ISessionManager, ThreadSession } from "../../session";
 import { generateSessionKey } from "../../session";
 import type { MessageHandlerConfig } from "../config";
-import type { SlackContext, SlackMessageEvent, WebClient } from "../types";
+import type { SlackContext, SlackMessageEvent } from "../types";
 
 const logger = createLogger("dispatcher");
 
@@ -215,12 +215,11 @@ export class MessageHandler {
       if (isNewConversation) {
         await this.sessionManager.setSession(threadSession);
 
-        const deploymentPayload: WorkerDeploymentPayload = {
+        const deploymentPayload: MessagePayload = {
           userId: context.userId,
           botId: this.getBotId(),
           threadId: threadTs,
           platform: "slack",
-          platformUserId: context.userId,
           messageId: context.messageTs,
           messageText: userRequest,
           channelId: context.channelId,
@@ -236,10 +235,6 @@ export class MessageHandler {
           agentOptions: {
             ...this.config.agentOptions,
             timeoutMinutes: this.config.sessionTimeoutMinutes.toString(),
-          },
-          routingMetadata: {
-            targetThreadId: threadTs,
-            userId: context.userId,
           },
         };
 
@@ -260,7 +255,7 @@ export class MessageHandler {
         await this.sessionManager.setSession(threadSession);
 
         // Enqueue to user-specific queue
-        const threadPayload: ThreadMessagePayload = {
+        const threadPayload: MessagePayload = {
           botId: this.getBotId(),
           userId: context.userId,
           threadId: threadTs,
@@ -280,10 +275,6 @@ export class MessageHandler {
           agentOptions: {
             ...this.config.agentOptions,
             timeoutMinutes: this.config.sessionTimeoutMinutes.toString(),
-          },
-          routingMetadata: {
-            targetThreadId: threadTs,
-            userId: context.userId,
           },
         };
 

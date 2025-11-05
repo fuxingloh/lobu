@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
 import { createLogger } from "@peerbot/core";
+import type { ActionsBlockElement, Block as SlackBlock } from "@slack/types";
 import { SLACK } from "../config";
-import type { ActionsBlockElement, SlackBlock } from "../types";
 import { convertMarkdownToSlack } from "./markdown";
 import type { ModuleButton } from "./types";
 
@@ -10,7 +10,7 @@ export type { ModuleButton };
 
 const logger = createLogger("slack-block-builder");
 
-export interface BlockBuilderOptions {
+interface BlockBuilderOptions {
   includeActionButtons?: boolean;
   actionButtons?: ModuleButton[];
   maxBlocks?: number;

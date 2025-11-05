@@ -25,16 +25,3 @@ export async function renderTemplate(
   // Write rendered content
   await writeFile(outputPath, content);
 }
-
-export async function copyTemplate(
-  templateName: string,
-  outputPath: string
-): Promise<void> {
-  const templatePath = join(TEMPLATES_DIR, templateName);
-  const content = await readFile(templatePath);
-
-  // Ensure output directory exists
-  await mkdir(dirname(outputPath), { recursive: true });
-
-  await writeFile(outputPath, content);
-}

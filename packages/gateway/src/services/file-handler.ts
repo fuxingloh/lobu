@@ -1,10 +1,24 @@
 import { Readable } from "node:stream";
-import { createLogger } from "@peerbot/core";
-import type { WebClient } from "../slack/types";
+import { createLogger, sanitizeFilename } from "@peerbot/core";
+import jwt from "jsonwebtoken";
+import type { WebClient } from "@slack/web-api";
 
 const logger = createLogger("file-handler");
 
-export interface SlackFileMetadata {
+// Use existing ENCRYPTION_KEY for JWT signing (32-byte key required by system)
+function getJwtSecret(): string {
+  const secret = process.env.ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error(
+      "ENCRYPTION_KEY environment variable is required for secure file token generation"
+    );
+  }
+  return secret;
+}
+
+const JWT_SECRET = getJwtSecret();
+
+interface SlackFileMetadata {
   id: string;
   name: string;
   mimetype?: string;
@@ -15,7 +29,7 @@ export interface SlackFileMetadata {
   timestamp: number;
 }
 
-export interface FileUploadResult {
+interface FileUploadResult {
   fileId: string;
   permalink: string;
   name: string;
@@ -95,6 +109,15 @@ export class FileHandler {
     }
   ): Promise<FileUploadResult> {
     try {
+      // Sanitize filename to prevent path traversal
+      const safeFilename = sanitizeFilename(options.filename);
+
+      if (safeFilename !== options.filename) {
+        logger.warn(
+          `Filename sanitized from "${options.filename}" to "${safeFilename}"`
+        );
+      }
+
       // Convert stream to buffer for Slack API
       const chunks: Buffer[] = [];
       for await (const chunk of fileStream) {
@@ -103,15 +126,15 @@ export class FileHandler {
       const fileBuffer = Buffer.concat(chunks);
 
       logger.info(
-        `Uploading file ${options.filename} (${fileBuffer.length} bytes) to channel ${options.channelId}, thread ${options.threadTs}`
+        `Uploading file ${safeFilename} (${fileBuffer.length} bytes) to channel ${options.channelId}, thread ${options.threadTs}`
       );
 
       // Use files.uploadV2 for better performance
       const uploadParams: any = {
         channel_id: options.channelId,
-        filename: options.filename,
+        filename: safeFilename,
         file: fileBuffer,
-        title: options.title || options.filename,
+        title: options.title || safeFilename,
       };
 
       if (options.threadTs) {
@@ -173,7 +196,7 @@ export class FileHandler {
   }
 
   /**
-   * Generate a secure file token
+   * Generate a secure file token using JWT
    */
   generateFileToken(
     sessionKey: string,
@@ -183,32 +206,94 @@ export class FileHandler {
     const payload = {
       sessionKey,
       fileId,
-      exp: Date.now() + expiresIn * 1000,
+      type: "file_access",
+      iat: Math.floor(Date.now() / 1000),
     };
-    // In production, use proper JWT signing
-    return Buffer.from(JSON.stringify(payload)).toString("base64");
+
+    try {
+      const token = jwt.sign(payload, JWT_SECRET, {
+        expiresIn, // seconds
+        algorithm: "HS256",
+        issuer: "peerbot-gateway",
+        audience: "peerbot-worker",
+      });
+
+      logger.debug(
+        `Generated JWT file token for session ${sessionKey}, file ${fileId}`
+      );
+      return token;
+    } catch (error) {
+      logger.error("Failed to generate file token:", error);
+      throw new Error("Failed to generate secure file token");
+    }
   }
 
   /**
-   * Validate file token
+   * Validate file token using JWT verification
    */
   validateFileToken(token: string): {
     valid: boolean;
     sessionKey?: string;
     fileId?: string;
+    error?: string;
   } {
     try {
-      const payload = JSON.parse(Buffer.from(token, "base64").toString());
-      if (payload.exp < Date.now()) {
-        return { valid: false };
+      const decoded = jwt.verify(token, JWT_SECRET, {
+        algorithms: ["HS256"],
+        issuer: "peerbot-gateway",
+        audience: "peerbot-worker",
+      });
+
+      // Runtime type check - jwt.verify returns string | JwtPayload
+      if (typeof decoded === "string") {
+        logger.error("JWT decoded to string instead of object");
+        return { valid: false, error: "Invalid token format" };
       }
+
+      // Now we know it's JwtPayload, verify our custom fields exist
+      if (
+        !decoded ||
+        typeof decoded.sessionKey !== "string" ||
+        typeof decoded.fileId !== "string" ||
+        typeof decoded.type !== "string"
+      ) {
+        logger.error("JWT missing required fields");
+        return { valid: false, error: "Invalid token structure" };
+      }
+
+      // Additional validation: ensure token type is correct
+      if (decoded.type !== "file_access") {
+        logger.warn("Invalid token type:", decoded.type);
+        return { valid: false, error: "Invalid token type" };
+      }
+
+      const validatedToken = decoded as {
+        sessionKey: string;
+        fileId: string;
+        type: string;
+      };
+
+      logger.debug(
+        `Validated JWT file token for session ${validatedToken.sessionKey}, file ${validatedToken.fileId}`
+      );
       return {
         valid: true,
-        sessionKey: payload.sessionKey,
-        fileId: payload.fileId,
+        sessionKey: validatedToken.sessionKey,
+        fileId: validatedToken.fileId,
       };
-    } catch {
-      return { valid: false };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.warn(`File token validation failed: ${errorMsg}`);
+
+      // Provide specific error messages for debugging
+      if (error instanceof jwt.TokenExpiredError) {
+        return { valid: false, error: "Token expired" };
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
+        return { valid: false, error: "Invalid token signature" };
+      }
+
+      return { valid: false, error: "Token validation failed" };
     }
   }
 }

@@ -70,11 +70,11 @@ export class WorkerJobRouter {
       (job as { id?: string }).id ||
       `job-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Send job to worker via SSE with jobId
+    // Send job to worker via SSE with jobId wrapped in payload
     const jobPayload =
       typeof jobData === "object" && jobData !== null
-        ? { ...jobData, jobId: jobId }
-        : { data: jobData, jobId: jobId };
+        ? { payload: jobData, jobId: jobId }
+        : { payload: { data: jobData }, jobId: jobId };
 
     this.connectionManager.sendSSE(connection.res, "job", jobPayload);
     this.connectionManager.touchConnection(deploymentName);

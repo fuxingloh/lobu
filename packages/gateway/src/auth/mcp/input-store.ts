@@ -1,5 +1,5 @@
+import { BaseRedisStore } from "@peerbot/core";
 import type { IMessageQueue } from "../../infrastructure/queue";
-import { BaseRedisStore } from "../../infrastructure/redis/store";
 
 export interface InputValues {
   [inputId: string]: string;
@@ -10,10 +10,12 @@ export interface InputValues {
  * Unlike OAuth tokens, these don't expire so we store them without TTL
  */
 export class McpInputStore extends BaseRedisStore<InputValues> {
-  protected readonly keyPrefix = "mcp:inputs";
-
   constructor(queue: IMessageQueue) {
-    super(queue, "mcp-input-store");
+    super({
+      redis: queue.getRedisClient(),
+      keyPrefix: "mcp:inputs",
+      loggerName: "mcp-input-store",
+    });
   }
 
   /**

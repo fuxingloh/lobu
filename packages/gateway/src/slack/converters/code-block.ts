@@ -5,7 +5,7 @@ import type { ModuleButton } from "./types";
 /**
  * Metadata structure parsed from code blocks
  */
-export interface CodeBlockMetadata {
+interface CodeBlockMetadata {
   action?: string;
   show?: boolean;
   [key: string]: string | boolean | number | undefined;
@@ -134,9 +134,6 @@ export function processCodeBlockWithAction(
 /**
  * Validate content length against Slack limits
  */
-export function validateContentLength(
-  content: string,
-  maxLength: number
-): boolean {
+function validateContentLength(content: string, maxLength: number): boolean {
   return content.length <= maxLength;
 }

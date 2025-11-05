@@ -1,23 +1,23 @@
-// Export shared types and utilities that are truly used by both worker and gateway
+#!/usr/bin/env bun
 
-// Export constants
+// Shared exports for @peerbot/core consumers (gateway, worker, external tools)
+
 export * from "./constants";
-// Export constants
+// Constants
 export { DEFAULTS, REDIS_KEYS, TIME } from "./constants";
-// Export error classes
+
+// Errors & logging
 export * from "./errors";
-// Export centralized logger
 export * from "./logger";
-// Export module types explicitly (needed for TypeScript bundling)
-export type {
-  ActionButton,
-  ModuleSessionContext,
-} from "./modules";
-// Export module system
+
+// Module system
+export type { ActionButton, ModuleSessionContext } from "./modules";
 export * from "./modules";
-// Export Sentry
+// Redis & worker helpers
+export * from "./redis/base-store";
+// Observability
 export { initSentry } from "./sentry";
-// Export core types
+// Core types
 export type {
   AgentOptions,
   ConversationMessage,
@@ -35,14 +35,17 @@ export type {
   UserInteractionResponse,
   UserSuggestion,
 } from "./types";
-// Export transport interfaces
+
+// Utilities
+export * from "./utils/encryption";
+export * from "./utils/env";
+export * from "./utils/error-handler";
+export * from "./utils/json";
+export * from "./utils/lock";
+export * from "./utils/retry";
+export * from "./utils/sanitize";
+export * from "./worker/auth";
 export type {
   WorkerTransport,
   WorkerTransportConfig,
 } from "./worker/transport";
-// Export encryption utilities
-export * from "./utils/encryption";
-// Export error handling utilities
-export * from "./utils/error-handler";
-// Export worker authentication
-export * from "./worker/auth";

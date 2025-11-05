@@ -1,6 +1,6 @@
 import { createLogger } from "@peerbot/core";
 import type { App } from "@slack/bolt";
-import type { SlackWebClient } from "../types";
+import type { WebClient } from "@slack/web-api";
 
 const logger = createLogger("dispatcher");
 
@@ -13,7 +13,7 @@ export function setupTeamJoinHandler(
   sendContextAwareWelcome: (
     userId: string,
     channelId: string,
-    client: SlackWebClient,
+    client: WebClient,
     threadTs?: string
   ) => Promise<void>
 ): void {
@@ -37,7 +37,7 @@ export function setupTeamJoinHandler(
       }
 
       // Send context-aware welcome message
-      await sendContextAwareWelcome(userId, im.channel.id, client as any);
+      await sendContextAwareWelcome(userId, im.channel.id, client);
 
       logger.info(`Context-aware welcome message sent to new user ${userId}`);
     } catch (error) {

@@ -194,3 +194,10 @@ export class OrchestratorError extends BaseError {
     };
   }
 }
+
+/**
+ * Error class for configuration-related operations
+ */
+export class ConfigError extends BaseError {
+  readonly name = "ConfigError";
+}

@@ -3,11 +3,18 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AgentOptions, LogLevel } from "@peerbot/core";
-import { createLogger, TIME } from "@peerbot/core";
+import {
+  createLogger,
+  getOptionalBoolean,
+  getOptionalEnv,
+  getOptionalNumber,
+  getRequiredEnv,
+  TIME,
+} from "@peerbot/core";
 import { config as dotenvConfig } from "dotenv";
-import { DEFAULTS, DISPLAY } from "./constants";
 import type { OrchestratorConfig } from "../orchestration/base-deployment-manager";
 import type { SlackConfig } from "../slack";
+import { DEFAULTS, DISPLAY } from "./constants";
 
 const logger = createLogger("cli-config");
 
@@ -45,13 +52,6 @@ export interface GatewayConfig {
   };
 }
 
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ConfigError";
-  }
-}
-
 /**
  * Load environment variables from .env file if in non-production
  */
@@ -76,48 +76,6 @@ export function loadEnvFile(envPath?: string): void {
   } else {
     logger.debug("No .env file found; relying on process environment.");
   }
-}
-
-/**
- * Get required environment variable or throw
- */
-function getRequiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new ConfigError(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
-/**
- * Get optional environment variable with default
- */
-function getOptionalEnv(name: string, defaultValue: string): string {
-  return process.env[name] || defaultValue;
-}
-
-/**
- * Get optional number environment variable with default
- */
-function getOptionalNumber(name: string, defaultValue: number): number {
-  const value = process.env[name];
-  if (!value) return defaultValue;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
-    throw new ConfigError(
-      `Invalid number for ${name}: ${value} (expected integer)`
-    );
-  }
-  return parsed;
-}
-
-/**
- * Get optional boolean environment variable with default
- */
-function getOptionalBoolean(name: string, defaultValue: boolean): boolean {
-  const value = process.env[name];
-  if (!value) return defaultValue;
-  return value === "true";
 }
 
 /**

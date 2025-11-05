@@ -1,4 +1,9 @@
-import { createLogger, ErrorCode, OrchestratorError } from "@peerbot/core";
+import {
+  createLogger,
+  ErrorCode,
+  OrchestratorError,
+  retryWithBackoff,
+} from "@peerbot/core";
 import * as Sentry from "@sentry/node";
 import type { ClaudeCredentialStore } from "../auth/claude/credential-store";
 import type {
@@ -10,7 +15,7 @@ import {
   type BaseDeploymentManager,
   generateDeploymentName,
   type OrchestratorConfig,
-  type QueueJobData,
+  type MessagePayload,
 } from "./base-deployment-manager";
 
 const logger = createLogger("orchestrator");
@@ -65,7 +70,7 @@ export class MessageConsumer {
       // Subscribe to the single messages queue for all messages
       await this.queue.work(
         "messages",
-        async (job: SharedQueueJob<QueueJobData>) => {
+        async (job: SharedQueueJob<MessagePayload>) => {
           return await Sentry.startSpan(
             {
               name: "orchestrator.process_queue_job",
@@ -101,7 +106,7 @@ export class MessageConsumer {
    * Handle all messages - creates deployment for new threads or routes to existing thread queues
    */
   private async handleMessage(
-    job: SharedQueueJob<QueueJobData>
+    job: SharedQueueJob<MessagePayload>
   ): Promise<void> {
     const data = job?.data;
     const jobId = job?.id || "unknown";
@@ -166,11 +171,9 @@ export class MessageConsumer {
         }
       }
 
-      // CRITICAL: For consistent worker naming, always use the targetThreadId if available
-      // This ensures ALL messages in a Slack thread use the SAME worker
-      // Thread ID must be the thread_ts (root message timestamp), NOT individual message timestamps!
-      const effectiveThreadId =
-        data.routingMetadata?.targetThreadId || data.threadId;
+      // CRITICAL: For consistent worker naming, threadId must be the thread_ts (root message timestamp)
+      // Platform adapters (e.g., Slack) must ensure threadId is the root thread ID, NOT individual message timestamps
+      const effectiveThreadId = data.threadId;
 
       const deploymentName = generateDeploymentName(
         data.userId,
@@ -200,54 +203,36 @@ export class MessageConsumer {
       logger.info(`✅ Enqueued message to thread queue for ${deploymentName}`);
 
       // 2) Ensure worker exists in the background (don't block queue send)
-      (async () => {
-        try {
-          // Check if this is truly a new thread by looking for existing deployment
-          const existingDeployments =
-            await this.deploymentManager.listDeployments();
-          const isNewThread = !existingDeployments.some(
-            (d) => d.deploymentName === deploymentName
-          );
+      this.ensureWorkerExists(deploymentName, data).catch((bgError) => {
+        // Capture error for monitoring and alerting
+        Sentry.captureException(bgError, {
+          tags: {
+            component: "deployment-creation",
+            deploymentName,
+            userId: data.userId,
+            threadId: data.threadId,
+          },
+          level: "error",
+        });
 
-          if (isNewThread) {
-            logger.info(
-              `New thread ${data.threadId} - creating deployment ${deploymentName}`
-            );
-            await this.deploymentManager.createWorkerDeployment(
-              data.userId,
-              data.threadId,
-              data
-            );
-            logger.info(`✅ Created deployment: ${deploymentName}`);
-          } else {
-            logger.info(
-              `Existing thread ${data.threadId} - ensuring worker ${deploymentName} exists`
-            );
-            try {
-              await this.deploymentManager.scaleDeployment(deploymentName, 1);
-              logger.info(`✅ Scaled existing worker ${deploymentName} to 1`);
-            } catch (_error) {
-              logger.info(
-                `Worker ${deploymentName} doesn't exist, creating it for thread ${data.threadId}`
-              );
-              await this.deploymentManager.createWorkerDeployment(
-                data.userId,
-                data.threadId,
-                data
-              );
-              logger.info(`✅ Created worker: ${deploymentName}`);
-            }
+        logger.error(
+          `❌ Critical: Background worker creation failed for ${deploymentName}. Messages are queued but worker unavailable.`,
+          {
+            error: bgError instanceof Error ? bgError.message : String(bgError),
+            stack: bgError instanceof Error ? bgError.stack : undefined,
+            deploymentName,
+            userId: data.userId,
+            threadId: data.threadId,
           }
+        );
 
-          // Update deployment activity annotation for simplified tracking
-          await this.deploymentManager.updateDeploymentActivity(deploymentName);
-        } catch (bgError) {
-          logger.warn(
-            `⚠️  Background ensure worker failed for ${deploymentName}:`,
-            bgError instanceof Error ? bgError.message : String(bgError)
-          );
-        }
-      })();
+        // Track failed deployments for monitoring and potential retry
+        this.trackFailedDeployment(deploymentName, data, bgError).catch(
+          (trackError) => {
+            logger.error("Failed to track deployment failure:", trackError);
+          }
+        );
+      });
 
       logger.info(`✅ Message job ${jobId} queued successfully`);
     } catch (error) {
@@ -268,7 +253,7 @@ export class MessageConsumer {
    * Send message to worker queue for the worker to consume
    */
   private async sendToWorkerQueue(
-    data: QueueJobData,
+    data: MessagePayload,
     deploymentName: string
   ): Promise<void> {
     try {
@@ -279,25 +264,12 @@ export class MessageConsumer {
       await this.queue.createQueue(threadQueueName);
 
       // Send message to thread-specific queue
-      const jobId = await this.queue.send(
-        threadQueueName,
-        {
-          ...data,
-          // Add routing metadata
-          routingMetadata: {
-            deploymentName,
-            threadId: data.threadId,
-            userId: data.userId,
-            timestamp: new Date().toISOString(),
-          },
-        },
-        {
-          expireInSeconds: this.config.queues.expireInSeconds,
-          retryLimit: this.config.queues.retryLimit,
-          retryDelay: this.config.queues.retryDelay,
-          priority: 10, // Thread messages have high priority
-        }
-      );
+      const jobId = await this.queue.send(threadQueueName, data, {
+        expireInSeconds: this.config.queues.expireInSeconds,
+        retryLimit: this.config.queues.retryLimit,
+        retryDelay: this.config.queues.retryDelay,
+        priority: 10, // Thread messages have high priority
+      });
 
       if (!jobId) {
         throw new OrchestratorError(
@@ -319,6 +291,110 @@ export class MessageConsumer {
         { deploymentName, data, error },
         true
       );
+    }
+  }
+
+  /**
+   * Ensure worker deployment exists for a thread
+   * Uses shared retry utility with linear backoff + jitter
+   */
+  private async ensureWorkerExists(
+    deploymentName: string,
+    data: MessagePayload
+  ): Promise<void> {
+    return retryWithBackoff(
+      async () => {
+        // Check if this is truly a new thread by looking for existing deployment
+        const existingDeployments =
+          await this.deploymentManager.listDeployments();
+        const isNewThread = !existingDeployments.some(
+          (d) => d.deploymentName === deploymentName
+        );
+
+        if (isNewThread) {
+          logger.info(
+            `New thread ${data.threadId} - creating deployment ${deploymentName}`
+          );
+          await this.deploymentManager.createWorkerDeployment(
+            data.userId,
+            data.threadId,
+            data
+          );
+          logger.info(`✅ Created deployment: ${deploymentName}`);
+        } else {
+          logger.info(
+            `Existing thread ${data.threadId} - ensuring worker ${deploymentName} exists`
+          );
+          try {
+            await this.deploymentManager.scaleDeployment(deploymentName, 1);
+            logger.info(`✅ Scaled existing worker ${deploymentName} to 1`);
+          } catch (_error) {
+            logger.info(
+              `Worker ${deploymentName} doesn't exist, creating it for thread ${data.threadId}`
+            );
+            await this.deploymentManager.createWorkerDeployment(
+              data.userId,
+              data.threadId,
+              data
+            );
+            logger.info(`✅ Created worker: ${deploymentName}`);
+          }
+        }
+
+        // Update deployment activity annotation for simplified tracking
+        await this.deploymentManager.updateDeploymentActivity(deploymentName);
+
+        logger.info(`✅ Worker ${deploymentName} is ready`);
+      },
+      {
+        maxRetries: 3,
+        baseDelay: 2000,
+        strategy: "linear",
+        jitter: true,
+        onRetry: (attempt, error) => {
+          logger.warn(
+            `Attempt ${attempt}/3 failed for ${deploymentName}: ${error.message}`
+          );
+        },
+      }
+    );
+  }
+
+  /**
+   * Track failed deployment creation for monitoring and potential recovery
+   */
+  private async trackFailedDeployment(
+    deploymentName: string,
+    data: MessagePayload,
+    error: unknown
+  ): Promise<void> {
+    try {
+      const failureKey = `deployment:failed:${deploymentName}`;
+      const failureData = {
+        deploymentName,
+        userId: data.userId,
+        threadId: data.threadId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp: new Date().toISOString(),
+        queueName: `thread_message_${deploymentName}`,
+      };
+
+      // Store in Redis with 24h TTL for monitoring dashboards
+      // This allows ops to detect stuck queues and manually intervene
+      const redisClient = this.queue.getRedisClient();
+      await redisClient.setex(
+        failureKey,
+        86400, // 24 hours
+        JSON.stringify(failureData)
+      );
+
+      logger.info(
+        `Tracked deployment failure in Redis: ${failureKey} (TTL: 24h)`
+      );
+    } catch (trackError) {
+      // Don't fail the main flow if tracking fails
+      logger.error("Failed to track deployment failure:", trackError);
     }
   }
 

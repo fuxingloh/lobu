@@ -3,13 +3,15 @@
 import type { IModuleRegistry } from "@peerbot/core";
 import { createLogger } from "@peerbot/core";
 import type { App } from "@slack/bolt";
+import type { WebClient } from "@slack/web-api";
 import type {
   FileDeletedEvent,
   FileSharedEvent,
   GenericMessageEvent,
+  View,
 } from "@slack/types";
-import type { InteractionService } from "../interactions";
 import type { QueueProducer } from "../infrastructure/queue";
+import type { InteractionService } from "../interactions";
 import type { ISessionManager } from "../session";
 
 const logger = createLogger("slack-events");
@@ -21,7 +23,7 @@ import { handleBlockkitFormSubmission } from "./events/forms";
 import { MessageHandler } from "./events/messages";
 import { ShortcutCommandHandler } from "./events/shortcuts";
 import { setupTeamJoinHandler } from "./events/welcome";
-import type { SlackContext, SlackMessageEvent, WebClient } from "./types";
+import type { SlackContext, SlackMessageEvent } from "./types";
 import { isSelfGeneratedEvent } from "./utils";
 
 /**
@@ -492,7 +494,7 @@ export class SlackEventHandlers {
 
         await handleBlockkitFormSubmission(
           userId,
-          view as import("./types").View,
+          view as View,
           client as WebClient,
           async (
             context: SlackContext,

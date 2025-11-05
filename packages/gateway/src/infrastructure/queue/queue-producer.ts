@@ -6,43 +6,28 @@ import type { IMessageQueue } from "./types";
 const logger = createLogger("queue-producer");
 
 /**
- * Payload for deploying a new worker
+ * Universal message payload for all queue stages
+ * Used by: Slack events → Queue → Message Consumer → Job Router → Worker
  */
-export interface WorkerDeploymentPayload {
-  userId: string;
-  botId: string;
-  threadId: string;
-  platform: string;
-  platformUserId: string;
-  messageId: string;
-  messageText: string;
-  channelId: string;
-  platformMetadata: Record<string, any>;
-  agentOptions: Record<string, any>;
-  environmentVariables?: Record<string, string>;
-  routingMetadata?: {
-    targetThreadId: string;
-    userId: string;
-  };
-}
+export interface MessagePayload {
+  // Core identifiers (used by gateway for routing)
+  userId: string; // Platform user ID
+  threadId: string; // Thread/conversation ID (must be root thread ID)
+  messageId: string; // Individual message ID
+  channelId: string; // Platform channel ID
 
-/**
- * Payload for sending a message to an existing thread
- */
-export interface ThreadMessagePayload {
-  botId: string;
-  userId: string;
-  threadId: string;
-  platform: string;
-  channelId: string;
-  messageId: string;
-  messageText: string;
+  // Bot & platform info (passed through to worker)
+  botId: string; // Bot identifier
+  platform: string; // Platform name (e.g., "slack", "discord")
+
+  // Message content (used by worker)
+  messageText: string; // The actual message text
+
+  // Platform-specific data (used by worker for context)
   platformMetadata: Record<string, any>;
+
+  // Agent configuration (used by worker)
   agentOptions: Record<string, any>;
-  routingMetadata?: {
-    targetThreadId: string;
-    userId: string;
-  };
 }
 
 /**
@@ -88,7 +73,7 @@ export class QueueProducer {
    * Orchestrator will determine if it needs to create a deployment or route to existing thread
    */
   async enqueueMessage(
-    payload: WorkerDeploymentPayload | ThreadMessagePayload,
+    payload: MessagePayload,
     options?: {
       priority?: number;
       retryLimit?: number;

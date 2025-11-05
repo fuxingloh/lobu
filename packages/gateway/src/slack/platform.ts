@@ -10,7 +10,7 @@ import {
 import { App, type AppOptions, ExpressReceiver, LogLevel } from "@slack/bolt";
 import { WebClient } from "@slack/web-api";
 import type { NextFunction, Request, Response } from "express";
-import type { WorkerDeploymentPayload } from "../infrastructure/queue/queue-producer";
+import type { MessagePayload } from "../infrastructure/queue/queue-producer";
 import type { CoreServices, PlatformAdapter } from "../platform";
 import { FileHandler } from "../services/file-handler";
 import type { AgentOptions, SlackPlatformConfig } from "./config";
@@ -638,8 +638,8 @@ export class SlackPlatform implements PlatformAdapter {
     const testUserId =
       process.env.TEST_USER_ID || process.env.SLACK_ADMIN_USER_ID || botUserId;
 
-    // Build payload matching WorkerDeploymentPayload structure
-    const payload: WorkerDeploymentPayload = {
+    // Build payload matching MessagePayload structure
+    const payload: MessagePayload = {
       platform: "slack",
       userId: testUserId,
       botId: this.config.slack.botId || "",
@@ -647,7 +647,6 @@ export class SlackPlatform implements PlatformAdapter {
       messageId,
       messageText: message,
       channelId,
-      platformUserId: testUserId,
       platformMetadata: {
         teamId: teamId || "",
         userDisplayName: "Test User",

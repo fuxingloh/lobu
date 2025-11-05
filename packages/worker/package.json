@@ -35,12 +35,14 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.28",
+    "@sentry/node": "^10.6.0",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@peerbot/core": "workspace:*",
     "@peerbot/github": "workspace:*",
-    "@types/chokidar": "^2.1.7",
-    "chokidar": "^4.0.3",
-    "form-data": "^4.0.4"
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "form-data": "^4.0.4",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

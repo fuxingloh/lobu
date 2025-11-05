@@ -6,7 +6,7 @@ import { ClaudeOAuthClient } from "../../auth/oauth/claude-client";
 
 const logger = createLogger("dispatcher");
 
-export interface AnthropicProxyConfig {
+interface AnthropicProxyConfig {
   enabled: boolean;
   anthropicApiKey?: string; // Now optional - may not be set if using OAuth
   anthropicBaseUrl?: string;

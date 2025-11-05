@@ -7,12 +7,13 @@ import type { AgentOptions, ThreadResponsePayload } from "@peerbot/core";
 /**
  * Platform-specific metadata (e.g., Slack team_id, channel, thread_ts)
  */
-export interface PlatformMetadata {
+interface PlatformMetadata {
   team_id?: string;
   channel?: string;
   ts?: string;
   thread_ts?: string;
-  [key: string]: string | number | boolean | undefined;
+  files?: unknown[];
+  [key: string]: string | number | boolean | unknown[] | undefined;
 }
 
 /**
@@ -29,10 +30,6 @@ export interface MessagePayload {
   platformMetadata: PlatformMetadata;
   agentOptions: AgentOptions;
   jobId?: string; // Optional job ID from gateway
-  routingMetadata?: {
-    targetThreadId: string;
-    userId: string;
-  };
 }
 
 /**

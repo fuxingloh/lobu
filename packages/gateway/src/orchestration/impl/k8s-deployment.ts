@@ -5,7 +5,7 @@ import {
   type DeploymentInfo,
   type ModuleEnvVarsBuilder,
   type OrchestratorConfig,
-  type QueueJobData,
+  type MessagePayload,
 } from "../base-deployment-manager";
 import {
   BASE_WORKER_LABELS,
@@ -304,7 +304,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
     deploymentName: string,
     username: string,
     userId: string,
-    messageData?: QueueJobData,
+    messageData?: MessagePayload,
     userEnvVars: Record<string, string> = {}
   ): Promise<void> {
     logger.info(

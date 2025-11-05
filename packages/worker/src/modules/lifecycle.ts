@@ -1,5 +1,4 @@
 import {
-  type ActionButton,
   createLogger,
   type ModuleSessionContext,
   moduleRegistry,
@@ -39,35 +38,6 @@ export async function onSessionStart(
     customInstructions:
       updatedContext.systemPrompt || context.customInstructions,
   };
-}
-
-export async function onSessionEnd(
-  context: SessionContext
-): Promise<ActionButton[]> {
-  const allButtons: ActionButton[] = [];
-
-  // Convert to module session context
-  const moduleContext: ModuleSessionContext = {
-    userId: context.userId,
-    threadId: context.threadId || "",
-    systemPrompt: "",
-    workspace: undefined,
-  };
-
-  const workerModules = moduleRegistry.getWorkerModules();
-  for (const module of workerModules) {
-    try {
-      const buttons = await module.onSessionEnd(moduleContext);
-      allButtons.push(...buttons);
-    } catch (error) {
-      logger.error(
-        `Failed to execute onSessionEnd for module ${module.name}:`,
-        error
-      );
-    }
-  }
-
-  return allButtons;
 }
 
 /**

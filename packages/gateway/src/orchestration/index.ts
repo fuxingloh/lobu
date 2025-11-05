@@ -1,7 +1,6 @@
 export * from "./base-deployment-manager";
 export * from "./deployment-utils";
 export * from "./impl";
-export { MessageConsumer as QueueConsumer } from "./message-consumer";
 
 import { createLogger, moduleRegistry } from "@peerbot/core";
 import type { ClaudeCredentialStore } from "../auth/claude/credential-store";
@@ -208,6 +207,3 @@ export class Orchestrator {
     return this.queueConsumer.getQueueStats();
   }
 }
-
-// Re-export orchestration types for convenience
-export type { generateDeploymentName } from "./base-deployment-manager";

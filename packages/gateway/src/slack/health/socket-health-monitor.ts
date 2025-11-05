@@ -2,7 +2,7 @@ import { createLogger } from "@peerbot/core";
 
 const logger = createLogger("socket-health-monitor");
 
-export interface SocketHealthConfig {
+interface SocketHealthConfig {
   /** How often to check for zombie connection (ms) */
   checkIntervalMs: number;
   /** Consider connection stale if no events for this long (ms) */

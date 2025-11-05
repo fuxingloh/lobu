@@ -1,5 +1,5 @@
-import type { Logger } from "../logger";
 import { BaseError } from "../errors";
+import type { Logger } from "../logger";
 
 /**
  * Standard error handling utilities

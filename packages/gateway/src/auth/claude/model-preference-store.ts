@@ -1,22 +1,26 @@
-import { createLogger } from "@peerbot/core";
+import { BaseRedisStore } from "@peerbot/core";
 import type Redis from "ioredis";
-
-const logger = createLogger("claude-model-preference");
 
 /**
  * Store and retrieve user's Claude model preference from Redis
  * Pattern: claude:model_preference:{userId}
  */
-export class ClaudeModelPreferenceStore {
-  constructor(private redis: Redis) {}
+export class ClaudeModelPreferenceStore extends BaseRedisStore<string> {
+  constructor(redis: Redis) {
+    super({
+      redis,
+      keyPrefix: "claude:model_preference",
+      loggerName: "claude-model-preference",
+    });
+  }
 
   /**
    * Set user's model preference
    */
   async setModelPreference(userId: string, model: string): Promise<void> {
-    const key = this.getKey(userId);
-    await this.redis.set(key, model);
-    logger.info(`Set model preference for user ${userId}: ${model}`);
+    const key = this.buildKey(userId);
+    await this.set(key, model);
+    this.logger.info(`Set model preference for user ${userId}: ${model}`);
   }
 
   /**
@@ -24,22 +28,26 @@ export class ClaudeModelPreferenceStore {
    * Returns null if no preference is set
    */
   async getModelPreference(userId: string): Promise<string | null> {
-    const key = this.getKey(userId);
-    const model = await this.redis.get(key);
-    return model;
+    const key = this.buildKey(userId);
+    return this.get(key);
   }
 
   /**
    * Delete user's model preference
    */
   async deleteModelPreference(userId: string): Promise<void> {
-    const key = this.getKey(userId);
-    await this.redis.del(key);
-    logger.info(`Deleted model preference for user ${userId}`);
+    const key = this.buildKey(userId);
+    await this.delete(key);
+    this.logger.info(`Deleted model preference for user ${userId}`);
   }
 
-  private getKey(userId: string): string {
-    return `claude:model_preference:${userId}`;
+  // Override serialize/deserialize for simple string values
+  protected override serialize(value: string): string {
+    return value; // Store as plain string, not JSON
+  }
+
+  protected override deserialize(data: string): string {
+    return data; // Return as plain string
   }
 
   public async getAvailableModels(): Promise<any[]> {

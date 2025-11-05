@@ -1,5 +1,5 @@
+import { BaseCredentialStore } from "@peerbot/core";
 import type Redis from "ioredis";
-import { BaseCredentialStore } from "../credential-store";
 
 export interface ClaudeCredentials {
   accessToken: string;
@@ -15,7 +15,11 @@ export interface ClaudeCredentials {
  */
 export class ClaudeCredentialStore extends BaseCredentialStore<ClaudeCredentials> {
   constructor(redis: Redis) {
-    super(redis, "claude:credential", "claude-credential-store");
+    super({
+      redis,
+      keyPrefix: "claude:credential",
+      loggerName: "claude-credential-store",
+    });
   }
 
   /**
@@ -26,7 +30,7 @@ export class ClaudeCredentialStore extends BaseCredentialStore<ClaudeCredentials
     credentials: ClaudeCredentials
   ): Promise<void> {
     const key = this.buildKey(userId);
-    await super.setCredentials(key, credentials);
+    await this.set(key, credentials);
 
     this.logger.info(`Stored Claude credentials for user ${userId}`, {
       expiresAt: new Date(credentials.expiresAt).toISOString(),
@@ -40,7 +44,7 @@ export class ClaudeCredentialStore extends BaseCredentialStore<ClaudeCredentials
    */
   async getCredentials(userId: string): Promise<ClaudeCredentials | null> {
     const key = this.buildKey(userId);
-    const credentials = await super.getCredentials(key);
+    const credentials = await this.get(key);
 
     if (!credentials) {
       this.logger.debug(`No Claude credentials found for user ${userId}`);
@@ -54,7 +58,7 @@ export class ClaudeCredentialStore extends BaseCredentialStore<ClaudeCredentials
    */
   async deleteCredentials(userId: string): Promise<void> {
     const key = this.buildKey(userId);
-    await super.deleteCredentials(key);
+    await this.delete(key);
     this.logger.info(`Deleted Claude credentials for user ${userId}`);
   }
 
@@ -63,6 +67,6 @@ export class ClaudeCredentialStore extends BaseCredentialStore<ClaudeCredentials
    */
   async hasCredentials(userId: string): Promise<boolean> {
     const key = this.buildKey(userId);
-    return super.hasCredentials(key);
+    return this.exists(key);
   }
 }

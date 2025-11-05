@@ -1,9 +1,10 @@
 import { createLogger } from "@peerbot/core";
-import type { AnyBlock, WebClient } from "../types";
+import type { AnyBlock } from "@slack/types";
+import type { WebClient } from "@slack/web-api";
 
 const logger = createLogger("slack-message-helper");
 
-export type SlackTarget =
+type SlackTarget =
   | {
       type: "dm";
       userId: string;

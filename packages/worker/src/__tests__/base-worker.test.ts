@@ -4,9 +4,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { InstructionProvider } from "@peerbot/core";
 import { BaseWorker } from "../core/base-worker";
 import type { ProgressUpdate, SessionExecutionResult } from "../core/types";
-import type { InstructionProvider } from "../instructions/types";
 import { mockWorkerConfig, TestHelpers } from "./setup";
 
 class TestWorker extends BaseWorker {

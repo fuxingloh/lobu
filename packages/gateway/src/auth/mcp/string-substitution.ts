@@ -66,30 +66,3 @@ export function substituteObject<T extends Record<string, any>>(
 
   return result as T;
 }
-
-/**
- * Extracts all placeholder references from a string
- *
- * @example
- * extractPlaceholders("${env:A} and ${input:b}")
- * // Returns: [{ type: "env", key: "A" }, { type: "input", key: "b" }]
- */
-export function extractPlaceholders(
-  template: string
-): Array<{ type: "env" | "input"; key: string }> {
-  const placeholders: Array<{ type: "env" | "input"; key: string }> = [];
-  const regex = /\$\{(env|input):([^}]+)\}/g;
-  let match = regex.exec(template);
-
-  while (match !== null) {
-    if (match[1] && match[2]) {
-      placeholders.push({
-        type: match[1] as "env" | "input",
-        key: match[2],
-      });
-    }
-    match = regex.exec(template);
-  }
-
-  return placeholders;
-}

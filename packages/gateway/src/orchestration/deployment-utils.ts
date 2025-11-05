@@ -1,46 +1,15 @@
 import { moduleRegistry } from "@peerbot/core";
-import type { PlatformAdapter } from "../platform";
 import { platformRegistry } from "../platform";
 import type {
   DeploymentInfo,
   OrchestratorConfig,
-  QueueJobData,
+  MessagePayload,
 } from "./base-deployment-manager";
 
 /**
  * Shared types and utilities for deployment managers
  * Reduces code duplication between Docker and K8s implementations
  */
-
-// ============================================================================
-// Metadata Types
-// ============================================================================
-
-export interface PlatformMetadata {
-  teamId?: string;
-  originalMessageTs?: string;
-  botResponseTs?: string;
-}
-
-export interface RoutingMetadata {
-  targetThreadId?: string;
-  deploymentName?: string;
-  threadId?: string;
-  userId?: string;
-  timestamp?: string;
-}
-
-// Re-export core error types for convenience
-export type {
-  ErrorCode,
-  OrchestratorError,
-} from "@peerbot/core";
-
-// Re-export orchestration types
-export type {
-  OrchestratorConfig,
-  QueueJobData,
-} from "./base-deployment-manager";
 
 // ============================================================================
 // Utility Functions
@@ -92,39 +61,6 @@ export class ResourceParser {
 }
 
 /**
- * Build standardized deployment labels
- */
-export function buildDeploymentLabels(
-  userId: string,
-  threadId: string,
-  channelId: string
-): Record<string, string> {
-  return {
-    "peerbot.io/user-id": userId,
-    "peerbot.io/thread-id": threadId,
-    "peerbot.io/channel-id": channelId,
-    "peerbot.io/managed-by": "orchestrator",
-  };
-}
-
-/**
- * Build platform metadata annotations
- * Delegates to the platform adapter to create platform-specific metadata
- */
-export function buildPlatformMetadata(
-  platform: PlatformAdapter,
-  threadId: string,
-  channelId: string,
-  platformMetadata: Record<string, any>
-): Record<string, string> {
-  return platform.buildDeploymentMetadata(
-    threadId,
-    channelId,
-    platformMetadata
-  );
-}
-
-/**
  * Build environment variables by integrating all registered modules
  */
 export async function buildModuleEnvVars(
@@ -156,7 +92,7 @@ export const WORKER_SELECTOR_LABELS = {
 } as const;
 
 export function resolvePlatformDeploymentMetadata(
-  messageData?: QueueJobData
+  messageData?: MessagePayload
 ): Record<string, string> {
   if (
     !messageData?.platform ||
@@ -172,8 +108,7 @@ export function resolvePlatformDeploymentMetadata(
     return {};
   }
 
-  return buildPlatformMetadata(
-    platform,
+  return platform.buildDeploymentMetadata(
     messageData.threadId,
     messageData.channelId,
     messageData.platformMetadata

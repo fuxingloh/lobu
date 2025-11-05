@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createLogger } from "@peerbot/core";
 import type { ProcessInfo } from "./types";
@@ -196,21 +194,4 @@ export async function startTunnel(
       saveCallback(info);
     }
   });
-}
-
-export async function getTunnelLogs(
-  id: string,
-  lines: number = 20
-): Promise<string> {
-  try {
-    const tunnelLogPath = path.join("/tmp/claude-logs", `${id}-tunnel.log`);
-    if (existsSync(tunnelLogPath)) {
-      const tunnelLogs = await readFile(tunnelLogPath, "utf-8");
-      const logLines = tunnelLogs.split("\n");
-      return logLines.slice(-lines).join("\n");
-    }
-  } catch (_e) {
-    // Tunnel log may not exist
-  }
-  return "";
 }

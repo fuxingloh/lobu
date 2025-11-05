@@ -6,7 +6,7 @@ const logger = createLogger("base-worker");
  * Format error message for display
  * Generic error formatter that works for any AI agent
  */
-export function formatErrorMessage(error: unknown): string {
+function formatErrorMessage(error: unknown): string {
   let errorMsg = `💥 Worker crashed`;
 
   if (error instanceof Error) {

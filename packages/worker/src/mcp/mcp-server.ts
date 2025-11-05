@@ -7,16 +7,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createLogger } from "@peerbot/core";
 import { z } from "zod";
-import type { ProcessManager } from "./process-manager";
 import type {
   ProcessInfo,
+  ProcessManagerApi,
   ProcessManagerInstance,
   ResourceParams,
 } from "./types";
 
 const logger = createLogger("worker");
 
-export function createMCPServer(manager: ProcessManager): McpServer {
+export function createMCPServer(manager: ProcessManagerApi): McpServer {
   const server = new McpServer({
     name: "Process Manager",
     version: "1.0.0",

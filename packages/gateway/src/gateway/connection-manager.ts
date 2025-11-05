@@ -5,7 +5,7 @@ import type { Response } from "express";
 
 const logger = createLogger("worker-connection-manager");
 
-export interface WorkerConnection {
+interface WorkerConnection {
   deploymentName: string;
   userId: string;
   threadId: string;

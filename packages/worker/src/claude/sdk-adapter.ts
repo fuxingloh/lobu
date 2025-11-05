@@ -2,7 +2,7 @@
 
 import type { Options as SDKOptions } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { createLogger } from "@peerbot/core";
+import { createLogger, sanitizeForLogging } from "@peerbot/core";
 import type { InteractionClient } from "../common/interaction-client";
 import type { ProgressCallback } from "../core/types";
 import { ensureBaseUrl } from "../core/url-utils";
@@ -43,7 +43,7 @@ export interface ClaudeExecutionOptions {
   continue?: boolean;
 }
 
-export interface ClaudeExecutionResult {
+interface ClaudeExecutionResult {
   success: boolean;
   exitCode: number;
   output: string;
@@ -397,7 +397,9 @@ export async function runClaudeWithSDK(
       }
     }
 
-    logger.info(`SDK options: ${JSON.stringify(sdkOptions, null, 2)}`);
+    logger.info(
+      `SDK options: ${JSON.stringify(sanitizeForLogging(sdkOptions), null, 2)}`
+    );
 
     // Log query start with key parameters for troubleshooting
     const queryStartTime = Date.now();
@@ -422,177 +424,180 @@ export async function runClaudeWithSDK(
     let hasSuccessfulResult = false;
     let firstMessageTime: number | null = null;
 
+    // Setup heartbeat to keep connection alive during long API calls
+    const HEARTBEAT_INTERVAL_MS = 20000; // Send heartbeat every 20 seconds
+    let heartbeatTimer: Timer | null = null;
+    let elapsedTime = 0;
+    let lastHeartbeatTime = Date.now();
+
+    const sendHeartbeat = async () => {
+      // Don't send heartbeat if we're waiting for user interaction
+      if (isWaitingForInteraction) {
+        logger.debug("Suppressing heartbeat - waiting for user interaction");
+        return;
+      }
+
+      const now = Date.now();
+      elapsedTime += now - lastHeartbeatTime;
+      lastHeartbeatTime = now;
+      const seconds = Math.floor(elapsedTime / 1000);
+
+      logger.warn(
+        `⏳ Still is running after ${seconds}s - no response from Claude API yet (messageCount: ${messageCount}, lastType: ${messageCount > 0 ? "message" : "none"})`
+      );
+
+      // Send status update to gateway to update the "is running" indicator with elapsed time
+      if (onProgress) {
+        await onProgress({
+          type: "status_update",
+          data: {
+            elapsedSeconds: seconds,
+            state: "is running..",
+          } as any,
+          timestamp: Date.now(),
+        });
+      }
+    };
+
     // Process streaming responses with timeout check
     const messageIterator = response[Symbol.asyncIterator]();
     let iteratorDone = false;
 
-    while (!iteratorDone) {
-      // Don't check for stderr errors here - we need to process all messages first
-      // Errors will be checked after the loop completes
-
-      const messagePromise = messageIterator.next();
-
-      // Setup heartbeat to keep Slack stream alive during long API calls
-      const HEARTBEAT_INTERVAL_MS = 20000; // Send heartbeat every 20 seconds
-      let heartbeatTimer: Timer | null = null;
-      let elapsedTime = 0;
-
-      const sendHeartbeat = async () => {
-        // Don't send heartbeat if we're waiting for user interaction
-        if (isWaitingForInteraction) {
-          logger.debug("Suppressing heartbeat - waiting for user interaction");
-          return;
-        }
-
-        elapsedTime += HEARTBEAT_INTERVAL_MS;
-        const seconds = Math.floor(elapsedTime / 1000);
-        logger.warn(
-          `⏳ Still is running after ${seconds}s - no response from Claude API yet (messageCount: ${messageCount}, lastType: ${messageCount > 0 ? "message" : "none"})`
-        );
-
-        // Send status update to gateway to update the "is running" indicator with elapsed time
-        if (onProgress) {
-          await onProgress({
-            type: "status_update",
-            data: {
-              elapsedSeconds: seconds,
-              state: "is running..",
-            } as any,
-            timestamp: Date.now(),
-          });
-        }
-      };
-
-      // Start heartbeat timer
+    try {
+      // Start heartbeat timer once for the entire query
       heartbeatTimer = setInterval(() => {
         sendHeartbeat().catch((err) => {
           logger.error("Failed to send heartbeat:", err);
         });
       }, HEARTBEAT_INTERVAL_MS);
 
-      let result;
-      try {
-        result = await Promise.race([
-          messagePromise,
-          // timeoutPromise
-        ]);
-      } finally {
-        // Always clear heartbeat timer when message arrives or error occurs
-        if (heartbeatTimer) {
-          clearInterval(heartbeatTimer);
-          heartbeatTimer = null;
+      while (!iteratorDone) {
+        // Don't check for stderr errors here - we need to process all messages first
+        // Errors will be checked after the loop completes
+
+        const messagePromise = messageIterator.next();
+        const result = await messagePromise;
+
+        if (result.done) {
+          iteratorDone = true;
+          break;
         }
-      }
 
-      if (result.done) {
-        iteratorDone = true;
-        break;
-      }
+        const message = result.value;
 
-      const message = result.value;
+        messageCount++;
+        const now = Date.now();
+        const timeSinceLastMessage = now - lastMessageTime;
+        lastMessageTime = now;
 
-      messageCount++;
-      const now = Date.now();
-      const timeSinceLastMessage = now - lastMessageTime;
-      lastMessageTime = now;
+        // Track first message timing to measure API response time
+        if (!firstMessageTime) {
+          firstMessageTime = now;
+          const timeToFirstMessage = now - queryStartTime;
+          logger.info(
+            `⚡ First message received after ${timeToFirstMessage}ms - type: ${message.type}`
+          );
+        }
 
-      // Track first message timing to measure API response time
-      if (!firstMessageTime) {
-        firstMessageTime = now;
-        const timeToFirstMessage = now - queryStartTime;
         logger.info(
-          `⚡ First message received after ${timeToFirstMessage}ms - type: ${message.type}`
+          `SDK message #${messageCount} (${timeSinceLastMessage}ms since last): ${message.type}`,
+          {
+            messageType: message.type,
+            subtype: "subtype" in message ? message.subtype : undefined,
+            timeSinceLastMessage,
+          }
         );
-      }
 
-      logger.info(
-        `SDK message #${messageCount} (${timeSinceLastMessage}ms since last): ${message.type}`,
-        {
-          messageType: message.type,
-          subtype: "subtype" in message ? message.subtype : undefined,
-          timeSinceLastMessage,
-        }
-      );
-
-      // Send progress updates
-      if (onProgress) {
-        await onProgress({
-          type: "output",
-          data: message,
-          timestamp: Date.now(),
-        });
-      }
-
-      // Handle different message types
-      switch (message.type) {
-        case "system":
-          if (message.subtype === "init") {
-            capturedSessionId = message.session_id;
-            logger.info(`SDK session started: ${capturedSessionId}`);
-          }
-          logger.info(`System message subtype: ${message.subtype}`, {
-            subtype: message.subtype,
-            sessionId: message.session_id,
+        // Send progress updates
+        if (onProgress) {
+          await onProgress({
+            type: "output",
+            data: message,
+            timestamp: Date.now(),
           });
-          break;
+        }
 
-        case "assistant": {
-          const assistantMsg = message.message;
-          if (assistantMsg && Array.isArray(assistantMsg.content)) {
-            logger.info(
-              `Assistant message (${assistantMsg.content.length} blocks)`
-            );
-
-            for (const block of assistantMsg.content) {
-              if (block.type === "text" && block.text) {
-                logger.info(`  Text block: ${block.text.substring(0, 100)}`);
-                output += `${block.text}\n`;
-              } else if (block.type === "tool_use") {
-                logger.info(
-                  `🔧 Tool use: ${block.name} with params: ${JSON.stringify(block.input)}`
-                );
-              }
+        // Handle different message types
+        switch (message.type) {
+          case "system":
+            if (message.subtype === "init") {
+              capturedSessionId = message.session_id;
+              logger.info(`SDK session started: ${capturedSessionId}`);
             }
-          } else {
-            logger.warn(`Unexpected assistant message structure`, {
-              hasMessage: "message" in message,
-              messageType: typeof message.message,
-            });
-          }
-          break;
-        }
-
-        case "result": {
-          if (message.subtype === "success" && "result" in message) {
-            const resultStr = String(message.result);
-            logger.info(
-              `SDK result received (${resultStr.length} chars): ${resultStr.substring(0, 200)}`
-            );
-            output = resultStr;
-            hasSuccessfulResult = true;
-            // Clear any stderr errors since we got a successful result
-            // (Claude CLI may log post-completion errors like metrics opt-out checks)
-            stderrError = null;
-          } else {
-            logger.warn(`Result message without success: ${message.subtype}`, {
+            logger.info(`System message subtype: ${message.subtype}`, {
               subtype: message.subtype,
-              isError: message.is_error,
+              sessionId: message.session_id,
             });
-          }
-          break;
-        }
+            break;
 
-        case "stream_event":
-          logger.debug(`Stream event received`);
-          break;
+          case "assistant": {
+            const assistantMsg = message.message;
+            if (assistantMsg && Array.isArray(assistantMsg.content)) {
+              logger.info(
+                `Assistant message (${assistantMsg.content.length} blocks)`
+              );
 
-        case "user": {
-          const userMsg = message.message;
-          if (userMsg?.content?.[0]?.type === "tool_result") {
-            logger.debug(`Tool result returned to Claude`);
+              for (const block of assistantMsg.content) {
+                if (block.type === "text" && block.text) {
+                  logger.info(`  Text block: ${block.text.substring(0, 100)}`);
+                  output += `${block.text}\n`;
+                } else if (block.type === "tool_use") {
+                  logger.info(
+                    `🔧 Tool use: ${block.name} with params: ${JSON.stringify(block.input)}`
+                  );
+                }
+              }
+            } else {
+              logger.warn(`Unexpected assistant message structure`, {
+                hasMessage: "message" in message,
+                messageType: typeof message.message,
+              });
+            }
+            break;
           }
-          break;
+
+          case "result": {
+            if (message.subtype === "success" && "result" in message) {
+              const resultStr = String(message.result);
+              logger.info(
+                `SDK result received (${resultStr.length} chars): ${resultStr.substring(0, 200)}`
+              );
+              output = resultStr;
+              hasSuccessfulResult = true;
+              // Clear any stderr errors since we got a successful result
+              // (Claude CLI may log post-completion errors like metrics opt-out checks)
+              stderrError = null;
+            } else {
+              logger.warn(
+                `Result message without success: ${message.subtype}`,
+                {
+                  subtype: message.subtype,
+                  isError: message.is_error,
+                }
+              );
+            }
+            break;
+          }
+
+          case "stream_event":
+            logger.debug(`Stream event received`);
+            break;
+
+          case "user": {
+            const userMsg = message.message;
+            if (userMsg?.content?.[0]?.type === "tool_result") {
+              logger.debug(`Tool result returned to Claude`);
+            }
+            break;
+          }
         }
+      }
+    } finally {
+      // Always clear heartbeat timer when query completes or errors
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+        logger.debug("Heartbeat timer cleared");
       }
     }
 

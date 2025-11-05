@@ -6,8 +6,8 @@ import {
   type UserInteraction,
   type UserSuggestion,
 } from "@peerbot/core";
-import type { WebClient } from "@slack/web-api";
 import type { Block } from "@slack/types";
+import type { WebClient } from "@slack/web-api";
 import type { InteractionService } from "../interactions";
 import { convertMarkdownToSlack } from "./converters/markdown";
 

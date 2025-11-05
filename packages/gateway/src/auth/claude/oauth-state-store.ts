@@ -6,7 +6,7 @@ interface ClaudeOAuthStateData {
   codeVerifier: string;
 }
 
-export interface OAuthState extends ClaudeOAuthStateData {
+interface OAuthState extends ClaudeOAuthStateData {
   createdAt: number;
 }
 

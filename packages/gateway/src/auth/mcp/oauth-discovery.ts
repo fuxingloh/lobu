@@ -5,7 +5,7 @@ const logger = createLogger("mcp-oauth-discovery");
 /**
  * OAuth 2.0 Authorization Server Metadata (RFC 8414)
  */
-export interface OAuthServerMetadata {
+interface OAuthServerMetadata {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
@@ -22,7 +22,7 @@ export interface OAuthServerMetadata {
 /**
  * OAuth 2.0 Protected Resource Metadata (RFC 9728)
  */
-export interface ProtectedResourceMetadata {
+interface ProtectedResourceMetadata {
   resource?: string;
   resource_name?: string;
   authorization_servers?: string[];
@@ -33,7 +33,7 @@ export interface ProtectedResourceMetadata {
 /**
  * Dynamic Client Registration Response (RFC 7591)
  */
-export interface ClientCredentials {
+interface ClientCredentials {
   client_id: string;
   client_secret?: string;
   redirect_uris: string[];
@@ -58,7 +58,7 @@ export interface DiscoveredOAuthMetadata {
   expiresAt: number;
 }
 
-export interface McpOAuthDiscoveryServiceOptions {
+interface McpOAuthDiscoveryServiceOptions {
   /**
    * Redis or cache store for discovered metadata
    */

@@ -16,7 +16,7 @@ const logger = createLogger("instruction-generator");
  * @param context - Context information for instruction generation
  * @returns Complete instruction text
  */
-export async function buildInstructions(
+async function buildInstructions(
   providers: InstructionProvider[],
   context: InstructionContext
 ): Promise<string> {

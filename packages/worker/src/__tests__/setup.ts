@@ -3,10 +3,10 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
-import type { WorkerConfig } from "../types";
+import type { WorkerConfig } from "../core/types";
 
 // Mock environment variables for testing
-export const mockEnvVars = {
+const mockEnvVars = {
   DISPATCHER_URL: "https://test-dispatcher.example.com",
   WORKER_TOKEN: "test-worker-token-123",
   THREAD_ID: "1234567890.123456",

@@ -6,7 +6,7 @@ import {
   type DeploymentInfo,
   type ModuleEnvVarsBuilder,
   type OrchestratorConfig,
-  type QueueJobData,
+  type MessagePayload,
 } from "../base-deployment-manager";
 import {
   BASE_WORKER_LABELS,
@@ -135,7 +135,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
   ): Promise<void> {
     const [deploymentName, username, userId, messageDataRaw, userEnvVarsRaw] =
       args;
-    const messageData = messageDataRaw as QueueJobData | undefined;
+    const messageData = messageDataRaw as MessagePayload | undefined;
     const userEnvVars =
       (userEnvVarsRaw as Record<string, string> | undefined) ?? {};
 

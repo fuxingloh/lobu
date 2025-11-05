@@ -1,12 +1,17 @@
 export interface SessionContext {
+  // Core identifiers
   platform: string; // Platform identifier (e.g., "slack", "discord", "teams")
   channelId: string;
   userId: string;
-  messageId?: string;
+  messageId: string; // Required - always needed for tracking
+
+  // Optional context
   threadId?: string;
-  conversationHistory?: ConversationMessage[];
-  customInstructions?: string;
+  teamId?: string; // Platform workspace/team identifier
+  userDisplayName?: string; // For logging/display purposes
   workingDirectory?: string;
+  customInstructions?: string;
+  conversationHistory?: ConversationMessage[];
 }
 
 export interface ConversationMessage {

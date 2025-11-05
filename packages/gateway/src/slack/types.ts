@@ -5,56 +5,8 @@
  * Imports and re-exports types from Slack SDK to ensure type safety
  */
 
-import type {
-  BlockAction,
-  SlackActionMiddlewareArgs,
-  SlackEventMiddlewareArgs,
-  SlackViewMiddlewareArgs,
-} from "@slack/bolt";
-// Import SDK types
-import type {
-  ActionsBlockElement,
-  AnyBlock,
-  AppHomeOpenedEvent,
-  AppMentionEvent,
-  Block,
-  Button,
-  FileSharedEvent,
-  GenericMessageEvent,
-  HomeView,
-  ModalView,
-  TeamJoinEvent,
-  View,
-} from "@slack/types";
-import type { WebClient } from "@slack/web-api";
-
-// Type aliases for convenience
-export type SlackBlock = Block;
-export type SlackWebClient = WebClient;
-
-// Re-export SDK types for convenience
-export type {
-  AnyBlock,
-  Button,
-  ActionsBlockElement,
-  View,
-  ModalView,
-  HomeView,
-};
-export type {
-  AppMentionEvent,
-  AppHomeOpenedEvent,
-  TeamJoinEvent,
-  FileSharedEvent,
-  GenericMessageEvent,
-};
-export type { WebClient };
-export type {
-  BlockAction,
-  SlackActionMiddlewareArgs,
-  SlackEventMiddlewareArgs,
-  SlackViewMiddlewareArgs,
-};
+import type { BlockAction, SlackActionMiddlewareArgs } from "@slack/bolt";
+import type { GenericMessageEvent, ModalView } from "@slack/types";
 
 // App-specific context type (not in SDK)
 export interface SlackContext {
@@ -88,20 +40,5 @@ export type SlackActionBody = SlackActionMiddlewareArgs<BlockAction>["body"];
 export interface ModalViewWithState extends ModalView {
   state: {
     values: Record<string, Record<string, { value?: string }>>;
-  };
-}
-
-// Module action context (app-specific)
-export interface ModuleActionContext {
-  channelId: string;
-  client: WebClient;
-  body: SlackActionBody;
-  updateAppHome: (userId: string, client: WebClient) => Promise<void>;
-  messageHandler: {
-    handleUserRequest: (
-      context: SlackContext,
-      userRequest: string,
-      client: WebClient
-    ) => Promise<void>;
   };
 }

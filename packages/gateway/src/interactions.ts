@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
   createLogger,
   type InteractionOptions,
@@ -9,8 +11,6 @@ import {
   type UserInteraction,
   type UserSuggestion,
 } from "@peerbot/core";
-import { randomUUID } from "node:crypto";
-import { EventEmitter } from "node:events";
 import type { Redis } from "ioredis";
 
 const logger = createLogger("interactions");

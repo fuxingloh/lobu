@@ -23,10 +23,6 @@ const mcpServersData = JSON.parse(mcpServersJson);
 export const MCP_SERVERS: McpServerDefinition[] = mcpServersData.servers;
 
 // Helper function to get OAuth servers
-export function getOAuthServers(): McpServerDefinition[] {
-  return MCP_SERVERS.filter((s) => s.type === "oauth");
-}
-
 // Helper function to generate env variable names
 export function getRequiredEnvVars(servers: McpServerDefinition[]): string[] {
   const envVars = new Set<string>();

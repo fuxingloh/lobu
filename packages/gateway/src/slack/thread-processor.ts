@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import type { IModuleRegistry } from "@peerbot/core";
-import { createLogger, DEFAULTS, REDIS_KEYS } from "@peerbot/core";
+import { AsyncLock, createLogger, DEFAULTS, REDIS_KEYS } from "@peerbot/core";
 import type { AnyBlock } from "@slack/types";
 import { WebClient } from "@slack/web-api";
 import type Redis from "ioredis";
@@ -31,6 +31,7 @@ class StreamSession {
   private threadTs: string;
   private userId: string;
   private teamId?: string;
+  private streamLock: AsyncLock;
 
   constructor(
     slackClient: WebClient,
@@ -44,6 +45,14 @@ class StreamSession {
     this.threadTs = threadTs;
     this.userId = userId;
     this.teamId = teamId;
+    this.streamLock = new AsyncLock(`slack-stream-${channelId}-${threadTs}`);
+  }
+
+  /**
+   * Execute a function with exclusive stream lock to prevent race conditions
+   */
+  private async withStreamLock<T>(fn: () => Promise<T>): Promise<T> {
+    return this.streamLock.acquire(fn);
   }
 
   /**
@@ -96,6 +105,20 @@ class StreamSession {
   }
 
   async appendDelta(
+    delta: string,
+    isFullReplacement: boolean = false
+  ): Promise<string | null> {
+    // Use lock to prevent concurrent stream operations
+    return this.withStreamLock(async () => {
+      return this.appendDeltaUnsafe(delta, isFullReplacement);
+    });
+  }
+
+  /**
+   * Internal implementation of appendDelta without locking
+   * Should only be called from within withStreamLock
+   */
+  private async appendDeltaUnsafe(
     delta: string,
     isFullReplacement: boolean = false
   ): Promise<string | null> {
@@ -188,8 +211,8 @@ class StreamSession {
               // Reset stream state
               this.streamTs = null;
               this.started = false;
-              // Start a fresh stream with the current delta
-              return this.appendDelta(delta, false);
+              // Start a fresh stream with the current delta (already locked, use unsafe version)
+              return this.appendDeltaUnsafe(delta, false);
             }
 
             logger.error(
@@ -208,8 +231,8 @@ class StreamSession {
             // Reset stream state
             this.streamTs = null;
             this.started = false;
-            // Start a fresh stream with the current delta
-            return this.appendDelta(delta, false);
+            // Start a fresh stream with the current delta (already locked, use unsafe version)
+            return this.appendDeltaUnsafe(delta, false);
           }
 
           logger.error(`Exception during chat.appendStream: ${error}`, {
@@ -959,10 +982,10 @@ export class ThreadResponseConsumer {
     threadTs: string,
     moduleData?: Record<string, unknown>
   ): Promise<ModuleButton[]> {
-    const actionButtons: ModuleButton[] = [];
     const dispatcherModules = this.moduleRegistry.getDispatcherModules();
 
-    for (const module of dispatcherModules) {
+    // Generate buttons from all modules in parallel for better performance
+    const buttonPromises = dispatcherModules.map(async (module) => {
       try {
         const moduleButtons = await module.generateActionButtons({
           userId,
@@ -973,6 +996,7 @@ export class ThreadResponseConsumer {
         });
 
         // Validate and convert buttons
+        const validButtons: ModuleButton[] = [];
         for (const btn of moduleButtons) {
           if (!btn.text || !btn.action_id) {
             logger.warn(
@@ -982,20 +1006,28 @@ export class ThreadResponseConsumer {
             continue;
           }
 
-          actionButtons.push({
+          validButtons.push({
             text: btn.text,
             action_id: btn.action_id,
             style: btn.style,
             value: btn.value,
           });
         }
+
+        return validButtons;
       } catch (error) {
         logger.error(
           `Failed to get action buttons from module ${module.name}:`,
           error
         );
+        // Return empty array on error instead of failing entire operation
+        return [];
       }
-    }
+    });
+
+    // Wait for all modules to complete and flatten results
+    const buttonArrays = await Promise.all(buttonPromises);
+    const actionButtons = buttonArrays.flat();
 
     return actionButtons;
   }
@@ -1018,6 +1050,3 @@ export class ThreadResponseConsumer {
     };
   }
 }
-
-// Export functions for backward compatibility
-export { convertMarkdownToSlack };

@@ -11,7 +11,7 @@ import type { ModuleButton } from "./types";
 const logger = createLogger("dispatcher");
 
 // Generate deterministic action IDs based on content to prevent conflicts during rapid message updates - fixed
-export function generateDeterministicActionId(
+function generateDeterministicActionId(
   content: string,
   prefix: string = "action"
 ): string {

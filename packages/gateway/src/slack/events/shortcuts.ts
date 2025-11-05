@@ -1,6 +1,8 @@
 import { createLogger } from "@peerbot/core";
 import type { App } from "@slack/bolt";
-import type { AnyBlock, ModalViewWithState, WebClient } from "../types";
+import type { AnyBlock } from "@slack/types";
+import type { WebClient } from "@slack/web-api";
+import type { ModalViewWithState } from "../types";
 import { sendSlackMessage } from "./message-utils";
 
 const logger = createLogger("dispatcher");

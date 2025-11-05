@@ -29,13 +29,13 @@ export interface OAuth2Config {
   tokenEndpointAuthMethod?: string; // e.g., "none" for PKCE, "client_secret_post" for client secret
 }
 
-export interface McpInput {
+interface McpInput {
   type: "promptString";
   id: string;
   description: string;
 }
 
-export interface HttpMcpServerConfig {
+interface HttpMcpServerConfig {
   id: string;
   upstreamUrl: string;
   oauth?: OAuth2Config;
@@ -44,11 +44,11 @@ export interface HttpMcpServerConfig {
   loginUrl?: string; // Simple OAuth marker - indicates MCP requires auth
 }
 
-export interface WorkerMcpConfig {
+interface WorkerMcpConfig {
   mcpServers: Record<string, any>;
 }
 
-export interface McpStatus {
+interface McpStatus {
   id: string;
   name: string;
   requiresAuth: boolean;
@@ -66,7 +66,7 @@ interface LoadedConfig {
 
 type ConfigSource = { type: "file"; path: string } | { type: "http"; url: URL };
 
-export interface McpConfigServiceOptions {
+interface McpConfigServiceOptions {
   configUrl?: string; // Accepts both URLs (http://, https://) and file paths
   discoveryService?: McpOAuthDiscoveryService;
   credentialStore?: McpCredentialStore;

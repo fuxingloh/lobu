@@ -7,7 +7,7 @@ import type { QueuedMessage } from "./types";
 
 const logger = createLogger("message-batcher");
 
-export interface BatcherConfig {
+interface BatcherConfig {
   onBatchReady?: (messages: QueuedMessage[]) => Promise<void>;
   batchWindowMs?: number;
 }

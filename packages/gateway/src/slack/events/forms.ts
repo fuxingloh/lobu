@@ -1,14 +1,16 @@
 #!/usr/bin/env bun
 
 import { createLogger } from "@peerbot/core";
-import type { ActionsBlock, ContextBlock, SectionBlock } from "@slack/types";
 import type {
+  ActionsBlock,
   AnyBlock,
+  ContextBlock,
   ModalView,
-  SlackContext,
+  SectionBlock,
   View,
-  WebClient,
-} from "../types";
+} from "@slack/types";
+import type { WebClient } from "@slack/web-api";
+import type { SlackContext } from "../types";
 import { type SlackMessagePayload, sendSlackMessage } from "./message-utils";
 
 const logger = createLogger("dispatcher");

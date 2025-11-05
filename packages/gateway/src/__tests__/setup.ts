@@ -45,7 +45,7 @@ export class MockResponse {
 /**
  * Mock Redis Client for testing
  */
-export class MockRedisClient {
+class MockRedisClient {
   private store = new Map<string, { value: string; ttl?: number }>();
   private currentTime = Date.now();
 
@@ -203,7 +203,7 @@ export class TestHelpers {
 /**
  * Mock environment variables
  */
-export const mockEnvVars = {
+const mockEnvVars = {
   WORKER_STALE_TIMEOUT_MINUTES: "10",
   PUBLIC_GATEWAY_URL: "https://test-gateway.example.com",
 };

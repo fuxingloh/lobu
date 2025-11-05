@@ -11,12 +11,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sentry/integrations": "^7.0.0",
     "@sentry/node": "^10.6.0",
-    "bullmq": "^5.31.5",
     "ioredis": "^5.4.1",
-    "winston": "^3.17.0",
-    "zod": "^3.24.4"
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@types/bun": "1.2.11",

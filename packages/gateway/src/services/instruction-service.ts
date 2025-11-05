@@ -9,7 +9,7 @@ import type { McpConfigService } from "../auth/mcp/config-service";
 
 const logger = createLogger("instruction-service");
 
-export interface McpStatus {
+interface McpStatus {
   id: string;
   name: string;
   requiresAuth: boolean;
@@ -18,7 +18,7 @@ export interface McpStatus {
   configured: boolean;
 }
 
-export interface SessionContextData {
+interface SessionContextData {
   platformInstructions: string;
   mcpStatus: McpStatus[];
 }

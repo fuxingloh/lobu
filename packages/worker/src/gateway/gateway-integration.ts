@@ -28,7 +28,7 @@ export class HttpWorkerTransport implements WorkerTransport {
   private jobId?: string;
   private moduleData?: Record<string, unknown>;
   private teamId?: string;
-  private accumulatedStreamContent: string = "";
+  private accumulatedStreamContent: string[] = [];
   private lastStreamDelta: string = "";
 
   constructor(config: WorkerTransportConfig) {
@@ -70,12 +70,12 @@ export class HttpWorkerTransport implements WorkerTransport {
     if (isFinal) {
       logger.info(`🔍 Processing final result with deduplication`);
       logger.info(`Final text length: ${delta.length} chars`);
-      logger.info(
-        `Accumulated length: ${this.accumulatedStreamContent.length} chars`
-      );
+      const accumulatedStr = this.accumulatedStreamContent.join("");
+      const accumulatedLength = accumulatedStr.length;
+      logger.info(`Accumulated length: ${accumulatedLength} chars`);
 
       // Check if final result is identical to what we've already sent
-      if (delta === this.accumulatedStreamContent) {
+      if (delta === accumulatedStr) {
         logger.info(
           `✅ Final result is identical to accumulated content - skipping duplicate`
         );
@@ -83,9 +83,9 @@ export class HttpWorkerTransport implements WorkerTransport {
       }
 
       // Check if accumulated content is a prefix of final result
-      if (delta.startsWith(this.accumulatedStreamContent)) {
+      if (delta.startsWith(accumulatedStr)) {
         // Only send the missing part
-        actualDelta = delta.slice(this.accumulatedStreamContent.length);
+        actualDelta = delta.slice(accumulatedLength);
         if (actualDelta.length === 0) {
           logger.info(
             `✅ Final result fully contained in accumulated content - skipping`
@@ -95,7 +95,7 @@ export class HttpWorkerTransport implements WorkerTransport {
         logger.info(
           `📝 Final result has ${actualDelta.length} new chars - sending delta only`
         );
-      } else if (this.accumulatedStreamContent.length > 0) {
+      } else if (accumulatedLength > 0) {
         const normalizedFinal = this.normalizeForComparison(delta);
         const normalizedLastDelta = this.normalizeForComparison(
           this.lastStreamDelta
@@ -114,18 +114,18 @@ export class HttpWorkerTransport implements WorkerTransport {
         // Content differs - log warning and send full final result
         logger.warn(`⚠️  Final result differs from accumulated content!`);
         logger.warn(
-          `First 100 chars of accumulated: ${this.accumulatedStreamContent.substring(0, 100)}`
+          `First 100 chars of accumulated: ${accumulatedStr.substring(0, 100)}`
         );
         logger.warn(`First 100 chars of final: ${delta.substring(0, 100)}`);
         logger.info(`📤 Sending full final result (${delta.length} chars)`);
       }
     }
 
-    // Track accumulated content for deduplication
+    // Track accumulated content for deduplication using array buffer (O(1) append)
     if (!isFullReplacement) {
-      this.accumulatedStreamContent += actualDelta;
+      this.accumulatedStreamContent.push(actualDelta);
     } else {
-      this.accumulatedStreamContent = actualDelta;
+      this.accumulatedStreamContent = [actualDelta];
     }
     this.lastStreamDelta = actualDelta;
 

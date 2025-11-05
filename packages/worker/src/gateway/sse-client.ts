@@ -3,6 +3,7 @@
  */
 
 import { createLogger } from "@peerbot/core";
+import { z } from "zod";
 import { InteractionClient } from "../common/interaction-client";
 import type { WorkerConfig, WorkerExecutor } from "../core/types";
 import { HttpWorkerTransport } from "./gateway-integration";
@@ -10,6 +11,79 @@ import { MessageBatcher } from "./message-batcher";
 import type { MessagePayload, QueuedMessage } from "./types";
 
 const logger = createLogger("sse-client");
+
+// Zod schemas for runtime validation of SSE event data
+const ConnectedEventSchema = z.object({
+  deploymentName: z.string(),
+});
+
+// PlatformMetadata has known fields plus string index signature
+const PlatformMetadataSchema = z
+  .object({
+    team_id: z.string().optional(),
+    channel: z.string().optional(),
+    ts: z.string().optional(),
+    thread_ts: z.string().optional(),
+    files: z.array(z.any()).optional(),
+  })
+  .and(
+    z.record(
+      z.union([
+        z.string(),
+        z.number(),
+        z.boolean(),
+        z.array(z.any()),
+        z.undefined(),
+      ])
+    )
+  );
+
+// AgentOptions has known fields plus string index signature
+const AgentOptionsSchema = z
+  .object({
+    model: z.string().optional(),
+    maxTokens: z.number().optional(),
+    temperature: z.number().optional(),
+    allowedTools: z.union([z.string(), z.array(z.string())]).optional(),
+    disallowedTools: z.union([z.string(), z.array(z.string())]).optional(),
+    timeoutMinutes: z.union([z.number(), z.string()]).optional(),
+  })
+  .and(
+    z.record(
+      z.union([
+        z.string(),
+        z.number(),
+        z.boolean(),
+        z.array(z.string()),
+        z.undefined(),
+      ])
+    )
+  );
+
+const JobEventSchema = z.object({
+  payload: z.object({
+    botId: z.string(),
+    userId: z.string(),
+    threadId: z.string(),
+    platform: z.string(),
+    channelId: z.string(),
+    messageId: z.string(),
+    messageText: z.string(),
+    platformMetadata: PlatformMetadataSchema,
+    agentOptions: AgentOptionsSchema,
+    jobId: z.string().optional(),
+  }),
+  processedIds: z.array(z.string()).optional(),
+});
+
+const InteractionEventSchema = z.object({
+  interactionId: z.string(),
+  response: z.object({
+    answer: z.string().optional(),
+    formData: z.record(z.any()).optional(),
+    timestamp: z.number(),
+  }),
+});
 
 /**
  * Gateway client for workers - connects to dispatcher via SSE
@@ -28,6 +102,8 @@ export class GatewayClient {
   private maxReconnectAttempts = 10;
   private messageBatcher: MessageBatcher;
   private interactionClient: InteractionClient;
+  private eventErrorCount = 0;
+  private eventErrorThreshold = 10;
 
   constructor(
     dispatcherUrl: string,
@@ -146,10 +222,24 @@ export class GatewayClient {
           logger.info(`[SSE-CLIENT] 🎯 Processing event type: ${eventType}`);
           // Don't await - fire async to avoid blocking SSE reading loop
           this.handleEvent(eventType, eventData).catch((error) => {
+            this.eventErrorCount++;
             logger.error(
-              `[SSE-CLIENT] Error handling ${eventType} event:`,
+              `[SSE-CLIENT] Error handling ${eventType} event (error ${this.eventErrorCount}/${this.eventErrorThreshold}):`,
               error
             );
+
+            // Trigger cleanup if too many errors
+            if (this.eventErrorCount >= this.eventErrorThreshold) {
+              logger.error(
+                `❌ Event error threshold reached (${this.eventErrorCount} errors). Triggering cleanup...`
+              );
+              this.cleanupOnEventError(eventType, error).catch((cleanupErr) => {
+                logger.error(
+                  "Failed to cleanup after event errors:",
+                  cleanupErr
+                );
+              });
+            }
           });
         }
       }
@@ -198,7 +288,20 @@ export class GatewayClient {
   private async handleEvent(eventType: string, data: string): Promise<void> {
     try {
       if (eventType === "connected") {
-        const connData = JSON.parse(data);
+        const parsedData = JSON.parse(data);
+        const validationResult = ConnectedEventSchema.safeParse(parsedData);
+
+        if (!validationResult.success) {
+          logger.error(
+            "Invalid connected event data:",
+            validationResult.error.format()
+          );
+          throw new Error(
+            `Connected event validation failed: ${validationResult.error.message}`
+          );
+        }
+
+        const connData = validationResult.data;
         logger.info(
           `Connected to dispatcher for deployment ${connData.deploymentName}`
         );
@@ -212,10 +315,28 @@ export class GatewayClient {
 
       if (eventType === "job") {
         try {
-          const jobData = JSON.parse(data);
-          await this.handleThreadMessage(jobData);
+          const parsedData = JSON.parse(data);
+          const validationResult = JobEventSchema.safeParse(parsedData);
+
+          if (!validationResult.success) {
+            logger.error(
+              "Invalid job event data:",
+              validationResult.error.format()
+            );
+            logger.debug(`Raw job data: ${data}`);
+            throw new Error(
+              `Job event validation failed: ${validationResult.error.message}`
+            );
+          }
+
+          // Zod validates structure but passthrough allows extra fields
+          // The validated payload matches MessagePayload interface
+          await this.handleThreadMessage(validationResult.data.payload);
         } catch (parseError) {
-          logger.error(`Failed to parse job event data:`, parseError);
+          logger.error(
+            `Failed to parse or validate job event data:`,
+            parseError
+          );
           logger.debug(`Raw job data: ${data}`);
         }
         return;
@@ -224,7 +345,21 @@ export class GatewayClient {
       if (eventType === "interaction") {
         try {
           logger.info(`[SSE-CLIENT] 📨 Raw interaction event data: ${data}`);
-          const { interactionId, response } = JSON.parse(data);
+          const parsedData = JSON.parse(data);
+          const validationResult = InteractionEventSchema.safeParse(parsedData);
+
+          if (!validationResult.success) {
+            logger.error(
+              `[SSE-CLIENT] ❌ Invalid interaction event data:`,
+              validationResult.error.format()
+            );
+            logger.error(`[SSE-CLIENT] Raw interaction data: ${data}`);
+            throw new Error(
+              `Interaction event validation failed: ${validationResult.error.message}`
+            );
+          }
+
+          const { interactionId, response } = validationResult.data;
           logger.info(
             `[SSE-CLIENT] ✅ Received interaction response for ${interactionId}, response: ${JSON.stringify(response)}`
           );
@@ -240,7 +375,7 @@ export class GatewayClient {
           );
         } catch (parseError) {
           logger.error(
-            `[SSE-CLIENT] ❌ Failed to parse interaction event data:`,
+            `[SSE-CLIENT] ❌ Failed to parse or validate interaction event data:`,
             parseError
           );
           logger.error(`[SSE-CLIENT] Raw interaction data: ${data}`);
@@ -362,6 +497,9 @@ export class GatewayClient {
 
       this.currentJobId = undefined;
 
+      // Reset error count on successful message processing
+      this.eventErrorCount = 0;
+
       logger.info(
         `✅ Successfully processed message ${message.payload.messageId} in thread ${message.payload.threadId}`
       );
@@ -434,6 +572,53 @@ export class GatewayClient {
         baseDirectory: "/workspace",
       },
     };
+  }
+
+  /**
+   * Cleanup resources after event handling errors exceed threshold
+   */
+  private async cleanupOnEventError(
+    eventType: string,
+    _error: unknown
+  ): Promise<void> {
+    logger.warn(
+      `Cleaning up after ${this.eventErrorCount} event handling errors (last: ${eventType})`
+    );
+
+    try {
+      // Clean up current worker if it exists
+      if (this.currentWorker) {
+        logger.info("Cleaning up current worker due to event errors");
+        try {
+          await this.currentWorker.cleanup?.();
+        } catch (cleanupError) {
+          logger.error("Worker cleanup failed:", cleanupError);
+        }
+        this.currentWorker = null;
+      }
+
+      // Reset current job
+      if (this.currentJobId) {
+        logger.info(`Clearing stuck job: ${this.currentJobId}`);
+        this.currentJobId = undefined;
+      }
+
+      // Abort SSE connection to trigger reconnect
+      if (this.abortController) {
+        logger.info("Aborting SSE connection to trigger reconnect");
+        this.abortController.abort();
+        this.abortController = undefined;
+      }
+
+      // Reset error count after cleanup
+      this.eventErrorCount = 0;
+
+      logger.info("Event error cleanup completed, will reconnect");
+    } catch (cleanupError) {
+      logger.error("Fatal error during event error cleanup:", cleanupError);
+      // Last resort: stop the client entirely
+      this.isRunning = false;
+    }
   }
 
   isHealthy(): boolean {
