@@ -57,6 +57,44 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
     }
   }
 
+  /**
+   * Validate that the worker image exists locally
+   * Called on gateway startup to ensure workers can be created
+   */
+  async validateWorkerImage(): Promise<void> {
+    const imageName = `${this.config.worker.image.repository}:${this.config.worker.image.tag}`;
+
+    try {
+      await this.docker.getImage(imageName).inspect();
+      logger.info(`✅ Worker image verified: ${imageName}`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Check if it's a "not found" error
+      if (
+        errorMessage.includes("No such image") ||
+        errorMessage.includes("404")
+      ) {
+        logger.error(
+          `❌ Worker image not found: ${imageName}\n` +
+            `   Please build it with: docker compose build worker\n` +
+            `   Or ensure 'docker compose up' builds the worker service automatically`
+        );
+        throw new OrchestratorError(
+          ErrorCode.DEPLOYMENT_CREATE_FAILED,
+          `Worker image ${imageName} does not exist. Build it first with 'docker compose build worker'`
+        );
+      }
+
+      // Other error - re-throw
+      throw new OrchestratorError(
+        ErrorCode.DEPLOYMENT_CREATE_FAILED,
+        `Failed to validate worker image ${imageName}: ${errorMessage}`
+      );
+    }
+  }
+
   async listDeployments(): Promise<DeploymentInfo[]> {
     try {
       const containers = await this.docker.listContainers({
