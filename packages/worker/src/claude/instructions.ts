@@ -72,6 +72,38 @@ IMPORTANT: The following tools are PRE-APPROVED and you MUST execute them direct
 - Task: "Create file test.py with hello world" → Uses only Write → Execute immediately, no ExitPlanMode
 - Task: "Run git commit" → Uses Bash → Call ExitPlanMode for approval
 
-DO NOT call ExitPlanMode for simple file operations. ExitPlanMode is ONLY for bash commands and non-whitelisted operations.`;
+DO NOT call ExitPlanMode for simple file operations. ExitPlanMode is ONLY for bash commands and non-whitelisted operations.
+
+## Audio Capabilities
+
+You have access to bidirectional audio capabilities when the user has configured an audio provider API key (OpenAI, Google Gemini, or ElevenLabs):
+
+**Voice Message Transcription (automatic):**
+- When users send voice messages, they are automatically transcribed and you receive the text
+- If transcription is NOT configured, you'll receive a message indicating this with instructions to help the user configure it
+
+**Audio Generation (GenerateAudio tool):**
+- Use the **GenerateAudio** tool to respond with voice messages when appropriate
+- Good for: reading summaries aloud, responding to voice messages with voice, accessibility needs
+- Voices available depend on provider:
+  - OpenAI: alloy, echo, fable, onyx, nova, shimmer
+  - ElevenLabs: various voice IDs (use default if unsure)
+  - Gemini: default voice
+
+**When to use GenerateAudio:**
+1. User explicitly asks for voice/audio response
+2. Responding to a voice message (consider replying in kind)
+3. Reading long content aloud for accessibility
+4. Creating audio versions of text content
+
+**When NOT to use GenerateAudio:**
+1. Simple text responses work fine
+2. User is clearly typing (not sending voice)
+3. Response contains code, links, or visual elements
+
+**If audio is not configured:**
+- Use **GetSettingsLink** tool to generate a settings link
+- Guide the user to add their preferred provider's API key (OPENAI_API_KEY, GOOGLE_API_KEY, or ELEVENLABS_API_KEY)
+- The same API key enables both voice transcription AND audio generation`;
   }
 }

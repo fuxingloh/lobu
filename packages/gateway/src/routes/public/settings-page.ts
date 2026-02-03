@@ -66,6 +66,7 @@ function getPlatformDisplay(platform: string): { icon: string; name: string } {
 export interface GitHubOptions {
   githubAppConfigured: boolean;
   githubAppInstallUrl?: string;
+  githubOAuthConfigured?: boolean;
 }
 
 export function renderSettingsPage(
@@ -77,6 +78,7 @@ export function renderSettingsPage(
   const s: Partial<AgentSettings> = settings || {};
   const githubAppConfigured = options?.githubAppConfigured ?? false;
   const githubAppInstallUrl = options?.githubAppInstallUrl ?? "";
+  const githubOAuthConfigured = options?.githubOAuthConfigured ?? false;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -377,6 +379,8 @@ export function renderSettingsPage(
 
   <script>
     const token = ${JSON.stringify(token)};
+    const agentId = ${JSON.stringify(payload.agentId)};
+    const githubOAuthConfigured = ${JSON.stringify(githubOAuthConfigured)};
 
     function toggleSection(header) {
       const sectionId = header.querySelector('[id$="-arrow"]').id.replace('-arrow', '-content');
@@ -461,8 +465,8 @@ export function renderSettingsPage(
       settings.historyConfig = { enabled: historyEnabled };
 
       try {
-        const response = await fetch('/api/settings?token=' + encodeURIComponent(token), {
-          method: 'POST',
+        const response = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token), {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(settings)
         });
@@ -492,7 +496,7 @@ export function renderSettingsPage(
 
     async function checkProviders() {
       try {
-        const resp = await fetch('/api/settings/providers?token=' + encodeURIComponent(token));
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token));
         const data = await resp.json();
         for (const [provider, info] of Object.entries(data.providers || {})) {
           updateProviderStatus(provider, info.connected);
@@ -524,7 +528,7 @@ export function renderSettingsPage(
 
     function connectProvider(provider) {
       // Open OAuth in new tab so user can complete auth flow
-      window.open('/api/settings/providers/' + provider + '/login?token=' + encodeURIComponent(token), '_blank');
+      window.open('/api/v1/oauth/providers/' + provider + '/login?token=' + encodeURIComponent(token), '_blank');
 
       // Show the code input section
       const codeInput = document.getElementById(provider + '-code-input');
@@ -555,7 +559,7 @@ export function renderSettingsPage(
           submitBtn.textContent = 'Verifying...';
 
           try {
-            const resp = await fetch('/api/settings/providers/' + provider + '/code?token=' + encodeURIComponent(token), {
+            const resp = await fetch('/api/v1/oauth/providers/' + provider + '/code?token=' + encodeURIComponent(token), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ code })
@@ -584,7 +588,7 @@ export function renderSettingsPage(
     async function disconnectProvider(provider) {
       const name = PROVIDERS[provider]?.name || provider;
       if (!confirm('Disconnect from ' + name + '? You will need to reconnect to use this provider.')) return;
-      await fetch('/api/settings/providers/' + provider + '/logout?token=' + encodeURIComponent(token), { method: 'POST' });
+      await fetch('/api/v1/oauth/providers/' + provider + '/logout?token=' + encodeURIComponent(token), { method: 'POST' });
       checkProviders();
     }
 
@@ -622,29 +626,30 @@ export function renderSettingsPage(
       const unavailableEl = document.getElementById('github-oauth-unavailable');
 
       try {
-        const resp = await fetch('/api/settings/github/user?token=' + encodeURIComponent(token));
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token));
         const data = await resp.json();
 
         loadingEl?.classList.add('hidden');
 
-        if (!data.oauthConfigured) {
+        if (!githubOAuthConfigured) {
           // GitHub OAuth not set up - show unavailable message but still allow app install
           unavailableEl?.classList.remove('hidden');
           initGitHub();
           return;
         }
 
-        if (data.connected && data.user) {
-          connectedGitHubUser = data.user;
-          document.getElementById('github-user-avatar').src = data.user.avatarUrl;
-          document.getElementById('github-user-login').textContent = data.user.login;
+        const githubUser = data.github?.user;
+        if (githubUser) {
+          connectedGitHubUser = githubUser;
+          document.getElementById('github-user-avatar').src = githubUser.avatarUrl;
+          document.getElementById('github-user-login').textContent = githubUser.login;
           connectedEl?.classList.remove('hidden');
           // Now load GitHub repos
           initGitHub();
         } else {
           // Show connect button
           const connectBtn = document.getElementById('github-connect-btn');
-          connectBtn.href = '/api/settings/github/oauth/login?token=' + encodeURIComponent(token);
+          connectBtn.href = '/api/v1/oauth/github/login?token=' + encodeURIComponent(token);
           connectEl?.classList.remove('hidden');
         }
       } catch (e) {
@@ -658,7 +663,7 @@ export function renderSettingsPage(
       if (!confirm('Disconnect your GitHub account?')) return;
 
       try {
-        const resp = await fetch('/api/settings/github/oauth/logout?token=' + encodeURIComponent(token), {
+        const resp = await fetch('/api/v1/oauth/github/logout?token=' + encodeURIComponent(token), {
           method: 'POST'
         });
 
@@ -689,15 +694,15 @@ export function renderSettingsPage(
       loading?.classList.remove('hidden');
 
       try {
-        const resp = await fetch('/api/settings/github/status?token=' + encodeURIComponent(token));
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token));
         const data = await resp.json();
 
-        if (!data.configured) {
+        if (!data.github?.configured) {
           loading?.classList.add('hidden');
           return;
         }
 
-        githubInstallations = data.installations || [];
+        githubInstallations = data.github?.installations || [];
 
         if (githubInstallations.length === 0) {
           loading?.classList.add('hidden');
@@ -789,7 +794,7 @@ export function renderSettingsPage(
       currentInstallationId = installationId;
 
       try {
-        const resp = await fetch('/api/settings/github/repos?token=' + encodeURIComponent(token) + '&installation_id=' + installationId);
+        const resp = await fetch('/api/v1/github/repos?token=' + encodeURIComponent(token) + '&installation_id=' + installationId);
         const data = await resp.json();
 
         githubRepos[installationId] = data.repos || [];
@@ -836,7 +841,7 @@ export function renderSettingsPage(
       document.getElementById('selectedInstallationId').value = currentInstallationId;
 
       try {
-        const resp = await fetch('/api/settings/github/branches?token=' + encodeURIComponent(token) + '&owner=' + owner + '&repo=' + repoName + '&installation_id=' + currentInstallationId);
+        const resp = await fetch('/api/v1/github/branches?token=' + encodeURIComponent(token) + '&owner=' + owner + '&repo=' + repoName + '&installation_id=' + currentInstallationId);
         const data = await resp.json();
 
         branchSelect.innerHTML = '';
@@ -892,7 +897,7 @@ export function renderSettingsPage(
     async function initSkills() {
       // Load curated skills as chips
       try {
-        const resp = await fetch('/api/settings/skills/curated?token=' + encodeURIComponent(token));
+        const resp = await fetch('/api/v1/skills/registry?token=' + encodeURIComponent(token));
         const data = await resp.json();
 
         const chipsContainer = document.getElementById('curatedSkillsChips');
@@ -948,7 +953,7 @@ export function renderSettingsPage(
       resultsContainer.classList.remove('hidden');
 
       try {
-        const resp = await fetch('/api/settings/skills/search?token=' + encodeURIComponent(token) + '&q=' + encodeURIComponent(query));
+        const resp = await fetch('/api/v1/skills/registry?token=' + encodeURIComponent(token) + '&q=' + encodeURIComponent(query));
         const data = await resp.json();
 
         if (data.skills.length === 0) {
@@ -1041,19 +1046,42 @@ export function renderSettingsPage(
       setSkillsLoading(true);
 
       try {
-        const resp = await fetch('/api/settings/skills/add?token=' + encodeURIComponent(token), {
+        // First fetch skill metadata
+        const fetchResp = await fetch('/api/v1/skills/fetch?token=' + encodeURIComponent(token), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ repo: repo })
         });
 
-        const result = await resp.json();
+        const fetchResult = await fetchResp.json();
+        if (!fetchResp.ok) {
+          throw new Error(fetchResult.error || 'Failed to fetch skill');
+        }
+
+        // Add to current skills and save via config
+        const newSkill = {
+          repo: fetchResult.repo,
+          name: fetchResult.name,
+          description: fetchResult.description,
+          enabled: true,
+          content: fetchResult.content,
+          contentFetchedAt: fetchResult.fetchedAt
+        };
+
+        const updatedSkills = [...currentSkills, newSkill];
+
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skillsConfig: { skills: updatedSkills } })
+        });
 
         if (resp.ok) {
-          currentSkills.push(result.skill);
+          currentSkills = updatedSkills;
           renderSkillsList();
           document.getElementById('customSkillRepo').value = '';
         } else {
+          const result = await resp.json();
           throw new Error(result.error || 'Failed to add skill');
         }
       } catch (e) {
@@ -1068,16 +1096,20 @@ export function renderSettingsPage(
       if (!skill) return;
 
       const newEnabled = !skill.enabled;
+      const updatedSkills = currentSkills.map(function(s) {
+        if (s.repo === repo) return { ...s, enabled: newEnabled };
+        return s;
+      });
 
       try {
-        const resp = await fetch('/api/settings/skills/toggle?token=' + encodeURIComponent(token), {
-          method: 'POST',
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token), {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repo: repo, enabled: newEnabled })
+          body: JSON.stringify({ skillsConfig: { skills: updatedSkills } })
         });
 
         if (resp.ok) {
-          skill.enabled = newEnabled;
+          currentSkills = updatedSkills;
           renderSkillsList();
         } else {
           const result = await resp.json();
@@ -1091,15 +1123,17 @@ export function renderSettingsPage(
     async function removeSkill(repo) {
       if (!confirm('Remove this skill?')) return;
 
+      const updatedSkills = currentSkills.filter(function(s) { return s.repo !== repo; });
+
       try {
-        const resp = await fetch('/api/settings/skills/remove?token=' + encodeURIComponent(token), {
-          method: 'DELETE',
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/config?token=' + encodeURIComponent(token), {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repo: repo })
+          body: JSON.stringify({ skillsConfig: { skills: updatedSkills } })
         });
 
         if (resp.ok) {
-          currentSkills = currentSkills.filter(function(s) { return s.repo !== repo; });
+          currentSkills = updatedSkills;
           renderSkillsList();
         } else {
           const result = await resp.json();
@@ -1153,7 +1187,7 @@ export function renderSettingsPage(
       loadingSpinner.classList.remove('hidden');
 
       try {
-        const resp = await fetch('/api/settings/schedules?token=' + encodeURIComponent(token));
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/schedules?token=' + encodeURIComponent(token));
         const data = await resp.json();
 
         if (!resp.ok) {
@@ -1239,7 +1273,7 @@ export function renderSettingsPage(
       loadingSpinner.classList.remove('hidden');
 
       try {
-        const resp = await fetch('/api/settings/schedules/' + encodeURIComponent(scheduleId) + '?token=' + encodeURIComponent(token), {
+        const resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/schedules/' + encodeURIComponent(scheduleId) + '?token=' + encodeURIComponent(token), {
           method: 'DELETE'
         });
 

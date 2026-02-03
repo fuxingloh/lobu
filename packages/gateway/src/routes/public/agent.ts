@@ -476,7 +476,7 @@ const getAgentEventsRoute = createRoute({
 const sendMessageRoute = createRoute({
   method: "post",
   path: "/api/v1/agents/{agentId}/messages",
-  tags: ["Agents"],
+  tags: ["Agent Messages"],
   summary: "Send a message to the agent",
   security: [{ bearerAuth: [] }],
   request: {
@@ -508,7 +508,7 @@ const sendMessageRoute = createRoute({
 const execRoute = createRoute({
   method: "post",
   path: "/api/v1/agents/{agentId}/exec",
-  tags: ["Agents"],
+  tags: ["Agent Exec"],
   summary: "Execute a command in the agent sandbox",
   security: [{ bearerAuth: [] }],
   request: {
@@ -538,7 +538,7 @@ const execRoute = createRoute({
 const execEventsRoute = createRoute({
   method: "get",
   path: "/api/v1/agents/{agentId}/exec/{execId}/events",
-  tags: ["Agents"],
+  tags: ["Agent Exec"],
   summary: "Subscribe to exec output (SSE)",
   security: [{ bearerAuth: [] }],
   request: { params: ExecIdParamSchema },
@@ -557,7 +557,7 @@ const execEventsRoute = createRoute({
 const interactionResponseRoute = createRoute({
   method: "post",
   path: "/api/v1/agents/{agentId}/interactions/{interactionId}",
-  tags: ["Agents"],
+  tags: ["Agent Messages"],
   summary: "Respond to an interaction",
   security: [{ bearerAuth: [] }],
   request: {

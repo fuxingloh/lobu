@@ -145,6 +145,13 @@ export class WhatsAppPlatform implements PlatformAdapter {
       logger.info("✅ Agent settings store wired to WhatsApp message handler");
     }
 
+    // Wire up transcription service for voice messages
+    const transcriptionService = services.getTranscriptionService();
+    if (transcriptionService && this.messageHandler) {
+      this.messageHandler.setTranscriptionService(transcriptionService);
+      logger.info("✅ Transcription service wired to WhatsApp message handler");
+    }
+
     logger.info("WhatsApp platform initialized");
   }
 
@@ -321,9 +328,53 @@ export class WhatsAppPlatform implements PlatformAdapter {
       this.config.whatsapp.selfChatEnabled && normalizedChannel === selfE164;
 
     // Send the actual WhatsApp message
-    const result = await this.client.sendMessage(resolvedChannel, {
-      text: cleanMessage,
-    });
+    let result: { messageId: string };
+
+    // Handle file attachments
+    if (options.files?.length && options.files[0]) {
+      const file = options.files[0];
+      const mimeType = this.getMimeType(file.filename);
+      const isAudio =
+        mimeType.startsWith("audio/") ||
+        file.filename.match(/\.(ogg|mp3|m4a|wav|opus)$/i);
+      const isImage = mimeType.startsWith("image/");
+      const isVideo = mimeType.startsWith("video/");
+
+      if (isAudio) {
+        result = await this.client.sendMessage(resolvedChannel, {
+          audio: file.buffer,
+          mimetype:
+            mimeType === "application/octet-stream"
+              ? "audio/ogg; codecs=opus"
+              : mimeType,
+          ptt: true, // Voice note (push-to-talk)
+        });
+      } else if (isImage) {
+        result = await this.client.sendMessage(resolvedChannel, {
+          image: file.buffer,
+          mimetype: mimeType,
+          caption: cleanMessage || undefined,
+        });
+      } else if (isVideo) {
+        result = await this.client.sendMessage(resolvedChannel, {
+          video: file.buffer,
+          mimetype: mimeType,
+          caption: cleanMessage || undefined,
+        });
+      } else {
+        // Send as document
+        result = await this.client.sendMessage(resolvedChannel, {
+          document: file.buffer,
+          mimetype: mimeType,
+          fileName: file.filename,
+          caption: cleanMessage || undefined,
+        });
+      }
+    } else {
+      result = await this.client.sendMessage(resolvedChannel, {
+        text: cleanMessage,
+      });
+    }
 
     // If self-chat, queue the message directly to bypass event handler filter
     if (isSelfMessage) {
@@ -378,6 +429,37 @@ export class WhatsAppPlatform implements PlatformAdapter {
     return {
       messageId: result.messageId,
     };
+  }
+
+  /**
+   * Get MIME type from filename extension.
+   */
+  private getMimeType(filename: string): string {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    const mimeTypes: Record<string, string> = {
+      // Audio
+      ogg: "audio/ogg; codecs=opus",
+      mp3: "audio/mpeg",
+      m4a: "audio/mp4",
+      wav: "audio/wav",
+      opus: "audio/opus",
+      // Image
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      gif: "image/gif",
+      webp: "image/webp",
+      // Video
+      mp4: "video/mp4",
+      webm: "video/webm",
+      mov: "video/quicktime",
+      // Documents
+      pdf: "application/pdf",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      txt: "text/plain",
+    };
+    return mimeTypes[ext] || "application/octet-stream";
   }
 
   /**

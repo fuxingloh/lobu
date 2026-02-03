@@ -55,15 +55,8 @@ export function createFileRoutes(
         `Worker downloading file ${fileId} for thread ${worker.threadId}`
       );
 
-      const slackToken = process.env.SLACK_BOT_TOKEN;
-      if (!slackToken) {
-        return c.json({ error: "Slack token not configured" }, 500);
-      }
-
-      const { stream, metadata } = await fileHandler.downloadFile(
-        fileId,
-        slackToken
-      );
+      // Each platform's file handler manages its own authentication internally
+      const { stream, metadata } = await fileHandler.downloadFile(fileId);
 
       c.header("Content-Type", metadata.mimetype || "application/octet-stream");
       c.header("Content-Length", metadata.size.toString());
@@ -99,6 +92,7 @@ export function createFileRoutes(
       const worker = c.get("worker");
       const channelId = c.req.header("x-channel-id");
       const threadId = c.req.header("x-thread-id");
+      const voiceMessage = c.req.header("x-voice-message") === "true";
 
       if (!channelId || !threadId) {
         return c.json({ error: "Missing channel or thread ID" }, 400);
@@ -115,7 +109,7 @@ export function createFileRoutes(
       const initialComment = formData.get("comment") as string | null;
 
       logger.info(
-        `Worker uploading file ${filename} for thread ${worker.threadId} to Slack thread ${threadId}`
+        `Worker uploading file ${filename} for thread ${worker.threadId} to thread ${threadId}${voiceMessage ? " as voice message" : ""}`
       );
 
       const arrayBuffer = await file.arrayBuffer();
@@ -126,6 +120,7 @@ export function createFileRoutes(
         channelId,
         threadTs: threadId,
         initialComment: initialComment || undefined,
+        voiceMessage,
       });
 
       logger.info(`File uploaded successfully: ${result.fileId}`);

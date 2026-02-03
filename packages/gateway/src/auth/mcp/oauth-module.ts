@@ -2,6 +2,7 @@ import { BaseModule, createLogger, decrypt, encrypt } from "@peerbot/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { GenericOAuth2Client } from "../oauth/generic-client";
+import type { McpOAuthStateStore } from "../oauth/state-store";
 import {
   formatMcpName,
   renderOAuthErrorPage,
@@ -10,7 +11,6 @@ import {
 import type { McpConfigService } from "./config-service";
 import type { McpCredentialStore } from "./credential-store";
 import type { McpInputStore } from "./input-store";
-import type { McpOAuthStateStore } from "./oauth-state-store";
 
 const logger = createLogger("mcp-oauth-module");
 
@@ -544,7 +544,11 @@ export class McpOAuthModule extends BaseModule {
       }
 
       // Generate and store state (include agentId for credential storage)
-      const state = await this.stateStore.create({ userId, agentId, mcpId });
+      const state = await this.stateStore.createWithNonce({
+        userId,
+        agentId,
+        mcpId,
+      });
 
       // Build OAuth URL
       const loginUrl = this.oauth2Client.buildAuthUrl(

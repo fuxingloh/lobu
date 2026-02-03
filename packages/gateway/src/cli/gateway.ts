@@ -6,7 +6,10 @@ import { createLogger } from "@peerbot/core";
 import { apiReference } from "@scalar/hono-api-reference";
 import { cors } from "hono/cors";
 import type { GatewayConfig } from "../config";
-import { registerAutoOpenApiRoutes } from "../routes/openapi-auto";
+import {
+  getAllRoutes,
+  registerAutoOpenApiRoutes,
+} from "../routes/openapi-auto";
 import type { SlackConfig } from "../slack";
 import type { WhatsAppConfig } from "../whatsapp/config";
 
@@ -131,6 +134,27 @@ function setupServer(
     }
   }
 
+  // Settings link routes (worker can generate settings links for users)
+  {
+    const {
+      createSettingsLinkRoutes,
+    } = require("../routes/internal/settings-link");
+    const settingsLinkRouter = createSettingsLinkRoutes();
+    app.route("", settingsLinkRouter);
+    logger.info("Settings link routes enabled at :8080/internal/settings-link");
+  }
+
+  // Audio routes (TTS synthesis for workers)
+  if (coreServices) {
+    const transcriptionService = coreServices.getTranscriptionService();
+    if (transcriptionService) {
+      const { createAudioRoutes } = require("../routes/internal/audio");
+      const audioRouter = createAudioRoutes(transcriptionService);
+      app.route("", audioRouter);
+      logger.info("Audio routes enabled at :8080/internal/audio/*");
+    }
+  }
+
   // Interaction routes (already Hono)
   if (interactionService) {
     const {
@@ -173,54 +197,120 @@ function setupServer(
   }
 
   if (coreServices) {
-    // Mount OAuth modules (Hono)
+    // Mount OAuth modules under unified auth router
+    const authRouter = new OpenAPIHono();
+    const registeredProviders: string[] = [];
+
     const claudeOAuthModule = coreServices.getClaudeOAuthModule();
     if (claudeOAuthModule) {
-      app.route("/api/v1/auth/claude", claudeOAuthModule.getApp());
-      logger.info("Claude OAuth routes enabled at :8080/api/v1/auth/claude/*");
+      authRouter.route("/claude", claudeOAuthModule.getApp());
+      registeredProviders.push("claude");
     }
 
     const mcpOAuthModule = coreServices.getMcpOAuthModule();
     if (mcpOAuthModule) {
-      app.route("/api/v1/auth/mcp", mcpOAuthModule.getApp());
-      logger.info("MCP OAuth routes enabled at :8080/api/v1/auth/mcp/*");
+      authRouter.route("/mcp", mcpOAuthModule.getApp());
+      registeredProviders.push("mcp");
     }
 
-    // Settings routes (magic link configuration)
+    // Mount unified auth router
+    if (registeredProviders.length > 0) {
+      app.route("/api/v1/auth", authRouter);
+      logger.info(
+        `Auth routes enabled at :8080/api/v1/auth/{provider}/* for providers: ${registeredProviders.join(", ")}`
+      );
+    }
+
+    // Get shared dependencies
     const agentSettingsStore = coreServices.getAgentSettingsStore();
+    const claudeCredentialStore = coreServices.getClaudeCredentialStore();
+    const claudeOAuthStateStore = coreServices.getClaudeOAuthStateStore();
+    const gitFilesystemModule = coreServices.getGitFilesystemModule();
+    const githubAuth = gitFilesystemModule?.getGitHubAuth() || undefined;
+    const githubAppInstallUrl = process.env.GITHUB_APP_INSTALL_URL;
+    const scheduledWakeupService = coreServices.getScheduledWakeupService();
+
+    // Settings HTML page
     if (agentSettingsStore) {
-      const { createSettingsRoutes } = require("../routes/public/settings");
+      const { createSettingsPageRoutes } = require("../routes/public/settings");
+      const settingsPageRouter = createSettingsPageRoutes({
+        agentSettingsStore,
+        githubAuth,
+        githubAppInstallUrl,
+        githubOAuthClientId: process.env.GITHUB_CLIENT_ID,
+      });
+      app.route("", settingsPageRouter);
+      logger.info("Settings HTML page enabled at :8080/settings");
+    }
+
+    // Agent config routes (/api/v1/agents/{id}/config)
+    if (agentSettingsStore) {
+      const {
+        createAgentConfigRoutes,
+      } = require("../routes/public/agent-config");
+      const agentConfigRouter = createAgentConfigRoutes({
+        agentSettingsStore,
+        providerStores: claudeCredentialStore
+          ? { claude: claudeCredentialStore }
+          : undefined,
+        githubAuth,
+        githubAppInstallUrl,
+        githubOAuthClientId: process.env.GITHUB_CLIENT_ID,
+      });
+      app.route("/api/v1/agents/:agentId/config", agentConfigRouter);
+      logger.info(
+        "Agent config routes enabled at :8080/api/v1/agents/{id}/config"
+      );
+    }
+
+    // Agent schedules routes (/api/v1/agents/{id}/schedules)
+    {
+      const {
+        createAgentSchedulesRoutes,
+      } = require("../routes/public/agent-schedules");
+      const agentSchedulesRouter = createAgentSchedulesRoutes({
+        scheduledWakeupService,
+      });
+      app.route("/api/v1/agents/:agentId/schedules", agentSchedulesRouter);
+      logger.info(
+        "Agent schedules routes enabled at :8080/api/v1/agents/{id}/schedules"
+      );
+    }
+
+    // GitHub utility routes (/api/v1/github)
+    if (githubAuth) {
+      const { createGitHubRoutes } = require("../routes/public/github");
+      const githubRouter = createGitHubRoutes({ githubAuth });
+      app.route("/api/v1/github", githubRouter);
+      logger.info("GitHub routes enabled at :8080/api/v1/github/*");
+    }
+
+    // Skills utility routes (/api/v1/skills)
+    {
+      const { createSkillsRoutes } = require("../routes/public/skills");
+      const skillsRouter = createSkillsRoutes();
+      app.route("/api/v1/skills", skillsRouter);
+      logger.info("Skills routes enabled at :8080/api/v1/skills/*");
+    }
+
+    // OAuth routes (/api/v1/oauth)
+    if (agentSettingsStore) {
+      const { createOAuthRoutes } = require("../routes/public/oauth");
       const { ClaudeOAuthClient } = require("../auth/oauth/claude-client");
-
-      // Build provider stores and OAuth clients
-      const claudeCredentialStore = coreServices.getClaudeCredentialStore();
-      const claudeOAuthStateStore = coreServices.getClaudeOAuthStateStore();
       const claudeOAuthClient = new ClaudeOAuthClient();
-
-      // Get GitHub App auth from Git Filesystem module (if configured)
-      const gitFilesystemModule = coreServices.getGitFilesystemModule();
-      const githubAuth = gitFilesystemModule?.getGitHubAuth() || undefined;
-      const githubAppInstallUrl = process.env.GITHUB_APP_INSTALL_URL;
-
-      const settingsRouter = createSettingsRoutes({
+      const oauthRouter = createOAuthRoutes({
         agentSettingsStore,
         providerStores: claudeCredentialStore
           ? { claude: claudeCredentialStore }
           : undefined,
         oauthClients: { claude: claudeOAuthClient },
         oauthStateStore: claudeOAuthStateStore,
-        githubAuth,
-        githubAppInstallUrl,
-        scheduledWakeupService: coreServices.getScheduledWakeupService(),
-        // GitHub OAuth for user identification
         githubOAuthClientId: process.env.GITHUB_CLIENT_ID,
         githubOAuthClientSecret: process.env.GITHUB_CLIENT_SECRET,
         publicGatewayUrl: process.env.PUBLIC_GATEWAY_URL,
       });
-      app.route("", settingsRouter);
-      logger.info(
-        "Settings routes enabled at :8080/settings and :8080/api/v1/settings"
-      );
+      app.route("/api/v1/oauth", oauthRouter);
+      logger.info("OAuth routes enabled at :8080/api/v1/oauth/*");
     }
 
     // Channel binding routes (mount under agent API)
@@ -292,7 +382,16 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
       {
         name: "Agents",
         description:
-          "Create and manage AI agents. Each agent has its own session, can receive messages, and stream responses via SSE.",
+          "Create, manage, and configure AI agents. Includes config (model, network, env vars) and schedules (wakeups, reminders).",
+      },
+      {
+        name: "Agent Messages",
+        description:
+          "Send messages to agents and handle pending tool interactions.",
+      },
+      {
+        name: "Agent Exec",
+        description: "Direct code/command execution endpoints for agents.",
       },
       {
         name: "Channels",
@@ -305,31 +404,22 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
           "Send messages through platform adapters (Slack, WhatsApp, API).",
       },
       {
-        name: "Settings",
+        name: "GitHub",
         description:
-          "Agent configuration via magic link. Manage model preferences, network access, skills, and OAuth providers.",
+          "GitHub repo and branch discovery utilities (used by settings UI).",
       },
       {
         name: "Skills",
         description:
-          "Browse and manage agent skills from the skills.sh registry.",
+          "Browse and fetch agent skills from the skills.sh registry.",
       },
       {
-        name: "GitHub",
-        description: "GitHub App integration for repository access and OAuth.",
-      },
-      {
-        name: "Schedules",
-        description: "Manage scheduled agent wakeups and reminders.",
+        name: "OAuth",
+        description: "OAuth code exchange for Claude and other providers.",
       },
       {
         name: "Auth",
         description: "OAuth authentication flows for Claude and MCP servers.",
-      },
-      {
-        name: "Internal",
-        description:
-          "Worker-facing routes for file access, history, and interactions. Not for external use.",
       },
       {
         name: "System",
@@ -351,6 +441,22 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
     })
   );
   logger.info("API docs enabled at :8080/api/docs");
+
+  // Debug endpoint to view all routes (including internal)
+  app.get("/api/docs/routes", (c) => {
+    const routes = getAllRoutes(app);
+    const publicRoutes = routes.filter((r) => !r.internal);
+    const internalRoutes = routes.filter((r) => r.internal);
+    return c.json({
+      total: routes.length,
+      public: publicRoutes.length,
+      internal: internalRoutes.length,
+      routes: {
+        public: publicRoutes,
+        internal: internalRoutes,
+      },
+    });
+  });
 
   // Start the server
   const port = 8080;

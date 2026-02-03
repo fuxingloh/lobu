@@ -305,7 +305,10 @@ export async function startProcessManager(): Promise<ProcessManagerInstance> {
     );
     return instance;
   } catch (error) {
-    logger.error("❌ Failed to start process manager MCP server:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(
+      `❌ Failed to start process manager MCP server: ${errorMessage}`
+    );
     throw error;
   }
 }

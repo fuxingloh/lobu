@@ -5,10 +5,27 @@ type OpenApiDefinition =
   | { type: "route"; route: { method: string; path: string } }
   | { type: string; route?: { method: string; path: string } };
 
+// Internal route prefixes - worker-facing, excluded from public docs
+const INTERNAL_PREFIXES = ["/api/anthropic", "/internal", "/worker", "/mcp"];
+
+// Routes that render HTML pages or are browser redirects (not API endpoints)
+const EXCLUDED_ROUTES = [
+  "/settings", // HTML settings page
+  "/api/v1/oauth/providers/{provider}/login", // OAuth redirect
+  "/api/v1/oauth/github/login", // GitHub OAuth redirect
+  "/api/v1/oauth/github/callback", // GitHub OAuth callback
+];
+
+function isInternalRoute(path: string): boolean {
+  return INTERNAL_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function isExcludedRoute(path: string): boolean {
+  return EXCLUDED_ROUTES.includes(path);
+}
+
 function normalizePath(path: string): string {
-  // Convert Hono-style params (:id or :id{.+}) to OpenAPI {id}
   let normalized = path.replace(/:([A-Za-z0-9_]+)(?:\{[^}]+\})?/g, "{$1}");
-  // Convert wildcard to OpenAPI-style param
   normalized = normalized.replace(/\/\*/g, "/{wildcard}");
   normalized = normalized.replace(/\*/g, "{wildcard}");
   return normalized;
@@ -24,59 +41,68 @@ function extractPathParams(path: string): string[] {
   return params;
 }
 
+/**
+ * Derive an appropriate tag for routes not already defined via app.openapi.
+ * Maps route paths to API documentation categories.
+ */
 function deriveTag(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length === 0) {
+  // System routes
+  if (
+    path.startsWith("/health") ||
+    path.startsWith("/ready") ||
+    path.startsWith("/metrics")
+  ) {
     return "System";
   }
 
-  const first = parts[0] || "";
-  const second = parts[1] || "";
-  const third = parts[2] || "";
-
-  // Handle /api/v1/* structure
-  if (first === "api" && second === "v1" && third) {
-    const resource = third;
-    // Map to proper tag names
-    if (resource === "agents") {
-      // Check for nested resources
-      if (parts.includes("channels")) return "Channels";
-      if (parts.includes("skills")) return "Skills";
-      if (parts.includes("schedules")) return "Schedules";
-      if (parts.includes("github")) return "GitHub";
-      if (parts.includes("settings")) return "Settings";
-      return "Agents";
-    }
-    if (resource === "messaging") return "Messaging";
-    if (resource === "settings") return "Settings";
-    if (resource === "skills") return "Skills";
-    if (resource === "auth") return "Auth";
-    // Capitalize first letter
-    return resource.charAt(0).toUpperCase() + resource.slice(1);
+  // Auth routes
+  if (path.startsWith("/api/v1/auth/")) {
+    return "Auth";
   }
 
-  // Handle /internal/* routes
-  if (first === "internal") {
-    return "Internal";
+  // Agent routes
+  if (path.startsWith("/api/v1/agents")) {
+    if (path.includes("/channels")) return "Channels";
+    if (path.includes("/exec")) return "Agent Exec";
+    if (path.includes("/messages") || path.includes("/interactions"))
+      return "Agent Messages";
+    return "Agents";
   }
 
-  // Handle health/metrics/etc
-  if (["health", "ready", "metrics"].includes(first)) {
-    return "System";
+  // GitHub utility routes
+  if (path.startsWith("/api/v1/github")) {
+    return "GitHub";
   }
 
-  // Handle settings page
-  if (first === "settings") {
-    return "Settings";
+  // Skills utility routes
+  if (path.startsWith("/api/v1/skills")) {
+    return "Skills";
   }
 
-  // Default: capitalize first segment
-  return first.charAt(0).toUpperCase() + first.slice(1);
+  // OAuth utility routes
+  if (path.startsWith("/api/v1/oauth")) {
+    return "OAuth";
+  }
+
+  // Messaging routes
+  if (
+    path.startsWith("/api/messaging/") ||
+    path.startsWith("/api/v1/messaging/")
+  ) {
+    return "Messaging";
+  }
+
+  // MCP routes
+  if (path.startsWith("/mcp/")) {
+    return "MCP Servers";
+  }
+
+  return "Other";
 }
 
 /**
- * Register OpenAPI paths for all Hono routes not already defined via app.openapi.
- * This keeps a single auto-generated OpenAPI schema for the entire gateway.
+ * Register OpenAPI paths for routes not already defined via app.openapi.
+ * Internal routes (worker-facing) are excluded from public docs.
  */
 export function registerAutoOpenApiRoutes(app: OpenAPIHono): void {
   const registered = new Set<string>();
@@ -99,7 +125,18 @@ export function registerAutoOpenApiRoutes(app: OpenAPIHono): void {
 
     const path = normalizePath(route.path);
     const key = `${method} ${path}`;
+
     if (registered.has(key)) {
+      continue;
+    }
+
+    // Skip internal routes - they shouldn't be in public docs
+    if (isInternalRoute(path)) {
+      continue;
+    }
+
+    // Skip excluded routes (HTML pages, OAuth redirects)
+    if (isExcludedRoute(path)) {
       continue;
     }
 
@@ -125,4 +162,22 @@ export function registerAutoOpenApiRoutes(app: OpenAPIHono): void {
     app.openAPIRegistry.registerPath(routeConfig);
     registered.add(key);
   }
+}
+
+/**
+ * Get all registered routes for debugging.
+ * Returns both public and internal routes.
+ */
+export function getAllRoutes(app: OpenAPIHono): Array<{
+  method: string;
+  path: string;
+  internal: boolean;
+}> {
+  return app.routes
+    .filter((r) => r.method.toLowerCase() !== "all")
+    .map((r) => ({
+      method: r.method.toUpperCase(),
+      path: normalizePath(r.path),
+      internal: isInternalRoute(r.path),
+    }));
 }

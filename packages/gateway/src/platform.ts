@@ -7,8 +7,8 @@ import type {
 } from "@peerbot/core";
 import type { ClaudeCredentialStore } from "./auth/claude/credential-store";
 import type { ClaudeModelPreferenceStore } from "./auth/claude/model-preference-store";
-import type { ClaudeOAuthStateStore } from "./auth/claude/oauth-state-store";
 import type { McpProxy } from "./auth/mcp/proxy";
+import type { ClaudeOAuthStateStore } from "./auth/oauth/state-store";
 import type { AgentSettingsStore } from "./auth/settings";
 import type { ChannelBindingService } from "./channels";
 import type { WorkerGateway } from "./gateway";
@@ -17,6 +17,7 @@ import type { IMessageQueue, QueueProducer } from "./infrastructure/queue";
 import type { InteractionService } from "./interactions";
 import type { ResponseRenderer } from "./platform/response-renderer";
 import type { InstructionService } from "./services/instruction-service";
+import type { TranscriptionService } from "./services/transcription-service";
 import type { ISessionManager } from "./session";
 
 // ============================================================================
@@ -42,6 +43,7 @@ export interface CoreServices {
   getInteractionService(): InteractionService;
   getAgentSettingsStore(): AgentSettingsStore;
   getChannelBindingService(): ChannelBindingService;
+  getTranscriptionService(): TranscriptionService | undefined;
 }
 
 // ============================================================================

@@ -122,7 +122,7 @@ for i in "${!MESSAGES[@]}"; do
     esac
 
     # Send message
-    RESPONSE=$(curl -s -X POST http://localhost:8080/api/messaging/send \
+    RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/messaging/send \
       -H "Authorization: Bearer $AUTH_TOKEN" \
       -H "Content-Type: application/json" \
       -d "$BODY")

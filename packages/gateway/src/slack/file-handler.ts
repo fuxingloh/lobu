@@ -30,13 +30,26 @@ interface SlackFileMetadata extends FileMetadata {
 
 export class SlackFileHandler implements IFileHandler {
   private uploadedFiles = new Map<string, Set<string>>();
+  private bearerToken: string;
 
-  constructor(private slackClient: WebClient) {}
+  constructor(
+    private slackClient: WebClient,
+    bearerToken?: string
+  ) {
+    // Get token from parameter or environment
+    this.bearerToken = bearerToken || process.env.SLACK_BOT_TOKEN || "";
+    if (!this.bearerToken) {
+      logger.warn("No Slack bearer token provided - file downloads will fail");
+    }
+  }
 
   async downloadFile(
-    fileId: string,
-    bearerToken: string
+    fileId: string
   ): Promise<{ stream: Readable; metadata: FileMetadata }> {
+    if (!this.bearerToken) {
+      throw new Error("Slack bearer token not configured for file downloads");
+    }
+
     const fileInfo = await this.slackClient.files.info({ file: fileId });
 
     if (!fileInfo.ok || !fileInfo.file) {
@@ -58,7 +71,7 @@ export class SlackFileHandler implements IFileHandler {
     };
 
     const response = await fetch(metadata.url_private_download, {
-      headers: { Authorization: `Bearer ${bearerToken}` },
+      headers: { Authorization: `Bearer ${this.bearerToken}` },
     });
 
     if (!response.ok) {

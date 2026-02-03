@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as nodeFs from "node:fs";
 import * as path from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { createLogger } from "@peerbot/core";
@@ -559,6 +560,305 @@ export function createCustomToolsServer(
           };
         } catch (error) {
           logger.error("ListReminders error:", error);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+          };
+        }
+      }
+    )
+  );
+
+  // Add GetSettingsLink tool for directing users to configure their agent
+  tools.push(
+    tool(
+      "GetSettingsLink",
+      "Generate a settings link for the user to configure their agent. Use when the user needs to add API keys (like transcription providers), enable features, change model settings, or configure other options. The link opens a web page where they can securely enter settings.",
+      {
+        reason: z
+          .string()
+          .describe(
+            "Brief explanation of what the user should configure (e.g., 'add your OpenAI API key for voice transcription')"
+          ),
+      } as const,
+      async (args) => {
+        try {
+          logger.info(`GetSettingsLink: ${args.reason}`);
+
+          const response = await fetch(`${gatewayUrl}/internal/settings-link`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${workerToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reason: args.reason }),
+          });
+
+          if (!response.ok) {
+            const errorData = (await response
+              .json()
+              .catch(() => ({ error: response.statusText }))) as {
+              error?: string;
+            };
+            logger.error(
+              `Failed to generate settings link: ${response.status}`,
+              errorData
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: ${errorData.error || "Failed to generate settings link"}`,
+                },
+              ],
+            };
+          }
+
+          const result = (await response.json()) as {
+            url: string;
+            expiresAt: string;
+          };
+
+          logger.info(`Generated settings link: ${result.url}`);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Settings link generated successfully!\n\nURL: ${result.url}\n\nThis link expires in 1 hour.\n\nReason: ${args.reason}\n\nShare this link with the user so they can configure their settings.`,
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error("GetSettingsLink error:", error);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+          };
+        }
+      }
+    )
+  );
+
+  // Add GenerateAudio tool for text-to-speech
+  tools.push(
+    tool(
+      "GenerateAudio",
+      "Generate audio from text (text-to-speech). Use when you want to respond with a voice message, read content aloud, or when the user asks for audio output. The generated audio will be sent as a voice message to the user.",
+      {
+        text: z
+          .string()
+          .max(4096)
+          .describe("The text to convert to speech (max 4096 characters)"),
+        voice: z
+          .string()
+          .optional()
+          .describe(
+            "Voice ID (provider-specific). OpenAI: alloy, echo, fable, onyx, nova, shimmer. ElevenLabs: voice ID. Leave empty for default."
+          ),
+        speed: z
+          .number()
+          .min(0.5)
+          .max(2.0)
+          .optional()
+          .describe(
+            "Speech speed (0.5-2.0, default 1.0). Only supported by some providers."
+          ),
+      } as const,
+      async (args) => {
+        try {
+          logger.info(`GenerateAudio: ${args.text.substring(0, 50)}...`);
+
+          // First check if audio is available
+          const capResponse = await fetch(
+            `${gatewayUrl}/internal/audio/capabilities`,
+            {
+              headers: {
+                Authorization: `Bearer ${workerToken}`,
+              },
+            }
+          );
+
+          if (capResponse.ok) {
+            const capabilities = (await capResponse.json()) as {
+              available: boolean;
+              provider?: string;
+              providers?: Array<{
+                provider: string;
+                name: string;
+                envVar: string;
+              }>;
+            };
+
+            if (!capabilities.available) {
+              const providerList =
+                capabilities.providers
+                  ?.map((p) => `${p.name} (${p.envVar})`)
+                  .join(", ") || "openai, gemini, elevenlabs";
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Audio generation is not configured. To enable it, add an API key for one of these providers: ${providerList}. Use the GetSettingsLink tool to help the user configure this.`,
+                  },
+                ],
+              };
+            }
+          }
+
+          // Generate audio
+          const response = await fetch(
+            `${gatewayUrl}/internal/audio/synthesize`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${workerToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                text: args.text,
+                voice: args.voice,
+                speed: args.speed,
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = (await response
+              .json()
+              .catch(() => ({ error: response.statusText }))) as {
+              error?: string;
+              availableProviders?: string[];
+            };
+
+            if (errorData.availableProviders?.length) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Audio generation failed: ${errorData.error}. No provider configured. Use GetSettingsLink to help the user add an API key.`,
+                  },
+                ],
+              };
+            }
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error generating audio: ${errorData.error || "Unknown error"}`,
+                },
+              ],
+            };
+          }
+
+          // Get audio buffer and upload as file
+          const audioBuffer = await response.arrayBuffer();
+          const mimeType = response.headers.get("Content-Type") || "audio/mpeg";
+          const provider =
+            response.headers.get("X-Audio-Provider") || "unknown";
+          const ext = mimeType.includes("opus")
+            ? "opus"
+            : mimeType.includes("ogg")
+              ? "ogg"
+              : "mp3";
+
+          let tempPath: string | null = null;
+          try {
+            // Save to temp file and upload
+            tempPath = `/tmp/audio_${Date.now()}.${ext}`;
+            await fs.writeFile(tempPath, Buffer.from(audioBuffer));
+
+            // Upload the audio file to user (buffered form-data for Node 18 fetch)
+            const formData = new FormData();
+            formData.append("file", nodeFs.createReadStream(tempPath), {
+              filename: `voice_response.${ext}`,
+              contentType: mimeType,
+            });
+            formData.append("filename", `voice_response.${ext}`);
+            formData.append("comment", "Voice response");
+
+            const formDataBuffer = await new Promise<Buffer>(
+              (resolve, reject) => {
+                const chunks: Buffer[] = [];
+
+                formData.on("data", (chunk: string | Buffer) => {
+                  if (typeof chunk === "string") {
+                    chunks.push(Buffer.from(chunk));
+                  } else {
+                    chunks.push(chunk);
+                  }
+                });
+
+                formData.on("end", () => {
+                  resolve(Buffer.concat(chunks));
+                });
+
+                formData.on("error", (err: Error) => {
+                  reject(err);
+                });
+
+                formData.resume();
+              }
+            );
+
+            const headers = formData.getHeaders();
+
+            const uploadResponse = await fetch(
+              `${gatewayUrl}/internal/files/upload`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${workerToken}`,
+                  "X-Channel-Id": channelId,
+                  "X-Thread-Id": threadId,
+                  "X-Voice-Message": "true",
+                  ...headers,
+                  "Content-Length": formDataBuffer.length.toString(),
+                },
+                body: formDataBuffer,
+              }
+            );
+
+            if (!uploadResponse.ok) {
+              const error = await uploadResponse.text();
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Generated audio but failed to send: ${error}`,
+                  },
+                ],
+              };
+            }
+          } finally {
+            if (tempPath) {
+              await fs.unlink(tempPath).catch(() => {
+                // Ignore cleanup errors for temp files
+              });
+            }
+          }
+
+          logger.info(`Audio generated and sent using ${provider}`);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Voice message sent successfully (generated with ${provider}).`,
+              },
+            ],
+          };
+        } catch (error) {
+          logger.error("GenerateAudio error:", error);
           return {
             content: [
               {

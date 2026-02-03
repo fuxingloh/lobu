@@ -99,6 +99,14 @@ export class BaileysClient extends EventEmitter<BaileysClientEvents> {
   }
 
   /**
+   * Get the updateMediaMessage function for re-requesting media from CDN.
+   * Used when WhatsApp CDN returns stale/expired media URLs.
+   */
+  getUpdateMediaMessage(): WASocket["updateMediaMessage"] | undefined {
+    return this.socket?.updateMediaMessage;
+  }
+
+  /**
    * Connect to WhatsApp.
    */
   async connect(): Promise<void> {

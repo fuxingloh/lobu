@@ -8,14 +8,17 @@ import { Readable } from "node:stream";
 import { createLogger, sanitizeFilename } from "@peerbot/core";
 import {
   type AnyMessageContent,
+  downloadContentFromMessage,
   downloadMediaMessage,
+  type DownloadableMessage,
+  type MediaType,
   type WAMessage,
 } from "@whiskeysockets/baileys";
 import jwt from "jsonwebtoken";
 import pino from "pino";
 
-// Silent logger for Baileys download operations
-const baileysLogger = pino({ level: "silent" }) as unknown as ReturnType<
+// Verbose logger for Baileys download operations to debug media download issues
+const baileysLogger = pino({ level: "debug" }) as unknown as ReturnType<
   typeof pino
 >;
 
@@ -45,6 +48,17 @@ export interface ExtractedMedia {
   buffer: Buffer;
 }
 
+export interface MediaExtractionError {
+  mediaType: string;
+  error: string;
+  messageId?: string;
+}
+
+export interface MediaExtractionResult {
+  files: ExtractedMedia[];
+  errors: MediaExtractionError[];
+}
+
 /**
  * WhatsApp file handler.
  * Stores extracted media in memory for worker download.
@@ -64,11 +78,15 @@ export class WhatsAppFileHandler implements IFileHandler {
   /**
    * Extract media files from a WhatsApp message.
    * Downloads the media and stores it for later retrieval.
+   * Returns both successfully extracted files and any errors encountered.
    */
-  async extractMediaFromMessage(msg: WAMessage): Promise<ExtractedMedia[]> {
+  async extractMediaFromMessage(
+    msg: WAMessage
+  ): Promise<MediaExtractionResult> {
     const files: ExtractedMedia[] = [];
+    const errors: MediaExtractionError[] = [];
     const message = msg.message;
-    if (!message) return files;
+    if (!message) return { files, errors };
 
     // Check for various media types
     const mediaTypes: Array<{
@@ -87,26 +105,293 @@ export class WhatsAppFileHandler implements IFileHandler {
       if (!mediaContent) continue;
 
       try {
+        // Log all available fields for debugging
         logger.info(
-          { messageId: msg.key?.id, mediaType: key },
-          "Downloading media from message"
-        );
-
-        const buffer = await downloadMediaMessage(
-          msg,
-          "buffer",
-          {},
           {
-            logger: baileysLogger as any,
-            reuploadRequest: (this.client as any).socket?.updateMediaMessage,
-          }
+            messageId: msg.key?.id,
+            mediaType: key,
+            hasMediaKey: !!mediaContent.mediaKey,
+            hasDirectPath: !!mediaContent.directPath,
+            hasUrl: !!mediaContent.url,
+            hasFileEncSha256: !!mediaContent.fileEncSha256,
+            hasFileSha256: !!mediaContent.fileSha256,
+            fileLength: mediaContent.fileLength,
+            mimetype: mediaContent.mimetype,
+          },
+          "Downloading media from message - full details"
         );
 
-        if (!buffer || !(buffer instanceof Buffer)) {
-          logger.warn(
-            { messageId: msg.key?.id },
-            "Downloaded media is not a buffer"
+        // Log the direct path and URL for debugging
+        if (mediaContent.directPath) {
+          logger.debug(
+            { directPath: mediaContent.directPath },
+            "Media direct path"
           );
+        }
+        if (mediaContent.url) {
+          logger.debug({ url: mediaContent.url }, "Media URL");
+        }
+
+        // Retry logic: WhatsApp CDN may not have the file immediately available
+        // We retry up to 5 times with increasing delays
+        const maxRetries = 5;
+        const expectedSize = mediaContent.fileLength
+          ? Number(mediaContent.fileLength)
+          : 0;
+        let buffer: Buffer | null = null;
+        let lastError: Error | null = null;
+
+        // Initial delay before first attempt - WhatsApp CDN needs time to propagate media
+        // Voice messages in particular often fail on immediate download
+        const initialDelayMs = 1500;
+        logger.info(
+          { messageId: msg.key?.id, mediaType: key, delay: initialDelayMs },
+          "Waiting for CDN propagation before download attempt"
+        );
+        await new Promise((resolve) => setTimeout(resolve, initialDelayMs));
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            // Get the updateMediaMessage function for re-requesting expired media
+            const updateMediaMessage = this.client.getUpdateMediaMessage();
+            logger.info(
+              {
+                messageId: msg.key?.id,
+                attempt,
+                hasUpdateMediaMessage: !!updateMediaMessage,
+                mediaUrl: mediaContent.url?.substring(0, 80),
+                directPath: mediaContent.directPath,
+              },
+              "Attempting media download"
+            );
+
+            // Call updateMediaMessage to refresh the media URL/keys
+            // Do this on every attempt including the first, as URLs can be stale
+            if (updateMediaMessage) {
+              logger.info(
+                { messageId: msg.key?.id, attempt },
+                "Calling updateMediaMessage to refresh media URL"
+              );
+              try {
+                const updatedMsg = await updateMediaMessage(msg);
+                // Update the message reference with fresh URLs
+                if (updatedMsg?.message) {
+                  msg = updatedMsg as WAMessage;
+                  logger.info(
+                    { messageId: msg.key?.id },
+                    "Media message updated with fresh URLs"
+                  );
+                }
+              } catch (updateErr) {
+                logger.warn(
+                  { error: String(updateErr), messageId: msg.key?.id },
+                  "Failed to update media message, continuing with original"
+                );
+              }
+            }
+
+            // Try downloading as buffer directly (more reliable than stream for small files)
+            const downloadResult = await downloadMediaMessage(
+              msg,
+              "buffer",
+              {},
+              {
+                logger: baileysLogger as any,
+                reuploadRequest: updateMediaMessage ?? (async (m) => m),
+              }
+            );
+
+            // Convert stream to buffer
+            let downloadedBuffer: Buffer;
+            if (downloadResult instanceof Readable) {
+              const chunks: Buffer[] = [];
+              for await (const chunk of downloadResult) {
+                chunks.push(
+                  Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+                );
+              }
+              downloadedBuffer = Buffer.concat(chunks);
+              logger.info(
+                {
+                  messageId: msg.key?.id,
+                  attempt,
+                  bufferLength: downloadedBuffer.length,
+                },
+                "Converted stream to buffer"
+              );
+            } else if (Buffer.isBuffer(downloadResult)) {
+              downloadedBuffer = downloadResult;
+            } else {
+              logger.warn(
+                {
+                  messageId: msg.key?.id,
+                  attempt,
+                  resultType: typeof downloadResult,
+                  isNull: downloadResult === null,
+                  isUndefined: downloadResult === undefined,
+                },
+                "Download returned unexpected type"
+              );
+              lastError = new Error(
+                "Downloaded media is not a stream or buffer"
+              );
+              continue;
+            }
+
+            // Check for empty or suspiciously small buffer (< 100 bytes is likely just encryption header)
+            const minValidSize = 100;
+            if (
+              downloadedBuffer.length === 0 ||
+              downloadedBuffer.length < minValidSize
+            ) {
+              logger.warn(
+                {
+                  messageId: msg.key?.id,
+                  mediaType: key,
+                  attempt,
+                  bufferLength: downloadedBuffer.length,
+                },
+                "Downloaded media buffer is empty or too small, trying downloadContentFromMessage"
+              );
+
+              // Try alternative download method using downloadContentFromMessage
+              try {
+                const mediaTypeMap: Record<string, MediaType> = {
+                  imageMessage: "image",
+                  videoMessage: "video",
+                  audioMessage: "audio",
+                  documentMessage: "document",
+                  stickerMessage: "sticker",
+                };
+                const mediaType = mediaTypeMap[key];
+                if (mediaType && mediaContent) {
+                  logger.info(
+                    { messageId: msg.key?.id, mediaType, attempt },
+                    "Attempting downloadContentFromMessage fallback"
+                  );
+                  const stream = await downloadContentFromMessage(
+                    mediaContent as DownloadableMessage,
+                    mediaType
+                  );
+                  const chunks: Buffer[] = [];
+                  for await (const chunk of stream) {
+                    chunks.push(
+                      Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+                    );
+                  }
+                  downloadedBuffer = Buffer.concat(chunks);
+                  logger.info(
+                    {
+                      messageId: msg.key?.id,
+                      bufferLength: downloadedBuffer.length,
+                      attempt,
+                    },
+                    "downloadContentFromMessage result"
+                  );
+                }
+              } catch (fallbackErr) {
+                logger.warn(
+                  {
+                    error: String(fallbackErr),
+                    messageId: msg.key?.id,
+                    attempt,
+                  },
+                  "downloadContentFromMessage fallback also failed"
+                );
+              }
+
+              if (downloadedBuffer.length < minValidSize) {
+                lastError = new Error(
+                  `Downloaded media buffer too small: ${downloadedBuffer.length} bytes`
+                );
+              } else {
+                // Fallback succeeded!
+                buffer = downloadedBuffer;
+                logger.info(
+                  {
+                    messageId: msg.key?.id,
+                    bufferLength: buffer.length,
+                    attempt,
+                  },
+                  "downloadContentFromMessage fallback succeeded"
+                );
+                break;
+              }
+            } else if (
+              expectedSize > 0 &&
+              downloadedBuffer.length < expectedSize * 0.9
+            ) {
+              // Buffer is significantly smaller than expected (< 90% of expected size)
+              // This happens when CDN returns partial/stale data
+              logger.warn(
+                {
+                  messageId: msg.key?.id,
+                  attempt,
+                  gotSize: downloadedBuffer.length,
+                  expectedSize,
+                },
+                "Downloaded buffer smaller than expected, CDN may not have full file yet"
+              );
+              lastError = new Error(
+                `Buffer size mismatch: got ${downloadedBuffer.length}, expected ${expectedSize}`
+              );
+            } else {
+              // Success!
+              buffer = downloadedBuffer;
+              logger.info(
+                {
+                  messageId: msg.key?.id,
+                  bufferLength: buffer.length,
+                  expectedSize,
+                  attempt,
+                },
+                "downloadMediaMessage completed successfully"
+              );
+              break;
+            }
+          } catch (downloadError) {
+            lastError = downloadError as Error;
+            logger.warn(
+              {
+                error: String(downloadError),
+                errorMessage: (downloadError as Error)?.message,
+                messageId: msg.key?.id,
+                mediaType: key,
+                attempt,
+              },
+              "downloadMediaMessage attempt failed"
+            );
+          }
+
+          // Wait before retrying (exponential backoff: 2s, 4s, 8s, 16s, 32s)
+          // Starting at 2s since CDN propagation is the main issue
+          if (attempt < maxRetries) {
+            const delay = 2 ** attempt * 1000;
+            logger.info(
+              { messageId: msg.key?.id, attempt, delay, maxRetries },
+              "Waiting before retry"
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+
+        if (!buffer) {
+          const errorMsg =
+            lastError?.message || "Download returned empty buffer";
+          logger.error(
+            {
+              error: errorMsg,
+              messageId: msg.key?.id,
+              mediaType: key,
+              maxRetries,
+            },
+            "Failed to download media after all retries"
+          );
+          errors.push({
+            mediaType: key,
+            error: errorMsg,
+            messageId: msg.key?.id ?? undefined,
+          });
           continue;
         }
 
@@ -154,23 +439,29 @@ export class WhatsAppFileHandler implements IFileHandler {
           60 * 60 * 1000
         );
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
         logger.error(
-          { error: String(error), messageId: msg.key?.id, mediaType: key },
+          { error: errorMsg, messageId: msg.key?.id, mediaType: key },
           "Failed to download media from message"
         );
+        errors.push({
+          mediaType: key,
+          error: errorMsg,
+          messageId: msg.key?.id ?? undefined,
+        });
       }
     }
 
-    return files;
+    return { files, errors };
   }
 
   /**
    * Download a file by ID.
    * Returns the file stream and metadata.
+   * WhatsApp files are stored in memory, no external auth needed.
    */
   async downloadFile(
-    fileId: string,
-    _bearerToken: string
+    fileId: string
   ): Promise<{ stream: Readable; metadata: FileMetadata }> {
     const entry = this.fileStore.get(fileId);
     if (!entry) {
@@ -213,7 +504,8 @@ export class WhatsAppFileHandler implements IFileHandler {
     const content = this.buildMediaContent(
       fileBuffer,
       safeFilename,
-      options.title
+      options.title,
+      options.voiceMessage
     );
 
     // Send the media message
@@ -239,11 +531,13 @@ export class WhatsAppFileHandler implements IFileHandler {
 
   /**
    * Build the appropriate media content based on file type.
+   * @param voiceMessage - If true, send audio as voice note (ptt)
    */
   private buildMediaContent(
     buffer: Buffer,
     filename: string,
-    caption?: string
+    caption?: string,
+    voiceMessage?: boolean
   ): AnyMessageContent {
     const ext = filename.split(".").pop()?.toLowerCase() || "";
 
@@ -267,7 +561,7 @@ export class WhatsAppFileHandler implements IFileHandler {
     if (["mp3", "ogg", "wav", "m4a", "opus"].includes(ext)) {
       return {
         audio: buffer,
-        ptt: false,
+        ptt: voiceMessage ?? false,
         mimetype: this.getMimeType(ext),
       };
     }

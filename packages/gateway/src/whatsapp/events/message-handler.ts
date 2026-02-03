@@ -24,10 +24,15 @@ import type {
 } from "../../infrastructure/queue/queue-producer";
 import type { ISessionManager } from "../../session";
 import { resolveSpace } from "../../spaces";
+import type { TranscriptionService } from "../../services/transcription-service";
 import type { WhatsAppAuthAdapter } from "../auth-adapter";
 import type { WhatsAppConfig } from "../config";
 import type { BaileysClient } from "../connection/baileys-client";
-import type { ExtractedMedia, WhatsAppFileHandler } from "../file-handler";
+import type {
+  ExtractedMedia,
+  MediaExtractionError,
+  WhatsAppFileHandler,
+} from "../file-handler";
 import {
   isGroupJid,
   jidToE164,
@@ -75,6 +80,7 @@ export class WhatsAppMessageHandler {
   private fileHandler?: WhatsAppFileHandler;
   private channelBindingService?: ChannelBindingService;
   private agentSettingsStore?: AgentSettingsStore;
+  private transcriptionService?: TranscriptionService;
 
   constructor(
     private client: BaileysClient,
@@ -96,6 +102,13 @@ export class WhatsAppMessageHandler {
    */
   setAgentSettingsStore(store: AgentSettingsStore): void {
     this.agentSettingsStore = store;
+  }
+
+  /**
+   * Set the transcription service (optional)
+   */
+  setTranscriptionService(service: TranscriptionService): void {
+    this.transcriptionService = service;
   }
 
   /**
@@ -242,27 +255,34 @@ export class WhatsAppMessageHandler {
     upsertType: string
   ): Promise<void> {
     const id = msg.key?.id;
+    // DEBUG: Log raw message structure for troubleshooting
+    const msgKeys = msg.message ? Object.keys(msg.message) : [];
+    logger.info(
+      `Raw message: id=${id}, fromMe=${msg.key?.fromMe}, remoteJid=${msg.key?.remoteJid}, msgKeys=[${msgKeys.join(",")}]`
+    );
+
     if (!id) {
-      logger.debug("Skipping message: no ID");
+      logger.info("Skipping message: no ID");
       return;
     }
 
     // Dedupe on message ID (Baileys can emit retries)
+    // Note: we check seen here but only add to seen AFTER stub/content checks pass
+    // This handles the case where Baileys first emits a stub, then the real message
     if (this.seen.has(id)) {
-      logger.debug({ id }, "Skipping duplicate message");
+      logger.info({ id }, "Skipping duplicate message");
       return;
     }
-    this.seen.add(id);
 
     const remoteJid = msg.key?.remoteJid;
     if (!remoteJid) {
-      logger.debug({ id }, "Skipping message: no remoteJid");
+      logger.info({ id }, "Skipping message: no remoteJid");
       return;
     }
 
     // Ignore status/broadcast traffic
     if (remoteJid.endsWith("@status") || remoteJid.endsWith("@broadcast")) {
-      logger.debug({ id, remoteJid }, "Skipping status/broadcast message");
+      logger.info({ id, remoteJid }, "Skipping status/broadcast message");
       return;
     }
 
@@ -310,18 +330,58 @@ export class WhatsAppMessageHandler {
       return;
     }
 
-    // Skip protocol messages (not user messages)
-    const messageKeys = Object.keys(msg.message);
-    if (messageKeys.length === 1 && messageKeys[0] === "protocolMessage") {
-      logger.debug(`Skipping protocol message ${id}`);
+    // Mark as seen now that we know it's a real message (not stub, has content)
+    this.seen.add(id);
+
+    // Get raw message keys for logging
+    const rawMessageKeys = Object.keys(msg.message);
+    logger.info(`Message ${id} raw keys: ${rawMessageKeys.join(", ")}`);
+
+    // Normalize message content to unwrap nested types (viewOnce, ephemeral, etc.)
+    const normalizedContent = normalizeMessageContent(msg.message);
+    const normalizedKeys = normalizedContent
+      ? Object.keys(normalizedContent)
+      : [];
+    if (
+      normalizedKeys.length > 0 &&
+      normalizedKeys.join(",") !== rawMessageKeys.join(",")
+    ) {
+      logger.info(
+        `Message ${id} normalized keys: ${normalizedKeys.join(", ")}`
+      );
+    }
+
+    // Check if message is protocol-only (no user content)
+    // Use BOTH raw and normalized keys to detect user content
+    const userContentTypes = [
+      "conversation",
+      "extendedTextMessage",
+      "audioMessage",
+      "imageMessage",
+      "videoMessage",
+      "documentMessage",
+      "stickerMessage",
+    ];
+    const hasUserContentRaw = userContentTypes.some((type) =>
+      rawMessageKeys.includes(type)
+    );
+    const hasUserContentNormalized = userContentTypes.some((type) =>
+      normalizedKeys.includes(type)
+    );
+    const hasUserContent = hasUserContentRaw || hasUserContentNormalized;
+
+    // Skip pure protocol messages (no user content in raw or normalized)
+    if (
+      rawMessageKeys.length === 1 &&
+      rawMessageKeys[0] === "protocolMessage"
+    ) {
+      logger.info(`Skipping protocol message ${id}`);
       return;
     }
-    if (
-      messageKeys.includes("protocolMessage") &&
-      !messageKeys.includes("conversation") &&
-      !messageKeys.includes("extendedTextMessage")
-    ) {
-      logger.debug(`Skipping protocol-only message ${id}`);
+    if (rawMessageKeys.includes("protocolMessage") && !hasUserContent) {
+      logger.info(
+        `Skipping protocol-only message ${id} (no user content after normalization)`
+      );
       return;
     }
 
@@ -357,15 +417,26 @@ export class WhatsAppMessageHandler {
       : false;
 
     // For self-chat, require mention to prevent loops (bot replies don't have mentions)
+    // Media messages (voice, image, video, etc.) are allowed through without trigger pattern
     if (isSelfChat && this.config.requireMention && !wasMentioned) {
-      // Check for text trigger patterns like "@bot" in message body
-      const bodyText = this.extractText(msg.message) || "";
-      const hasTriggerPattern = /^@\w+/i.test(bodyText.trim());
-      if (!hasTriggerPattern) {
+      const mediaPlaceholder = this.extractMediaPlaceholder(msg.message);
+      const hasMedia = mediaPlaceholder !== undefined;
+      logger.info(
+        `Self-chat check: id=${id}, hasMedia=${hasMedia}, mediaPlaceholder=${mediaPlaceholder}`
+      );
+      if (!hasMedia) {
+        // Check for text trigger patterns like "@bot" in message body
+        const bodyText = this.extractText(msg.message) || "";
+        const hasTriggerPattern = /^@\w+/i.test(bodyText.trim());
         logger.info(
-          `Skipping self-chat message without trigger pattern: ${id}`
+          `Self-chat trigger check: id=${id}, bodyText="${bodyText.substring(0, 50)}", hasTriggerPattern=${hasTriggerPattern}`
         );
-        return;
+        if (!hasTriggerPattern) {
+          logger.info(
+            `Skipping self-chat message without trigger pattern: ${id}`
+          );
+          return;
+        }
       }
     }
 
@@ -401,13 +472,26 @@ export class WhatsAppMessageHandler {
 
     // Extract media files if file handler is available
     let extractedFiles: ExtractedMedia[] = [];
+    let extractionErrors: MediaExtractionError[] = [];
     if (this.fileHandler) {
       try {
-        extractedFiles = await this.fileHandler.extractMediaFromMessage(msg);
+        const result = await this.fileHandler.extractMediaFromMessage(msg);
+        extractedFiles = result.files;
+        extractionErrors = result.errors;
         if (extractedFiles.length > 0) {
           logger.info(
             { messageId: id, fileCount: extractedFiles.length },
             "Extracted media files from message"
+          );
+        }
+        if (extractionErrors.length > 0) {
+          logger.warn(
+            {
+              messageId: id,
+              errorCount: extractionErrors.length,
+              errors: extractionErrors,
+            },
+            "Some media extraction failed"
           );
         }
       } catch (err) {
@@ -509,7 +593,8 @@ export class WhatsAppMessageHandler {
       body,
       context,
       extractedFiles,
-      conversationHistory
+      conversationHistory,
+      extractionErrors
     );
   }
 
@@ -574,7 +659,8 @@ export class WhatsAppMessageHandler {
       role: "user" | "assistant";
       content: string;
       name?: string;
-    }> = []
+    }> = [],
+    mediaErrors: MediaExtractionError[] = []
   ): Promise<void> {
     // For 1:1 chats: use chatJid for conversation continuity (all messages share context)
     // For groups: use quoted message ID or message ID (explicit reply threading)
@@ -649,6 +735,96 @@ export class WhatsAppMessageHandler {
       return;
     }
 
+    // Transcribe audio files if transcription service is available
+    let transcribedBody = body;
+    const audioFiles = files.filter(
+      (f) => f.mimetype.startsWith("audio/") || f.mimetype === "application/ogg"
+    );
+
+    // Check if we received an audio message but couldn't download it
+    const hadAudioMessage =
+      body === "<media:audio>" || body.includes("<media:audio>");
+    const audioError = mediaErrors.find((e) => e.mediaType === "audioMessage");
+    if (hadAudioMessage && audioFiles.length === 0) {
+      // Audio message was detected but download failed - inform Claude clearly
+      const errorDetail = audioError?.error || "Unknown error";
+      transcribedBody = `[Voice message received - audio download failed]
+
+The user sent a voice message but the audio file could not be downloaded from WhatsApp's servers.
+
+Error: ${errorDetail}
+
+This is typically a temporary issue with WhatsApp's CDN - the file may not be available yet or the download link expired.
+
+Please let the user know:
+1. You received their voice message but couldn't process it due to a technical issue
+2. Ask them to either send the voice message again or type their message instead
+3. This is not their fault - it's a WhatsApp infrastructure timing issue`;
+      logger.warn(
+        { messageId, body, error: errorDetail },
+        "Audio message detected but file download failed"
+      );
+    } else if (audioFiles.length > 0 && this.transcriptionService) {
+      logger.info(
+        { messageId, audioFileCount: audioFiles.length },
+        "Attempting to transcribe audio files"
+      );
+
+      for (const audioFile of audioFiles) {
+        const result = await this.transcriptionService.transcribe(
+          audioFile.buffer,
+          agentId,
+          audioFile.mimetype
+        );
+
+        if ("text" in result) {
+          // Successful transcription
+          const transcriptionPrefix =
+            transcribedBody === "<media:audio>" ||
+            transcribedBody.startsWith("[Attached:")
+              ? "" // Replace placeholder entirely
+              : `${transcribedBody}\n\n`;
+          transcribedBody = `${transcriptionPrefix}[Voice message]: ${result.text}`;
+          logger.info(
+            {
+              messageId,
+              provider: result.provider,
+              textLength: result.text.length,
+            },
+            "Audio transcription successful"
+          );
+        } else {
+          // Transcription not configured or failed - provide context for Claude
+          const providers = result.availableProviders;
+          if (result.error.includes("No transcription provider configured")) {
+            transcribedBody = `[Voice message received - transcription unavailable]
+
+The user sent a voice message but no transcription provider is configured.
+Available providers that can be configured: ${providers.join(", ")}
+
+To enable voice transcription:
+1. Use the GetSettingsLink tool to generate a settings link for the user
+2. They can add their preferred provider's API key (OPENAI_API_KEY, GOOGLE_API_KEY, or ELEVENLABS_API_KEY)
+3. Optionally set TRANSCRIPTION_PROVIDER to choose a specific provider (openai, gemini, elevenlabs)
+
+For now, let the user know you received a voice message but couldn't transcribe it,
+and offer to help them configure transcription.`;
+          } else {
+            // Transcription attempt failed
+            transcribedBody = `[Voice message received - transcription failed]
+
+Error: ${result.error}
+
+The user sent a voice message but transcription failed. Let them know and suggest they try again or type their message.`;
+          }
+          logger.warn(
+            { messageId, error: result.error },
+            "Audio transcription failed or not configured"
+          );
+        }
+      }
+    }
+
     // Build file metadata for payload
     const fileMetadata = files.map((f) => ({
       id: f.id,
@@ -668,7 +844,7 @@ export class WhatsAppMessageHandler {
       teamId: context.isGroup ? context.chatJid : "whatsapp", // Group JID for groups, "whatsapp" for DMs
       agentId,
       messageId,
-      messageText: body,
+      messageText: transcribedBody,
       channelId: context.chatJid,
       platformMetadata: {
         traceId, // Add trace ID for end-to-end tracing

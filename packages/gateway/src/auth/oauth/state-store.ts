@@ -81,3 +81,80 @@ export class OAuthStateStore<T extends { userId: string }> {
     return `${this.keyPrefix}:${state}`;
   }
 }
+
+// ============================================================================
+// Claude OAuth State Types and Factory
+// ============================================================================
+
+/**
+ * Context for routing auth completion back to the originating platform.
+ */
+export interface OAuthPlatformContext {
+  platform: string;
+  channelId: string; // chatJid for WhatsApp, channel for Slack
+  threadId?: string;
+}
+
+export interface ClaudeOAuthStateData {
+  userId: string;
+  agentId: string;
+  codeVerifier: string;
+  context?: OAuthPlatformContext;
+}
+
+export type ClaudeOAuthState = ClaudeOAuthStateData & { createdAt: number };
+
+/**
+ * Create a Claude OAuth state store for PKCE flow
+ */
+export function createClaudeOAuthStateStore(
+  redis: Redis
+): OAuthStateStore<ClaudeOAuthStateData> {
+  return new OAuthStateStore(redis, "claude:oauth_state", "claude-oauth-state");
+}
+
+// ============================================================================
+// MCP OAuth State Types and Factory
+// ============================================================================
+
+export interface McpOAuthStateData {
+  userId: string;
+  agentId: string;
+  mcpId: string;
+  nonce: string;
+  redirectPath?: string;
+}
+
+export type McpOAuthState = McpOAuthStateData & { createdAt: number };
+
+/**
+ * MCP OAuth state store with auto-generated nonce
+ */
+export class McpOAuthStateStore extends OAuthStateStore<McpOAuthStateData> {
+  constructor(redis: Redis) {
+    super(redis, "mcp:oauth:state", "mcp-oauth-state");
+  }
+
+  /**
+   * Create state with auto-generated nonce
+   */
+  async createWithNonce(
+    data: Omit<McpOAuthStateData, "nonce">
+  ): Promise<string> {
+    const stateData: McpOAuthStateData = {
+      ...data,
+      nonce: randomBytes(16).toString("hex"),
+    };
+    return this.create(stateData);
+  }
+}
+
+/**
+ * Create an MCP OAuth state store
+ */
+export function createMcpOAuthStateStore(redis: Redis): McpOAuthStateStore {
+  return new McpOAuthStateStore(redis);
+}
+
+// Type alias for backward compatibility
+export type ClaudeOAuthStateStore = OAuthStateStore<ClaudeOAuthStateData>;

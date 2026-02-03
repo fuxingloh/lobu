@@ -3,9 +3,13 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { IMessageQueue } from "../../infrastructure/queue";
 import { ClaudeOAuthClient } from "../oauth/claude-client";
+import type { ClaudeOAuthStateStore } from "../oauth/state-store";
+import {
+  renderOAuthErrorPage,
+  renderOAuthSuccessPage,
+} from "../oauth-templates";
 import type { ClaudeCredentialStore } from "./credential-store";
 import type { ClaudeModelPreferenceStore } from "./model-preference-store";
-import type { ClaudeOAuthStateStore } from "./oauth-state-store";
 
 const logger = createLogger("claude-oauth-module");
 
@@ -253,7 +257,11 @@ export class ClaudeOAuthModule extends BaseModule {
       const codeVerifier = this.oauthClient.generateCodeVerifier();
 
       // Generate OAuth state for CSRF protection and store with code verifier
-      const state = await this.stateStore.create(userId, agentId, codeVerifier);
+      const state = await this.stateStore.create({
+        userId,
+        agentId,
+        codeVerifier,
+      });
 
       // Build Claude OAuth URL that redirects to console.anthropic.com callback
       const authUrl = this.oauthClient.buildAuthUrl(
@@ -515,7 +523,11 @@ export class ClaudeOAuthModule extends BaseModule {
       const codeVerifier = this.oauthClient.generateCodeVerifier();
 
       // Store state with code verifier and agentId
-      const state = await this.stateStore.create(userId, agentId, codeVerifier);
+      const state = await this.stateStore.create({
+        userId,
+        agentId,
+        codeVerifier,
+      });
 
       // Build authorization URL
       const callbackUrl = `${this.publicGatewayUrl}/api/v1/auth/claude/callback`;
@@ -546,12 +558,12 @@ export class ClaudeOAuthModule extends BaseModule {
     // Handle OAuth errors (user denied, etc.)
     if (error) {
       logger.warn(`OAuth error: ${error}`, { error_description });
-      return c.html(this.renderErrorPage(error, error_description || ""));
+      return c.html(renderOAuthErrorPage(error, error_description || ""));
     }
 
     if (!code || !state) {
       return c.html(
-        this.renderErrorPage("invalid_request", "Missing code or state"),
+        renderOAuthErrorPage("invalid_request", "Missing code or state"),
         400
       );
     }
@@ -561,7 +573,7 @@ export class ClaudeOAuthModule extends BaseModule {
       const stateData = await this.stateStore.consume(state);
       if (!stateData) {
         return c.html(
-          this.renderErrorPage(
+          renderOAuthErrorPage(
             "invalid_state",
             "Invalid or expired state parameter"
           ),
@@ -583,11 +595,11 @@ export class ClaudeOAuthModule extends BaseModule {
       logger.info(`OAuth successful for space ${stateData.agentId}`);
 
       // Show success page
-      return c.html(this.renderSuccessPage());
+      return c.html(renderOAuthSuccessPage("Claude"));
     } catch (error) {
       logger.error("Failed to handle OAuth callback", { error });
       return c.html(
-        this.renderErrorPage(
+        renderOAuthErrorPage(
           "server_error",
           "Failed to complete authentication"
         ),
@@ -622,54 +634,5 @@ export class ClaudeOAuthModule extends BaseModule {
       logger.error("Failed to logout", { error, agentId });
       return c.json({ error: "Failed to logout" }, 500);
     }
-  }
-
-  private renderSuccessPage(): string {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Authentication Successful</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 50px; }
-    .success { color: #10b981; font-size: 48px; }
-    h1 { color: #1f2937; }
-    p { color: #6b7280; font-size: 18px; }
-  </style>
-</head>
-<body>
-  <div class="success">✓</div>
-  <h1>Authentication Successful</h1>
-  <p>You're all set! You can now close this window and return to Slack.</p>
-</body>
-</html>
-    `;
-  }
-
-  private renderErrorPage(error: string, description?: string): string {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Authentication Error</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 50px; }
-    .error { color: #ef4444; font-size: 48px; }
-    h1 { color: #1f2937; }
-    p { color: #6b7280; font-size: 18px; }
-    .code { font-family: monospace; background: #f3f4f6; padding: 4px 8px; border-radius: 4px; }
-  </style>
-</head>
-<body>
-  <div class="error">✗</div>
-  <h1>Authentication Error</h1>
-  <p>Error: <span class="code">${error}</span></p>
-  ${description ? `<p>${description}</p>` : ""}
-  <p>Please try again or contact support if the problem persists.</p>
-</body>
-</html>
-    `;
   }
 }

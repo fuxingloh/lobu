@@ -4,15 +4,18 @@ import { createLogger, moduleRegistry } from "@peerbot/core";
 import { ClaudeCredentialStore } from "../auth/claude/credential-store";
 import { ClaudeModelPreferenceStore } from "../auth/claude/model-preference-store";
 import { ClaudeOAuthModule } from "../auth/claude/oauth-module";
-import { ClaudeOAuthStateStore } from "../auth/claude/oauth-state-store";
 import { McpConfigService } from "../auth/mcp/config-service";
 import { McpCredentialStore } from "../auth/mcp/credential-store";
 import { McpInputStore } from "../auth/mcp/input-store";
 import { mcpConfigStore } from "../auth/mcp/mcp-config-store";
 import { McpOAuthModule } from "../auth/mcp/oauth-module";
-import { McpOAuthStateStore } from "../auth/mcp/oauth-state-store";
 import { McpProxy } from "../auth/mcp/proxy";
 import { OAuthDiscoveryService } from "../auth/oauth/discovery";
+import {
+  type ClaudeOAuthStateStore,
+  createClaudeOAuthStateStore,
+  createMcpOAuthStateStore,
+} from "../auth/oauth/state-store";
 import { AgentSettingsStore } from "../auth/settings";
 import { ChannelBindingService } from "../channels";
 import type { GatewayConfig } from "../config";
@@ -33,6 +36,7 @@ import {
 import { networkConfigStore } from "../proxy/network-config-store";
 import { InstructionService } from "./instruction-service";
 import { RedisSessionStore, SessionManager } from "./session-manager";
+import { TranscriptionService } from "./transcription-service";
 
 const logger = createLogger("core-services");
 
@@ -94,6 +98,7 @@ export class CoreServices {
   // ============================================================================
   private agentSettingsStore?: AgentSettingsStore;
   private channelBindingService?: ChannelBindingService;
+  private transcriptionService?: TranscriptionService;
 
   // ============================================================================
   // Modules
@@ -223,6 +228,9 @@ export class CoreServices {
     // Initialize agent configuration stores
     this.agentSettingsStore = new AgentSettingsStore(redisClient);
     this.channelBindingService = new ChannelBindingService(redisClient);
+    this.transcriptionService = new TranscriptionService(
+      this.agentSettingsStore
+    );
     logger.info("✅ Agent settings & channel binding services initialized");
   }
 
@@ -253,7 +261,7 @@ export class CoreServices {
 
     // Register Claude OAuth module
     const systemTokenAvailable = !!this.config.anthropicProxy.anthropicApiKey;
-    this.claudeOAuthStateStore = new ClaudeOAuthStateStore(redisClient);
+    this.claudeOAuthStateStore = createClaudeOAuthStateStore(redisClient);
     this.claudeOAuthModule = new ClaudeOAuthModule(
       this.claudeCredentialStore,
       this.claudeOAuthStateStore,
@@ -281,7 +289,7 @@ export class CoreServices {
 
     // Initialize MCP credential and state management
     const mcpCredentialStore = new McpCredentialStore(redisClient);
-    const mcpOAuthStateStore = new McpOAuthStateStore(redisClient);
+    const mcpOAuthStateStore = createMcpOAuthStateStore(redisClient);
     const mcpInputStore = new McpInputStore(this.queue);
 
     // Initialize MCP OAuth discovery service
@@ -497,5 +505,9 @@ export class CoreServices {
 
   getScheduledWakeupService(): ScheduledWakeupService | undefined {
     return this.scheduledWakeupService;
+  }
+
+  getTranscriptionService(): TranscriptionService | undefined {
+    return this.transcriptionService;
   }
 }

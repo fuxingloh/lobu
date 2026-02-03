@@ -68,14 +68,14 @@ const GATEWAY_DEFAULTS = {
   KUBECONFIG: "~/.kube/config",
 } as const;
 
-// Merged DEFAULTS with core and gateway-specific values
-export const DEFAULTS = {
+// Merged DEFAULTS with core and gateway-specific values (internal use only)
+const DEFAULTS = {
   ...CORE_DEFAULTS,
   ...GATEWAY_DEFAULTS,
 } as const;
 
-// Display formatting
-export const DISPLAY = {
+// Display formatting (internal use only)
+const DISPLAY = {
   /** Horizontal separator length */
   SEPARATOR_LENGTH: 50,
   /** Token preview length for logging */
@@ -161,7 +161,9 @@ export function buildGatewayConfig(): GatewayConfig {
   const connectionString = getRequiredEnv("QUEUE_URL");
 
   // Anthropic API key (now optional - can use per-user OAuth instead)
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY || "";
+  // Also check CLAUDE_CODE_OAUTH_TOKEN as fallback for local dev
+  const anthropicApiKey =
+    process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN || "";
 
   if (!anthropicApiKey) {
     logger.warn(

@@ -448,13 +448,35 @@ function parseJsonBody(
   });
 }
 
+/**
+ * Generate a unique port for this worker instance
+ * Uses deployment name + process PID to ensure uniqueness even across restarts
+ */
+function getUniquePort(): number {
+  const deploymentName = process.env.DEPLOYMENT_NAME || "worker";
+  const instanceId = `${deploymentName}-${process.pid}`;
+  // Use a simple hash to get a port in the dynamic range (49152-65535)
+  let hash = 0;
+  for (let i = 0; i < instanceId.length; i++) {
+    hash = ((hash << 5) - hash + instanceId.charCodeAt(i)) | 0;
+  }
+  // Map to port range 49152-65535 (16384 possible ports)
+  const port = 49152 + Math.abs(hash % 16384);
+  return port;
+}
+
 export async function startHTTPServer(
   server: McpServer
 ): Promise<ProcessManagerInstance> {
   const http = await import("node:http");
   const { URL } = await import("node:url");
 
-  const port = parseInt(process.env.MCP_PROCESS_MANAGER_PORT || "3001", 10);
+  // Get port - either from env or generate uniquely per worker instance
+  const envPort = process.env.MCP_PROCESS_MANAGER_PORT;
+  const port = envPort ? parseInt(envPort, 10) : getUniquePort();
+  logger.info(
+    `[Process Manager MCP] Using port ${port} for worker PID ${process.pid}`
+  );
   const transports: Record<string, SSEServerTransport> = {};
 
   const httpServer = http.createServer(async (req, res) => {
@@ -503,8 +525,15 @@ export async function startHTTPServer(
     res.end("Not Found");
   });
 
-  httpServer.listen(port, () => {
-    logger.info(`[Process Manager MCP] HTTP server started on port ${port}`);
+  // Wait for server to start (handle both success and error)
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once("error", (err) => {
+      reject(err);
+    });
+    httpServer.listen(port, () => {
+      logger.info(`[Process Manager MCP] HTTP server started on port ${port}`);
+      resolve();
+    });
   });
 
   const cleanup = () => {

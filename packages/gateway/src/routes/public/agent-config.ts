@@ -1,0 +1,366 @@
+/**
+ * Agent Config Routes
+ *
+ * Configuration endpoints mounted under /api/v1/agents/{agentId}/config
+ */
+
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import type { AgentSettings, AgentSettingsStore } from "../../auth/settings";
+import { verifySettingsToken } from "../../auth/settings/token-service";
+import type { GitHubAppAuth } from "../../modules/git-filesystem/github-app";
+
+const TAG = "Agents";
+const ErrorResponse = z.object({ error: z.string() });
+const TokenQuery = z.object({ token: z.string() });
+
+// --- Route Definitions ---
+
+const getConfigRoute = createRoute({
+  method: "get",
+  path: "/",
+  tags: [TAG],
+  summary: "Get agent configuration",
+  request: { query: TokenQuery },
+  responses: {
+    200: {
+      description: "Configuration",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agentId: z.string(),
+            settings: z.any(),
+            providers: z.record(
+              z.string(),
+              z.object({ connected: z.boolean() })
+            ),
+            github: z.object({
+              configured: z.boolean(),
+              installUrl: z.string().nullable(),
+              installations: z.array(
+                z.object({
+                  id: z.number(),
+                  account: z.string(),
+                  accountType: z.string(),
+                  avatarUrl: z.string(),
+                })
+              ),
+              user: z
+                .object({
+                  login: z.string(),
+                  id: z.number(),
+                  avatarUrl: z.string(),
+                })
+                .nullable(),
+            }),
+          }),
+        },
+      },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});
+
+const updateConfigRoute = createRoute({
+  method: "patch",
+  path: "/",
+  tags: [TAG],
+  summary: "Update agent configuration",
+  request: {
+    query: TokenQuery,
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            model: z.string().optional(),
+            networkConfig: z
+              .object({
+                allowedDomains: z.array(z.string()).optional(),
+                deniedDomains: z.array(z.string()).optional(),
+              })
+              .optional(),
+            gitConfig: z
+              .object({
+                repoUrl: z.string().optional(),
+                branch: z.string().optional(),
+                sparse: z.array(z.string()).optional(),
+              })
+              .optional(),
+            mcpServers: z.record(z.string(), z.any()).optional(),
+            envVars: z.record(z.string(), z.string()).optional(),
+            historyConfig: z
+              .object({
+                enabled: z.boolean().optional(),
+                timeframe: z
+                  .enum(["1d", "7d", "30d", "365d", "all"])
+                  .optional(),
+                maxMessages: z.number().optional(),
+                includeBotMessages: z.boolean().optional(),
+              })
+              .optional(),
+            skillsConfig: z
+              .object({
+                skills: z.array(
+                  z.object({
+                    repo: z.string(),
+                    name: z.string(),
+                    description: z.string(),
+                    enabled: z.boolean(),
+                    content: z.string().optional(),
+                    contentFetchedAt: z.number().optional(),
+                  })
+                ),
+              })
+              .optional(),
+            githubUser: z
+              .null()
+              .optional()
+              .openapi({ description: "Set to null to disconnect GitHub" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated",
+      content: {
+        "application/json": {
+          schema: z.object({ success: z.boolean(), agentId: z.string() }),
+        },
+      },
+    },
+    400: {
+      description: "Invalid",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});
+
+export interface ProviderCredentialStore {
+  hasCredentials(agentId: string): Promise<boolean>;
+}
+
+export interface AgentConfigRoutesConfig {
+  agentSettingsStore: AgentSettingsStore;
+  providerStores?: Record<string, ProviderCredentialStore>;
+  githubAuth?: GitHubAppAuth;
+  githubAppInstallUrl?: string;
+  githubOAuthClientId?: string;
+}
+
+export function createAgentConfigRoutes(
+  config: AgentConfigRoutesConfig
+): OpenAPIHono {
+  const app = new OpenAPIHono();
+
+  const verifyToken = (token: string | undefined, agentId: string) => {
+    if (!token) return null;
+    const payload = verifySettingsToken(token);
+    // Validate agentId matches token
+    if (payload && payload.agentId !== agentId) return null;
+    return payload;
+  };
+
+  app.openapi(getConfigRoute, async (c): Promise<any> => {
+    const agentId = c.req.param("agentId") || "";
+    const payload = verifyToken(c.req.valid("query").token, agentId);
+    if (!payload) return c.json({ error: "Unauthorized" }, 401);
+
+    const settings = await config.agentSettingsStore.getSettings(agentId);
+
+    // Provider status
+    const providers: Record<string, { connected: boolean }> = {};
+    if (config.providerStores) {
+      for (const [name, store] of Object.entries(config.providerStores)) {
+        try {
+          providers[name] = { connected: await store.hasCredentials(agentId) };
+        } catch {
+          providers[name] = { connected: false };
+        }
+      }
+    }
+
+    // GitHub status
+    const github = {
+      configured: !!config.githubAuth,
+      installUrl: config.githubAppInstallUrl || null,
+      installations: [] as any[],
+      user: null as any,
+    };
+
+    const githubUser = (settings as any)?.githubUser;
+    if (githubUser) {
+      github.user = {
+        login: githubUser.login,
+        id: githubUser.id,
+        avatarUrl: githubUser.avatarUrl,
+      };
+    }
+
+    if (config.githubAuth) {
+      if (githubUser?.accessToken) {
+        const resp = await fetch("https://api.github.com/user/installations", {
+          headers: {
+            Authorization: `Bearer ${githubUser.accessToken}`,
+            Accept: "application/vnd.github+json",
+            "User-Agent": "Peerbot",
+          },
+        });
+        if (resp.ok) {
+          const data = (await resp.json()) as {
+            installations: Array<{
+              id: number;
+              account: { login: string; type: string; avatar_url: string };
+            }>;
+          };
+          github.installations = data.installations.map((i) => ({
+            id: i.id,
+            account: i.account.login,
+            accountType: i.account.type,
+            avatarUrl: i.account.avatar_url,
+          }));
+        }
+      } else {
+        const installations = await config.githubAuth.listInstallations();
+        github.installations = installations.map((i) => ({
+          id: i.id,
+          account: i.account.login,
+          accountType: i.account.type,
+          avatarUrl: i.account.avatar_url,
+        }));
+      }
+    }
+
+    return c.json({
+      agentId,
+      settings: settings || {},
+      providers,
+      github,
+    });
+  });
+
+  app.openapi(updateConfigRoute, async (c): Promise<any> => {
+    const agentId = c.req.param("agentId") || "";
+    const payload = verifyToken(c.req.valid("query").token, agentId);
+    if (!payload) return c.json({ error: "Unauthorized" }, 401);
+
+    try {
+      const body = c.req.valid("json");
+
+      const updates: Partial<AgentSettings> = {};
+
+      // Handle explicit null for githubUser (disconnect)
+      if (body.githubUser === null) {
+        updates.githubUser = undefined;
+        delete body.githubUser;
+      }
+
+      if (Object.keys(body).length > 0) {
+        const validated = validateSettings(body as Partial<AgentSettings>);
+        Object.assign(updates, validated);
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await config.agentSettingsStore.updateSettings(agentId, updates);
+      }
+
+      return c.json({ success: true, agentId });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "Invalid" }, 400);
+    }
+  });
+
+  return app;
+}
+
+// --- Validation ---
+
+function validateSettings(
+  input: Partial<AgentSettings>
+): Omit<AgentSettings, "updatedAt"> {
+  const settings: Omit<AgentSettings, "updatedAt"> = {};
+
+  if (input.model) {
+    const validModels = [
+      "claude-sonnet-4",
+      "claude-sonnet-4-5",
+      "claude-opus-4",
+      "claude-haiku-4",
+      "claude-haiku-4-5",
+    ];
+    if (!validModels.includes(input.model))
+      throw new Error(`Invalid model: ${input.model}`);
+    settings.model = input.model;
+  }
+
+  if (input.networkConfig) {
+    settings.networkConfig = {
+      allowedDomains: input.networkConfig.allowedDomains
+        ?.filter((d) => typeof d === "string" && d.trim())
+        .map((d) => d.trim().toLowerCase()),
+      deniedDomains: input.networkConfig.deniedDomains
+        ?.filter((d) => typeof d === "string" && d.trim())
+        .map((d) => d.trim().toLowerCase()),
+    };
+  }
+
+  if (input.gitConfig?.repoUrl) {
+    const repoUrl = input.gitConfig.repoUrl.trim();
+    if (!repoUrl.startsWith("https://") && !repoUrl.startsWith("git@")) {
+      throw new Error("Repository URL must start with https:// or git@");
+    }
+    settings.gitConfig = {
+      repoUrl,
+      branch: input.gitConfig.branch?.trim(),
+      sparse: input.gitConfig.sparse
+        ?.filter((p): p is string => typeof p === "string" && !!p.trim())
+        .map((p) => p.trim()),
+    };
+  }
+
+  if (input.mcpServers && typeof input.mcpServers === "object") {
+    settings.mcpServers = input.mcpServers;
+  }
+
+  if (input.envVars && typeof input.envVars === "object") {
+    settings.envVars = {};
+    for (const [key, value] of Object.entries(input.envVars)) {
+      const cleanKey = key.trim();
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(cleanKey)) {
+        settings.envVars[cleanKey] = String(value);
+      }
+    }
+  }
+
+  if (input.historyConfig) {
+    const validTimeframes = ["1d", "7d", "30d", "365d", "all"];
+    if (
+      input.historyConfig.timeframe &&
+      !validTimeframes.includes(input.historyConfig.timeframe)
+    ) {
+      throw new Error(`Invalid timeframe: ${input.historyConfig.timeframe}`);
+    }
+    settings.historyConfig = {
+      enabled: Boolean(input.historyConfig.enabled),
+      timeframe: input.historyConfig.timeframe || "7d",
+      maxMessages: Math.min(
+        Math.max(input.historyConfig.maxMessages || 100, 10),
+        500
+      ),
+      includeBotMessages: input.historyConfig.includeBotMessages ?? true,
+    };
+  }
+
+  if (input.skillsConfig) {
+    settings.skillsConfig = input.skillsConfig;
+  }
+
+  return settings;
+}

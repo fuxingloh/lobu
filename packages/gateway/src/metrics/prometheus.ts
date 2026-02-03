@@ -116,9 +116,9 @@ function registerMetric(
 }
 
 /**
- * Set a gauge metric value
+ * Set a gauge metric value (internal use only)
  */
-export function setGauge(
+function setGauge(
   name: string,
   value: number,
   labels: Record<string, string> = {}
@@ -185,5 +185,3 @@ export function getMetricsText(): string {
 
 // Initialize on module load
 initializeMetrics();
-
-export { initializeMetrics };

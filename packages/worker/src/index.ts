@@ -71,9 +71,17 @@ async function main() {
     // Set workspace directory for MCP process manager based on deployment name
     setupWorkspaceEnv(deploymentName);
 
-    // Start the integrated process manager HTTP server
-    const processManager = await startProcessManager();
-    logger.info(`🔧 Process manager started on port ${processManager.port}`);
+    // Start the integrated process manager HTTP server (optional - worker continues if it fails)
+    try {
+      const processManager = await startProcessManager();
+      logger.info(`🔧 Process manager started on port ${processManager.port}`);
+    } catch (pmError) {
+      const pmErrorMsg =
+        pmError instanceof Error ? pmError.message : String(pmError);
+      logger.warn(
+        `⚠️ Process manager failed to start (continuing without it): ${pmErrorMsg}`
+      );
+    }
 
     // Initialize gateway client directly
     logger.info(`🚀 Starting Gateway-based Persistent Worker`);

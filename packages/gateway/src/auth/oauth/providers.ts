@@ -64,11 +64,3 @@ export const CLAUDE_PROVIDER: OAuthProviderConfig = {
     Origin: "https://claude.ai",
   },
 };
-
-/**
- * Registry of all OAuth providers
- * Add new providers here to make them available throughout the system
- */
-export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
-  claude: CLAUDE_PROVIDER,
-};

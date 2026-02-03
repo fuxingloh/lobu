@@ -29,12 +29,17 @@ export interface FileUploadOptions {
   title?: string;
   initialComment?: string;
   sessionKey?: string;
+  /** Send as voice message (ptt) on platforms that support it */
+  voiceMessage?: boolean;
 }
 
 export interface IFileHandler {
+  /**
+   * Download a file by its platform-specific ID.
+   * Each platform implementation handles its own authentication internally.
+   */
   downloadFile(
-    fileId: string,
-    bearerToken: string
+    fileId: string
   ): Promise<{ stream: Readable; metadata: FileMetadata }>;
 
   uploadFile(
