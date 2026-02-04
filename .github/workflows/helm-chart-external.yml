@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: termos-dev/helm-charts  # Create this public repository
-          token: ${{ secrets.GITHUB_TOKEN }}  # Use default GitHub Actions token
+          token: ${{ secrets.GH_TOKEN_PEERBOT }}  # Cross-repo write access
           path: helm-repo
           ref: main
 
