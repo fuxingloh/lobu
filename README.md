@@ -107,6 +107,28 @@ curl -X POST https://your-gateway/api/v1/agents/{agentId}/sessions \
 - **MCP OAuth** - Authenticate external services via home tab
 - **Custom workers** - Extend base image with your tools
 
+## Security, Sandboxing, and Privacy
+
+**Sandboxing modes:**
+- **Kubernetes/Docker** - Each session runs in its own container with isolated filesystem, network, and resource limits. Outbound traffic is restricted by allowlists.
+- **Local** - Workers run as child processes with optional OS-level sandboxing via the Anthropic Sandbox Runtime (controlled by `SANDBOX_ENABLED=true|false|unset`).
+
+**Network egress and data flow:**
+- Workers do not have direct internet access. All outbound requests go through the gateway’s HTTP proxy, which enforces domain allowlists.
+- The gateway is the only egress point and the only component that talks to external providers.
+
+**MCP proxy and sensitive data:**
+- OAuth flows are handled by the gateway. Provider tokens and client secrets stay on the gateway side.
+- Workers receive short-lived, scoped tokens and call MCP servers through the gateway proxy.
+- Agents never receive Slack/WhatsApp tokens or other platform secrets.
+
+## Reliability and Experience
+
+- **Cloud agents, not local** - Unlike OpenClaw’s local execution, Termos runs agents on managed cloud workers.
+- **Your own computer, preserved** - Each thread gets a persistent workspace (your tools, repos, and files stay intact).
+- **Stateful by default** - Sessions resume after restarts and scale-to-zero events.
+- **Optional browser control** - Integrate Owletto when you want the agent to drive a browser.
+
 ## Worker Customization
 
 ```dockerfile
