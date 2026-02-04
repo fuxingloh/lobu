@@ -86,14 +86,30 @@ class TestWorker extends BaseWorker {
 describe("BaseWorker", () => {
   let worker: TestWorker;
   let restoreFetch: () => void;
+  let originalDispatcherUrl: string | undefined;
+  let originalWorkerToken: string | undefined;
 
   beforeEach(() => {
+    originalDispatcherUrl = process.env.DISPATCHER_URL;
+    originalWorkerToken = process.env.WORKER_TOKEN;
+    process.env.DISPATCHER_URL = "https://test-dispatcher.example.com";
+    process.env.WORKER_TOKEN = "test-worker-token";
     worker = new TestWorker(mockWorkerConfig);
     restoreFetch = TestHelpers.mockFetch();
   });
 
   afterEach(() => {
     restoreFetch();
+    if (originalDispatcherUrl) {
+      process.env.DISPATCHER_URL = originalDispatcherUrl;
+    } else {
+      delete process.env.DISPATCHER_URL;
+    }
+    if (originalWorkerToken) {
+      process.env.WORKER_TOKEN = originalWorkerToken;
+    } else {
+      delete process.env.WORKER_TOKEN;
+    }
   });
 
   test("execute runs AI session and processes progress", async () => {
