@@ -4,7 +4,11 @@
  * Adapted from clawdbot/src/web/inbound.ts
  */
 
-import { createLogger, generateTraceId } from "@termosdev/core";
+import {
+  createLogger,
+  generateTraceId,
+  type AgentOptions as CoreAgentOptions,
+} from "@termosdev/core";
 import {
   type BaileysEventMap,
   extractMessageContent,
@@ -42,14 +46,7 @@ import {
 
 const logger = createLogger("whatsapp-message-handler");
 
-interface AgentOptions {
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  timeoutMinutes?: number;
-}
+type AgentOptions = CoreAgentOptions;
 
 interface StoredMessage {
   id: string;

@@ -6,7 +6,7 @@
 - **`packages/worker`**: Claude-specific logic in `src/claude/`. Worker talks only to gateway and agent (Claude CLI). No Slack/platform knowledge.
 
 ### Module Boundaries
-- Gateway: Slack → `src/slack/`, orchestration → `src/orchestration/`, future platforms → `src/dispatcher/{platform}/`
+- Gateway: Slack → `src/slack/`, Telegram → `src/telegram/`, orchestration → `src/orchestration/`, future platforms → `src/dispatcher/{platform}/`
 - Worker: Platform-agnostic, Claude logic isolated to `src/claude/`
 - Core: Shared interfaces, utils, types for gateway+worker
 
@@ -21,7 +21,8 @@
 ### Architecture
 
 #### Platform
-We currently use WhatsApp as the messaging platform (Slack support also available but not configured).
+We currently use WhatsApp and Telegram as messaging platforms (Slack support also available but not configured).
+Telegram code under `packages/gateway/src/telegram/`. Uses Grammy library with long-polling.
 There is also a public endpoint in gateway to trigger running the agent.
 
 #### Orchestration
@@ -286,6 +287,7 @@ Use the `test-bot.sh` script for easy bot testing. No manual curl commands neede
 **Platform self-testing behavior:**
 - **Slack**: Cannot trigger its own event handlers (Slack filters bot-to-self messages). The test script uses `/api/messaging/send` endpoint which posts via bot token, then gateway receives as normal Slack events.
 - **WhatsApp**: Supports self-chat mode! Set `WHATSAPP_SELF_CHAT=true` and send to the bot's own phone number. The gateway detects self-messages and queues them directly to workers, bypassing event handler filters.
+- **Telegram**: Use `tguser` CLI to send messages as a real user account. Requires `TG_API_ID` and `TG_API_HASH` env vars (stored in `.env`). Bot receives via Grammy long-polling. In groups, @mention is always required; in DMs all messages are processed.
 
 ### Basic Test
 ```bash
@@ -317,6 +319,12 @@ curl -X POST http://localhost:8080/api/messaging/send \
   -F "message=@me analyze these files" \
   -F "files=@data.csv" \
   -F "files=@document.pdf"
+```
+
+### Telegram Test
+Use `tguser` CLI (requires `TG_API_ID` and `TG_API_HASH` from `.env`):
+```bash
+tguser send @burembatermosbot "hello test"
 ```
 
 ### Check Logs

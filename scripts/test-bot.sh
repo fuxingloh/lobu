@@ -96,26 +96,22 @@ for i in "${!MESSAGES[@]}"; do
     # Use TEST_AGENT_ID or generate a default test agent ID
     AGENT_ID="${TEST_AGENT_ID:-test-agent}"
 
-    # Build base body
-    if [ -n "$LAST_THREAD_ID" ]; then
-        BODY=$(jq -n \
-            --arg agentId "$AGENT_ID" \
-            --arg platform "$TEST_PLATFORM" \
-            --arg channel "$CHANNEL" \
-            --argjson message "$ESCAPED_MESSAGE" \
-            --arg threadId "$LAST_THREAD_ID" \
-            '{agentId: $agentId, platform: $platform, channel: $channel, message: $message, threadId: $threadId}')
-    else
-        BODY=$(jq -n \
-            --arg agentId "$AGENT_ID" \
-            --arg platform "$TEST_PLATFORM" \
-            --arg channel "$CHANNEL" \
-            --argjson message "$ESCAPED_MESSAGE" \
-            '{agentId: $agentId, platform: $platform, channel: $channel, message: $message}')
-    fi
+    # Build request body (must match /api/v1/messaging/send schema)
+    BODY=$(jq -n \
+        --arg agentId "$AGENT_ID" \
+        --arg platform "$TEST_PLATFORM" \
+        --argjson message "$ESCAPED_MESSAGE" \
+        '{agentId: $agentId, platform: $platform, message: $message}')
 
     # Add platform-specific routing info
     case "$TEST_PLATFORM" in
+        slack)
+            if [ -n "$LAST_THREAD_ID" ]; then
+                BODY=$(echo "$BODY" | jq --arg channel "$CHANNEL" --arg thread "$LAST_THREAD_ID" '. + {slack: {channel: $channel, thread: $thread}}')
+            else
+                BODY=$(echo "$BODY" | jq --arg channel "$CHANNEL" '. + {slack: {channel: $channel}}')
+            fi
+            ;;
         whatsapp)
             BODY=$(echo "$BODY" | jq --arg chat "$CHANNEL" '. + {whatsapp: {chat: $chat}}')
             ;;
@@ -134,15 +130,15 @@ for i in "${!MESSAGES[@]}"; do
         exit 1
     fi
 
-    CHANNEL_ID=$(echo "$RESPONSE" | jq -r '.channel')
-    THREAD_ID=$(echo "$RESPONSE" | jq -r '.threadId')
     MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.messageId')
     QUEUED=$(echo "$RESPONSE" | jq -r '.queued')
 
     echo "   ✅ Sent: messageId=$MESSAGE_ID, queued=$QUEUED"
 
     # Save thread for subsequent messages
-    LAST_THREAD_ID="$THREAD_ID"
+    if [ -z "$LAST_THREAD_ID" ]; then
+        LAST_THREAD_ID="$MESSAGE_ID"
+    fi
 
     # Platform-specific response handling
     case "$TEST_PLATFORM" in
@@ -168,7 +164,7 @@ for i in "${!MESSAGES[@]}"; do
                     REPLIES=$(curl -s -X POST https://slack.com/api/conversations.replies \
                         -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
                         -H "Content-Type: application/x-www-form-urlencoded" \
-                        -d "channel=$CHANNEL_ID&ts=$THREAD_ID&limit=20")
+                        -d "channel=$CHANNEL&ts=$LAST_THREAD_ID&limit=20")
 
                     # Check if we got bot messages after our message
                     BOT_RESPONSE=$(echo "$REPLIES" | jq -r '.messages[]? | select(.bot_id != null) | select(.ts > "'"$MESSAGE_ID"'") | .text' | head -1)

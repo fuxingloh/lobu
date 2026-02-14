@@ -718,8 +718,16 @@ Use it when the user references past discussions or you need context.`);
             break;
 
           case "user": {
-            const userMsg = message.message;
-            if (userMsg?.content?.[0]?.type === "tool_result") {
+            const userMsg = message.message as
+              | { content?: unknown }
+              | undefined;
+            const content = userMsg?.content;
+            if (
+              Array.isArray(content) &&
+              content[0] &&
+              typeof content[0] === "object" &&
+              (content[0] as { type?: string }).type === "tool_result"
+            ) {
               logger.debug(`Tool result returned to Claude`);
             }
             break;

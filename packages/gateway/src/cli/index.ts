@@ -13,6 +13,7 @@ import {
   loadEnvFile,
 } from "../config";
 import { buildSlackConfig, displaySlackConfig } from "../slack/config";
+import { buildTelegramConfig, displayTelegramConfig } from "../telegram/config";
 import { buildWhatsAppConfig, displayWhatsAppConfig } from "../whatsapp/config";
 import { startGateway } from "./gateway";
 
@@ -74,6 +75,7 @@ async function main() {
         const config = buildGatewayConfig();
         const slackConfig = buildSlackConfig();
         const whatsappConfig = buildWhatsAppConfig();
+        const telegramConfig = buildTelegramConfig();
 
         // Handle --validate flag
         if (options.validate) {
@@ -81,6 +83,7 @@ async function main() {
           displayGatewayConfig(config);
           displaySlackConfig(slackConfig);
           displayWhatsAppConfig(whatsappConfig);
+          displayTelegramConfig(telegramConfig);
           process.exit(0);
         }
 
@@ -89,11 +92,12 @@ async function main() {
           displayGatewayConfig(config);
           displaySlackConfig(slackConfig);
           displayWhatsAppConfig(whatsappConfig);
+          displayTelegramConfig(telegramConfig);
           process.exit(0);
         }
 
         // Start the gateway
-        await startGateway(config, slackConfig, whatsappConfig);
+        await startGateway(config, slackConfig, whatsappConfig, telegramConfig);
       } catch (error) {
         if (error instanceof ConfigError) {
           logger.error("❌ Configuration error:", error.message);

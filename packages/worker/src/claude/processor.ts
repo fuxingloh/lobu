@@ -20,7 +20,7 @@ interface TodoItem {
 
 interface ToolUseBlock {
   name: string;
-  input?: Record<string, unknown>;
+  input?: unknown;
 }
 
 /**
@@ -179,8 +179,9 @@ export class ProgressProcessor {
     let hasUpdate = false;
 
     // SDK format: message.message.content (nested)
-    const nestedMessage = message.message;
-    const content = nestedMessage?.content;
+    const nestedMessage = (message as { message?: { content?: unknown } })
+      .message;
+    const content: unknown = nestedMessage?.content;
 
     // Handle string content
     if (typeof content === "string" && content.trim()) {
@@ -189,11 +190,31 @@ export class ProgressProcessor {
     }
     // Handle content blocks (array format)
     else if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block.type === "text" && block.text?.trim()) {
+      for (const entry of content) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const block = entry as {
+          type?: string;
+          text?: string;
+          thinking?: string;
+          name?: string;
+          input?: unknown;
+        };
+
+        if (
+          block.type === "text" &&
+          typeof block.text === "string" &&
+          block.text.trim()
+        ) {
           this.chronologicalOutput += `${block.text}\n`;
           hasUpdate = true;
-        } else if (block.type === "thinking" && block.thinking?.trim()) {
+        } else if (
+          block.type === "thinking" &&
+          typeof block.thinking === "string" &&
+          block.thinking.trim()
+        ) {
           // Store thinking content
           this.currentThinking = block.thinking.trim();
           logger.info(
@@ -204,15 +225,22 @@ export class ProgressProcessor {
             this.chronologicalOutput += `\n💭 *Reasoning:*\n${this.currentThinking}\n\n`;
           }
           hasUpdate = true;
-        } else if (block.type === "tool_use") {
+        } else if (
+          block.type === "tool_use" &&
+          typeof block.name === "string"
+        ) {
           // Check for TodoWrite updates
+          const toolInput =
+            block.input && typeof block.input === "object"
+              ? (block.input as { todos?: unknown })
+              : undefined;
           if (
             block.name === "TodoWrite" &&
-            block.input?.todos &&
-            Array.isArray(block.input.todos)
+            toolInput?.todos &&
+            Array.isArray(toolInput.todos)
           ) {
             // Append task updates as chronological events
-            const newTodos = block.input.todos as TodoItem[];
+            const newTodos = toolInput.todos as TodoItem[];
 
             newTodos.forEach((newTodo, index) => {
               const oldTodo = this.currentTodos[index];
@@ -234,7 +262,9 @@ export class ProgressProcessor {
             hasUpdate = true;
           } else {
             // Format and append non-TodoWrite tool execution
-            const toolExecution = this.formatToolExecution(block);
+            const toolExecution = this.formatToolExecution(
+              block as ToolUseBlock
+            );
             if (toolExecution) {
               this.chronologicalOutput += `${toolExecution}\n`;
               hasUpdate = true;
@@ -275,7 +305,10 @@ export class ProgressProcessor {
    */
   private formatToolExecution(toolUse: ToolUseBlock): string {
     const toolName = toolUse.name;
-    const params = toolUse.input || {};
+    const params =
+      toolUse.input && typeof toolUse.input === "object"
+        ? (toolUse.input as Record<string, unknown>)
+        : {};
 
     // Hide system tools (mcp__termos__*) unless in verbose mode
     if (toolName.startsWith("mcp__termos__") && !this.verboseLogging) {
@@ -300,7 +333,8 @@ export class ProgressProcessor {
     if (!config) {
       const formattedName = this.formatMcpToolName(toolName);
       // For Task tool, include description if available
-      const description = params.description ? `: ${params.description}` : "";
+      const description =
+        typeof params.description === "string" ? `: ${params.description}` : "";
       return `└ 🔧 **Using** ${formattedName}${description}`;
     }
 

@@ -4,6 +4,7 @@
 
 import {
   createLogger,
+  type AgentOptions as CoreAgentOptions,
   type UserInteraction,
   type UserSuggestion,
 } from "@termosdev/core";
@@ -32,14 +33,7 @@ export interface WhatsAppPlatformConfig {
   whatsapp: WhatsAppConfig;
 }
 
-export interface AgentOptions {
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  timeoutMinutes?: number;
-}
+export type AgentOptions = CoreAgentOptions;
 
 /**
  * WhatsApp platform adapter.

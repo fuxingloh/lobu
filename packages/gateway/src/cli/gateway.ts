@@ -11,6 +11,7 @@ import {
   registerAutoOpenApiRoutes,
 } from "../routes/openapi-auto";
 import type { SlackConfig } from "../slack";
+import type { TelegramConfig } from "../telegram/config";
 import type { WhatsAppConfig } from "../whatsapp/config";
 
 const logger = createLogger("gateway-startup");
@@ -702,7 +703,8 @@ function createExpressAdapter(honoApp: any) {
 export async function startGateway(
   config: GatewayConfig,
   slackConfig: SlackConfig | null,
-  whatsappConfig?: WhatsAppConfig | null
+  whatsappConfig?: WhatsAppConfig | null,
+  telegramConfig?: TelegramConfig | null
 ): Promise<void> {
   logger.info("Starting Termos Gateway");
 
@@ -726,6 +728,7 @@ export async function startGateway(
   const agentOptions = {
     allowedTools: config.claude.allowedTools,
     disallowedTools: config.claude.disallowedTools,
+    runtime: config.claude.runtime,
     model: config.claude.model,
     timeoutMinutes: config.claude.timeoutMinutes,
   };
@@ -762,11 +765,30 @@ export async function startGateway(
 
     whatsappPlatform = new WhatsAppPlatform(
       whatsappPlatformConfig,
-      agentOptions as any,
+      agentOptions,
       config.sessionTimeoutMinutes
     );
     gateway.registerPlatform(whatsappPlatform);
     logger.info("WhatsApp platform registered");
+  }
+
+  // Register Telegram platform if enabled
+  let telegramPlatform: any = null;
+  logger.debug("Telegram config", { enabled: telegramConfig?.enabled });
+  if (telegramConfig?.enabled) {
+    const { TelegramPlatform } = await import("../telegram");
+
+    const telegramPlatformConfig = {
+      telegram: telegramConfig,
+    };
+
+    telegramPlatform = new TelegramPlatform(
+      telegramPlatformConfig,
+      agentOptions,
+      config.sessionTimeoutMinutes
+    );
+    gateway.registerPlatform(telegramPlatform);
+    logger.info("Telegram platform registered");
   }
 
   // Register API platform (always enabled)

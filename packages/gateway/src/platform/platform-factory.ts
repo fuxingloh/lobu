@@ -3,7 +3,10 @@
  * Replaces conditional platform creation in gateway startup.
  */
 
-import { createLogger } from "@termosdev/core";
+import {
+  createLogger,
+  type AgentOptions as CoreAgentOptions,
+} from "@termosdev/core";
 import type { PlatformAdapter } from "../platform";
 
 const logger = createLogger("platform-factory");
@@ -35,14 +38,7 @@ export interface PlatformFactory {
 /**
  * Agent options passed to platforms.
  */
-export interface AgentOptions {
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  timeoutMinutes?: number;
-}
+export type AgentOptions = CoreAgentOptions;
 
 /**
  * Combined platform configurations.

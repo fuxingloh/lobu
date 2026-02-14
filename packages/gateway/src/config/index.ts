@@ -185,6 +185,7 @@ export function buildGatewayConfig(): GatewayConfig {
     claude: {
       allowedTools: process.env.ALLOWED_TOOLS?.split(","),
       disallowedTools: process.env.DISALLOWED_TOOLS?.split(","),
+      runtime: process.env.AGENT_RUNTIME || process.env.AGENT_DEFAULT_RUNTIME,
       model: process.env.AGENT_DEFAULT_MODEL,
       timeoutMinutes: process.env.TIMEOUT_MINUTES
         ? Number(process.env.TIMEOUT_MINUTES)

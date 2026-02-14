@@ -224,6 +224,7 @@ export interface AgentMcpConfig {
  * compatibility for different agent implementations.
  */
 export interface AgentOptions {
+  runtime?: string;
   model?: string;
   maxTokens?: number;
   temperature?: number;

@@ -49,6 +49,7 @@ const PlatformMetadataSchema = z
 // AgentOptions has known fields plus arbitrary extra fields (including nested objects)
 const AgentOptionsSchema = z
   .object({
+    runtime: z.string().optional(),
     model: z.string().optional(),
     maxTokens: z.number().optional(),
     temperature: z.number().optional(),
@@ -62,6 +63,29 @@ const AgentOptionsSchema = z
     historyConfig: z.any().optional(),
   })
   .passthrough();
+
+const OPENCLAW_RUNTIME_ALIASES = new Set(["openclaw", "pi"]);
+
+function shouldUseOpenClaw(
+  agentOptions?: z.infer<typeof AgentOptionsSchema>
+): boolean {
+  if (!agentOptions) {
+    return false;
+  }
+  if (typeof agentOptions.runtime === "string") {
+    const runtime = agentOptions.runtime.trim().toLowerCase();
+    if (runtime && OPENCLAW_RUNTIME_ALIASES.has(runtime)) {
+      return true;
+    }
+  }
+  if (typeof agentOptions.model === "string") {
+    const model = agentOptions.model.trim().toLowerCase();
+    if (model.startsWith("openclaw/")) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const JobEventSchema = z.object({
   payload: z.object({
@@ -649,8 +673,7 @@ export class GatewayClient {
     message: QueuedMessage,
     processedIds?: string[]
   ): Promise<void> {
-    // Dynamic import to avoid circular dependency
-    const { ClaudeWorker } = await import("../claude/worker");
+    const useOpenClaw = shouldUseOpenClaw(message.payload.agentOptions);
 
     // Get traceparent for distributed tracing
     const traceparent =
@@ -692,10 +715,19 @@ export class GatewayClient {
       );
 
       // Worker will decide whether to continue session based on workspace state
-      this.currentWorker = new ClaudeWorker(
-        workerConfig,
-        this.interactionClient
-      );
+      if (useOpenClaw) {
+        const { OpenClawWorker } = await import("../openclaw/worker");
+        this.currentWorker = new OpenClawWorker(
+          workerConfig,
+          this.interactionClient
+        );
+      } else {
+        const { ClaudeWorker } = await import("../claude/worker");
+        this.currentWorker = new ClaudeWorker(
+          workerConfig,
+          this.interactionClient
+        );
+      }
 
       const workerTransport = this.currentWorker.getWorkerTransport();
 
