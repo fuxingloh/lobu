@@ -28,16 +28,34 @@ function parseDotenv(contents: string): Record<string, string> {
 }
 
 async function loadEnv(): Promise<void> {
-  const dotenvPath = process.env.DOTENV_PATH || ".env";
-  try {
-    const contents = await readFile(dotenvPath, "utf8");
-    const env = parseDotenv(contents);
-    for (const [k, v] of Object.entries(env)) {
-      if (process.env[k] === undefined) process.env[k] = v;
+  const originalKeys = new Set(Object.keys(process.env));
+
+  const load = async (path: string, overrideFromFiles: boolean) => {
+    try {
+      const contents = await readFile(path, "utf8");
+      const env = parseDotenv(contents);
+      for (const [k, v] of Object.entries(env)) {
+        // Never override real environment variables.
+        if (originalKeys.has(k)) continue;
+
+        if (!overrideFromFiles && process.env[k] !== undefined) continue;
+        process.env[k] = v;
+      }
+      return true;
+    } catch {
+      return false;
     }
-  } catch {
-    // It's fine if .env doesn't exist (CI, or user exports env vars directly).
+  };
+
+  const dotenvPath = process.env.DOTENV_PATH;
+  if (dotenvPath) {
+    await load(dotenvPath, true);
+    return;
   }
+
+  // Default: .env then .env.local, where .env.local overrides .env.
+  await load(".env", false);
+  await load(".env.local", true);
 }
 
 function requireEnv(name: string): string {
