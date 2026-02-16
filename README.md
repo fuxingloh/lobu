@@ -1,14 +1,47 @@
 # Lobu
 
-Join the Slack: https://join.slack.com/t/peerbot/shared_invite/zt-391o8tyw2-iyupjTG1xHIz9Og8C7JOnw
+**Enterprise-ready, multi-tenant, sandboxed agent orchestration built on the OpenClaw runtime.** Lobu replaces OpenClaw gateway with a secure gateway you can plug in to your company chat.
 
-**Enterprise-ready, multi-tenant, sandboxed agent orchestration built on the OpenClaw runtime.** Lobu runs coding agents in isolated workers behind a hardened gateway so teams can use "agentic" workflows without putting a single laptop (or a flat network) in the blast radius.
+## Interfaces:
 
-Supported today (3 entrypoints): **Slack**, **REST API** (programmatic), **Telegram**.
+1. **Slack**: Supports single bot to have different OpenClaws for each channel and DM. [Join the community Slack](https://join.slack.com/t/peerbot/shared_invite/zt-391o8tyw2-iyupjTG1xHIz9Og8C7JOnw) to try it!
 
-Community gateway: https://community.lobu.ai
+2. **REST API**: Allows you to programmatically create OpenClaw instances to build your own applications. [See the API Docs](https://community.lobu.ai/api/docs)
 
-API docs (OpenAPI): https://community.lobu.ai/api/docs (schema: https://community.lobu.ai/api/docs/openapi.json)
+3. **Telegram**: Lets you create personal AI assistants. Try it on [t.me/lobuaibot](t.me/lobuaibot) (soon to be ready). 
+
+## Installation
+
+### 1) Docker Compose (single host)
+
+**Prereqs**: Docker Desktop, Slack app credentials, and a Claude Code OAuth token (or other configured model auth).
+
+```bash
+cp .env.example .env
+# edit .env
+
+# Build the worker image used for per-session sandboxes
+make build-worker
+
+# Start gateway + redis
+docker compose up -d
+docker compose logs -f gateway
+```
+
+Security model (Docker Compose): workers run on an internal Docker network with **no direct internet access**; outbound traffic goes through the gateway's HTTP proxy with domain filtering. See `SECURITY.md#docker-compose`.
+
+### 2) Kubernetes (production)
+
+**Prereqs**: `kubectl`, `helm`, and a cluster with a default StorageClass for per-session PVCs.
+
+```bash
+cp .env.example .env
+# edit .env
+
+make deploy
+```
+
+Security model (Kubernetes): workers run as isolated pods (optionally with stronger runtimes like **gVisor** on GCP or **Kata Containers** / microVMs where available), are not externally reachable, and route egress through the gateway proxy. See `SECURITY.md#kubernetes`.
 
 ## Motivation
 
@@ -65,42 +98,7 @@ This project started in **July 2025** and was first published under **peerbot.ai
 
 Lobu exists because the runtime is great, but enterprise-grade isolation, secrets, and egress control are non-trivial. The plan is to monetize via enterprise support so the project stays sustainable.
 
-## Installation
-
-This repo supports two installation methods:
-
-### 1) Docker Compose (single host)
-
-**Prereqs**: Docker Desktop, Slack app credentials, and a Claude Code OAuth token (or other configured model auth).
-
-```bash
-cp .env.example .env
-# edit .env
-
-# Build the worker image used for per-session sandboxes
-make build-worker
-
-# Start gateway + redis
-docker compose up -d
-docker compose logs -f gateway
-```
-
-Security model (Docker Compose): workers run on an internal Docker network with **no direct internet access**; outbound traffic goes through the gateway's HTTP proxy with domain filtering. See `SECURITY.md#docker-compose`.
-
-### 2) Kubernetes (production)
-
-**Prereqs**: `kubectl`, `helm`, and a cluster with a default StorageClass for per-session PVCs.
-
-```bash
-cp .env.example .env
-# edit .env
-
-make deploy
-```
-
-Security model (Kubernetes): workers run as isolated pods (optionally with stronger runtimes like **gVisor** on GCP or **Kata Containers** / microVMs where available), are not externally reachable, and route egress through the gateway proxy. See `SECURITY.md#kubernetes`.
-
-## Security And Privacy (summary)
+## Security And Privacy
 
 - **No direct worker egress**: workers route outbound HTTP(S) via the gateway proxy, which enforces domain policy (allowlist/blocklist). (`SECURITY.md#network-egress`)
 - **Secrets stay in the gateway**: MCP OAuth flows and provider credentials are handled by the gateway; workers never see MCP client secrets. (`SECURITY.md#mcp-oauth-and-credentials`)
