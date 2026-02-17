@@ -1,89 +1,141 @@
 # Lobu
 
-**Enterprise-ready, multi-tenant, sandboxed agent orchestration built on the OpenClaw runtime.** Lobu replaces OpenClaw gateway with a secure gateway you can plug in to your company chat.
+![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue)
 
-## Interfaces:
+Multi-tenant, sandboxed agent orchestration. Run Claude Code or OpenClaw behind a hardened gateway with MCP proxy, multi-provider auth, and per-context isolation.
 
-**REST API**: Allows you to programmatically create OpenClaw instances to build your own applications. [See the API Docs](https://community.lobu.ai/api/docs)
+**Batteries included.** Lobu bundles sandboxed execution, MCP proxy with OAuth, and network isolation — no external sandbox providers, no third-party MCP gateways. One deployment, everything included.
 
-**Slack**: Supports single bot to have different OpenClaws for each channel and DM. [Join the community Slack](https://join.slack.com/t/peerbot/shared_invite/zt-391o8tyw2-iyupjTG1xHIz9Og8C7JOnw) to try it.
+## Interfaces
 
-**Telegram**: Lets you create personal AI assistants. Try it on [t.me/lobuaibot](t.me/lobuaibot). 
+**REST API** — Programmatic agent creation. [API Docs](https://community.lobu.ai/api/docs)
 
-## Installation
+**Slack** — Multi-channel/DM agents. [Join community Slack](https://join.slack.com/t/peerbot/shared_invite/zt-391o8tyw2-iyupjTG1xHIz9Og8C7JOnw)
 
-### 1) Docker Compose (single host)
+**Telegram** — Personal AI assistants via Grammy long-polling.
 
-**Prereqs**: Docker Desktop, Slack app credentials, and a Claude Code OAuth token (or other configured model auth).
+**WhatsApp** — Baileys-based integration with self-chat mode for testing.
+
+## Quick Start
+
+### Docker Compose
 
 ```bash
-cp .env.example .env
-# edit .env
-
-# Build the worker image used for per-session sandboxes
+cp .env.example .env   # edit .env with your credentials
 make build-worker
-
-# Start gateway + redis
 docker compose up -d
 ```
 
-Each agent runs on a container in your Docker deamon. Workers run on an internal Docker network with **no direct internet access**; outbound traffic goes through the gateway's HTTP proxy with domain filtering. See `SECURITY.md#docker-compose`.
-
-### 2) Kubernetes (production)
-
-**Prereqs**: `kubectl`, `helm`, and a cluster with a default StorageClass for per-session PVCs.
+### Kubernetes
 
 ```bash
-cp .env.example .env
-# edit .env
-
+cp .env.example .env   # edit .env
 make deploy
 ```
 
-Security model (Kubernetes): workers run as isolated pods (optionally with stronger runtime **gVisor** or **Kata Containers** / microVMs (where available), are not externally reachable, and route egress through the gateway proxy. See `SECURITY.md#kubernetes`.
+### Local
 
-## How It Works
+```bash
+cp .env.example .env   # edit .env
+make dev
+```
+
+Workers run as child processes. Install `@anthropic-ai/sandbox-runtime` for optional OS-level isolation (`SANDBOX_ENABLED=true`).
+
+## Architecture
 
 ```mermaid
 flowchart LR
-  Slack[Slack] -->|events| GW[Gateway]
-  GW -->|enqueue| Redis[(Redis)]
-  GW -->|orchestrate| Orchestrator[Orchestrator]
-  Orchestrator -->|spawn per session| W[Sandboxed Worker]
-  W -->|responses| GW
+  Slack[Slack] --> GW[Gateway]
+  Telegram[Telegram] --> GW
+  WhatsApp[WhatsApp] --> GW
+  API[REST API] --> GW
 
-  subgraph Isolation["Isolation Boundary"]
+  GW <--> Redis[(Redis)]
+  GW -->|orchestrate| Orch[Orchestrator]
+  Orch -->|spawn| W[Worker: Claude SDK or OpenClaw]
+
+  subgraph Isolation Boundary
     W
   end
 
-  W -. "no direct internet" .-> GW
-  GW -->|HTTP proxy + allowlist| Internet[(Outbound Internet)]
+  W -.->|HTTP proxy| GW
+  GW -->|domain filter| Internet((Internet))
+
+  W -.->|MCP proxy| GW
+  GW -->|scoped tokens| MCP[MCP Servers]
 ```
 
-**Key concepts**
-- **Multi-tenant by default**: different channels/DMs can run different models, tools, skills, Nix environments, and credentials safely.
-- **Agent abstraction**: per-context configuration controls runtime/model/tools so the bot behaves differently in different places.
-- **Gateway as single egress point**: workers route outbound traffic through the gateway, which enforces domain policy.
+### Key Concepts
 
-## Yet Another OpenClaw Copy?
+**Gateway as single egress.** All worker traffic — internet and MCP — routes through the gateway. Workers have no direct network access.
 
-I built and exited a B2B SaaS business (acquired by LiveRamp) and then started working on this full-time. Follow along: https://x.com/bu7emba
+**MCP Proxy.** Workers call MCP tools via gateway REST endpoints (`GET /mcp/tools`, `POST /mcp/:mcpId/tools/:toolName`). The gateway handles OAuth, injects scoped tokens. Workers never see client secrets.
 
-This project started in **July 2025** and was first published under [peerbot.ai](https://peeerbot.ai), initially focused on Claude Code. After OpenClaw is released, I added its runtime support so all OpenClaw skills can be used but Lobu has its own gateway system that replaces OpenClaw gateway. Here are the main differences:
+```json
+{
+  "mcpServers": {
+    "github": {
+      "url": "https://github-mcp.example.com",
+      "oauth": {
+        "clientId": "YOUR_CLIENT_ID",
+        "clientSecret": "${env:GITHUB_CLIENT_SECRET}",
+        "scopes": ["repo", "read:user"]
+      }
+    }
+  }
+}
+```
 
-1. Lobu OpenClaw workers **scale to zero** unlike Openclaw where you need to keep your computer open 7/24 even though you're not talking to your agent.
-2. A single bot (Telegram / Slack user) can use different environment based on DMs and channels. That enables you to have a single Lobu instead of multiple OpenClaw instances.
-3. Lobu supports Claude Code SDK for Claude models so Anthropic doesn't block your account.
-4. Agents are strictly sandboxed, they can't talk to internet, or change gateway's environment. All access goes through the gateway and you configure where you want the agent to have access explicitly.
+`${env:VAR}` is resolved at the gateway — workers never see the secret.
 
-## Security And Privacy
+**Multi-platform, multi-tenant.** One bot instance serves Slack, Telegram, WhatsApp, and REST API. Each channel/DM gets its own runtime, model, tools, credentials, and Nix environment.
 
-- **No direct worker egress**: workers route outbound HTTP(S) via the gateway proxy, which enforces domain policy (allowlist/blocklist). (`SECURITY.md#network-egress`)
-- **Secrets stay in the gateway**: MCP OAuth flows and provider credentials are handled by the gateway; workers never see MCP client secrets. (`SECURITY.md#mcp-oauth-and-credentials`)
-- **Defense-in-depth on Kubernetes**: NetworkPolicies, RBAC, resource limits/quotas, and optional gVisor/Kata. (`SECURITY.md#kubernetes`)
-- **Nix environments**: per-session environments can be activated using Nix (flake/packages) inside workers for reproducible tooling without baking everything into images. (`ARCHITECTURE.md#nix-environments`)
-- **Skills**: curated skills support is available; treat skills as executable capability and apply policy accordingly. (`SECURITY.md#skills-and-policy`)
+**Dual runtime.** Workers run Claude Code SDK (CLI subprocess) or OpenClaw Pi Agent SDK (embedded npm package), selected per-agent via the `runtime` field or model prefix.
+
+**Multi-provider auth.** Claude (OAuth), ChatGPT (device-code flow), and API-key providers (Gemini, NVIDIA, etc.) via pluggable `ModelProviderModule`.
+
+**Skills.** Skills from [skills.sh](https://skills.sh) are fetched from GitHub, cached, and injected as progressive-disclosure instructions. Agents discover and install skills at runtime.
+
+**Workspace instructions.** Per-agent `IDENTITY.md`, `SOUL.md`, `USER.md` files shape personality and behavior.
+
+**Built-in tools.** `AskUserQuestion`, `UploadUserFile`, `ScheduleReminder`, `GetChannelHistory`, `GenerateAudio` (TTS).
+
+**Network domain filtering:**
+
+```bash
+# Workers can only reach these domains
+WORKER_ALLOWED_DOMAINS=github.com,.github.com,registry.npmjs.org
+```
+
+## How Lobu Differs
+
+This project started in **July 2025** and was first published under [peerbot.ai](https://peerbot.ai), initially focused on Claude Code. After OpenClaw was released, I added its runtime support so all OpenClaw skills can be used — but Lobu has its own gateway system that replaces the OpenClaw gateway.
+
+| | Lobu | OpenClaw |
+|---|---|---|
+| **Scale to zero** | Workers scale down when idle | Requires always-on computer |
+| **Multi-tenant** | Single bot, per-channel/DM isolation | One instance per setup |
+| **Multi-platform** | Slack, Telegram, WhatsApp, REST API | Platform-specific setup |
+| **Runtimes** | Claude SDK + OpenClaw Pi Agent | OpenClaw only |
+| **Model providers** | Claude, ChatGPT, Gemini, NVIDIA, etc. | Runtime-dependent |
+| **MCP access** | Proxied through gateway, secrets isolated | Direct from agent |
+| **Skills** | skills.sh ecosystem | OpenClaw skills |
+| **Network isolation** | Workers sandboxed, domain-filtered egress | No built-in isolation |
+| **Deployment** | K8s, Docker, Local (sandbox runtime) | Single mode |
+
+## Security and Privacy
+
+- **No direct worker egress** — all traffic through gateway proxy (`SECURITY.md#network-egress`)
+- **Secrets stay in gateway** — MCP OAuth, provider creds, `${env:}` substitution (`SECURITY.md#mcp-oauth-and-credentials`)
+- **Defense-in-depth on K8s** — NetworkPolicies, RBAC, gVisor/Kata (`SECURITY.md#kubernetes`)
+- **Nix environments** — reproducible per-session tooling (`SECURITY.md#nix-environments`)
+- **Skills policy enforcement** (`SECURITY.md#skills-and-policy`)
 
 ## License
 
-Business Source License 1.1 (`BUSL-1.1`). See `LICENSE`.
+Business Source License 1.1 (`BUSL-1.1`). See [LICENSE](LICENSE).
+
+---
+
+Follow along: https://x.com/bu7emba
