@@ -41,7 +41,7 @@ annotations:
 dependencies:
   # Redis for message queues and state management
   - name: redis
-    version: "~24.x"
+    version: "24.1.8"
     repository: oci://registry-1.docker.io/bitnamicharts
     condition: redis.enabled
   # Grafana Tempo for distributed tracing
