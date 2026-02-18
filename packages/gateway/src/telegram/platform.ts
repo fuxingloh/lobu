@@ -9,6 +9,7 @@ import {
   type UserSuggestion,
 } from "@lobu/core";
 import { Bot } from "grammy";
+import type { Hono } from "hono";
 import { platformAuthRegistry } from "../auth/platform-auth";
 import type { CoreServices, PlatformAdapter } from "../platform";
 import {
@@ -19,10 +20,12 @@ import {
 } from "../platform/platform-factory";
 import type { ResponseRenderer } from "../platform/response-renderer";
 import { TelegramAuthAdapter } from "./auth-adapter";
+import { TELEGRAM_WEBHOOK_PATH, shouldUseWebhook } from "./config";
 import type { TelegramConfig } from "./config";
 import { TelegramMessageHandler } from "./events/message-handler";
 import { TelegramInteractionRenderer } from "./interactions";
 import { TelegramResponseRenderer } from "./response-renderer";
+import { createTelegramWebhookRoute } from "./webhook-route";
 
 const logger = createLogger("telegram-platform");
 
@@ -45,6 +48,8 @@ export class TelegramPlatform implements PlatformAdapter {
   private interactionRenderer?: TelegramInteractionRenderer;
   private authAdapter?: TelegramAuthAdapter;
   private running = false;
+  private useWebhook = false;
+  private webhookRoute?: Hono;
 
   constructor(
     private readonly config: TelegramPlatformConfig,
@@ -113,6 +118,9 @@ export class TelegramPlatform implements PlatformAdapter {
     this.authAdapter = new TelegramAuthAdapter(this.bot, publicGatewayUrl);
     platformAuthRegistry.register("telegram", this.authAdapter);
 
+    // Detect webhook vs polling mode
+    this.useWebhook = shouldUseWebhook(publicGatewayUrl);
+
     logger.info("Telegram auth adapter registered");
 
     // Wire up channel binding service
@@ -158,13 +166,48 @@ export class TelegramPlatform implements PlatformAdapter {
       logger.error({ error: String(err) }, "Grammy bot error");
     });
 
-    // Start long polling (non-blocking)
-    this.bot.start({
-      onStart: () => {
+    if (this.useWebhook) {
+      // Build full webhook URL
+      const publicGatewayUrl = process.env.PUBLIC_GATEWAY_URL!;
+      const webhookUrl = `${publicGatewayUrl.replace(/\/$/, "")}${TELEGRAM_WEBHOOK_PATH}`;
+
+      try {
+        await this.bot.api.setWebhook(webhookUrl, {
+          secret_token: this.config.telegram.webhookSecret,
+        });
+        // Create webhook route only after setWebhook succeeds — calling
+        // webhookCallback() marks the bot as "webhook mode" in Grammy,
+        // which would block a fallback to bot.start() (long polling).
+        this.webhookRoute = createTelegramWebhookRoute(
+          this.bot,
+          this.config.telegram.webhookSecret
+        );
         this.running = true;
-        logger.info("Telegram bot started (long polling)");
-      },
-    });
+        logger.info({ webhookUrl }, "Telegram bot started (webhook mode)");
+      } catch (err) {
+        logger.warn(
+          { error: String(err), webhookUrl },
+          "Failed to set Telegram webhook, falling back to long polling"
+        );
+        this.useWebhook = false;
+        this.bot.start({
+          onStart: () => {
+            this.running = true;
+            logger.info(
+              "Telegram bot started (long polling, webhook fallback)"
+            );
+          },
+        });
+      }
+    } else {
+      // Start long polling (non-blocking)
+      this.bot.start({
+        onStart: () => {
+          this.running = true;
+          logger.info("Telegram bot started (long polling)");
+        },
+      });
+    }
 
     logger.info("Telegram platform started");
   }
@@ -180,7 +223,11 @@ export class TelegramPlatform implements PlatformAdapter {
       this.responseRenderer.cleanup();
     }
 
-    this.bot.stop();
+    if (this.useWebhook) {
+      await this.bot.api.deleteWebhook();
+    } else {
+      this.bot.stop();
+    }
     this.running = false;
 
     logger.info("Telegram platform stopped");
@@ -188,6 +235,10 @@ export class TelegramPlatform implements PlatformAdapter {
 
   isHealthy(): boolean {
     return this.running;
+  }
+
+  getWebhookRoute(): Hono | undefined {
+    return this.webhookRoute;
   }
 
   getResponseRenderer(): ResponseRenderer | undefined {

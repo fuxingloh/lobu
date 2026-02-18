@@ -11,7 +11,8 @@ import {
   registerAutoOpenApiRoutes,
 } from "../routes/openapi-auto";
 import type { SlackConfig } from "../slack";
-import type { TelegramConfig } from "../telegram/config";
+import { TELEGRAM_WEBHOOK_PATH, type TelegramConfig } from "../telegram/config";
+import type { TelegramPlatform } from "../telegram/platform";
 import type { WhatsAppConfig } from "../whatsapp/config";
 
 const logger = createLogger("gateway-startup");
@@ -29,7 +30,8 @@ function setupServer(
   sessionManager?: any,
   interactionService?: any,
   platformRegistry?: any,
-  coreServices?: any
+  coreServices?: any,
+  telegramPlatform?: TelegramPlatform | null
 ) {
   if (httpServer) return;
 
@@ -106,6 +108,15 @@ function setupServer(
     // Mount MCP proxy at /mcp/*
     app.route("/mcp", mcpProxy.getApp());
     logger.info("MCP proxy routes enabled at :8080/mcp/*");
+  }
+
+  // Telegram webhook route
+  const telegramWebhookRoute = telegramPlatform?.getWebhookRoute();
+  if (telegramWebhookRoute) {
+    app.route(TELEGRAM_WEBHOOK_PATH, telegramWebhookRoute);
+    logger.info(
+      `Telegram webhook route enabled at :8080${TELEGRAM_WEBHOOK_PATH}`
+    );
   }
 
   // File routes (already Hono)
@@ -873,7 +884,8 @@ export async function startGateway(
     sessionManager,
     coreServices.getInteractionService(),
     gateway.getPlatformRegistry(),
-    coreServices
+    coreServices,
+    telegramPlatform
   );
 
   logger.info("Lobu Gateway is running!");

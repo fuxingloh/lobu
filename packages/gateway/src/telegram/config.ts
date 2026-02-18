@@ -2,6 +2,7 @@
  * Telegram platform configuration.
  */
 
+import crypto from "node:crypto";
 import { getOptionalBoolean, getOptionalNumber } from "@lobu/core";
 
 export interface TelegramConfig {
@@ -29,6 +30,9 @@ export interface TelegramConfig {
 
   /** Conversation history TTL in seconds (default: 24 hours) */
   historyTtlSeconds: number;
+
+  /** Secret token for webhook verification */
+  webhookSecret: string;
 }
 
 export const DEFAULT_TELEGRAM_CONFIG: TelegramConfig = {
@@ -39,7 +43,26 @@ export const DEFAULT_TELEGRAM_CONFIG: TelegramConfig = {
   messageChunkSize: 4096,
   maxHistoryMessages: 10,
   historyTtlSeconds: 86400, // 24 hours
+  webhookSecret: "",
 };
+
+export const TELEGRAM_WEBHOOK_PATH = "/api/telegram/webhook";
+
+/**
+ * Whether the bot should use webhooks instead of long polling.
+ * Webhooks require a publicly accessible URL (not localhost).
+ */
+export function shouldUseWebhook(
+  publicGatewayUrl: string | undefined
+): boolean {
+  if (!publicGatewayUrl) return false;
+  try {
+    const host = new URL(publicGatewayUrl).hostname;
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Build Telegram config from environment variables.
@@ -84,6 +107,11 @@ export function buildTelegramConfig(): TelegramConfig | null {
       "TELEGRAM_HISTORY_TTL_SECONDS",
       defaults.historyTtlSeconds
     ),
+    webhookSecret: crypto
+      .createHash("sha256")
+      .update(botToken)
+      .digest("hex")
+      .slice(0, 64),
   };
 }
 
@@ -99,6 +127,8 @@ export function displayTelegramConfig(config: TelegramConfig | null): void {
     console.log(
       `  Allow From: ${config.allowFrom.length > 0 ? config.allowFrom.join(", ") : "all"}`
     );
+    const webhookMode = shouldUseWebhook(process.env.PUBLIC_GATEWAY_URL);
+    console.log(`  Mode: ${webhookMode ? "webhook" : "long polling"}`);
   } else {
     console.log("\nTelegram: disabled");
   }
