@@ -152,7 +152,6 @@ export class ChatGPTOAuthModule
    * Reads OPENAI_API_KEY from agent settings envVars.
    */
   async buildEnvVars(
-    _userId: string,
     agentId: string,
     envVars: Record<string, string>
   ): Promise<Record<string, string>> {

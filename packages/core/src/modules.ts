@@ -57,7 +57,6 @@ export interface OrchestratorModule<TModuleData = unknown>
   extends ModuleInterface<TModuleData> {
   /** Build environment variables for worker container */
   buildEnvVars(
-    userId: string,
     agentId: string,
     baseEnv: Record<string, string>
   ): Promise<Record<string, string>>;
@@ -220,7 +219,6 @@ export abstract class BaseModule<TModuleData = unknown>
   }
 
   async buildEnvVars(
-    _userId: string,
     _agentId: string,
     baseEnv: Record<string, string>
   ): Promise<Record<string, string>> {

@@ -99,7 +99,6 @@ export class GitFilesystemModule extends BaseModule {
    * - GIT_CACHE_PATH: Path to cached bare repo for reference clone
    */
   async buildEnvVars(
-    _userId: string,
     agentId: string,
     baseEnv: Record<string, string>
   ): Promise<Record<string, string>> {

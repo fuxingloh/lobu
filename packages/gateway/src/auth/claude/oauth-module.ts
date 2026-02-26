@@ -157,7 +157,6 @@ export class ClaudeOAuthModule
    * Injects space's Claude OAuth token and user's model preference if available
    */
   async buildEnvVars(
-    userId: string,
     agentId: string,
     envVars: Record<string, string>
   ): Promise<Record<string, string>> {
@@ -175,21 +174,8 @@ export class ClaudeOAuthModule
       }
     }
 
-    // Inject model preference: user-scoped preference > .env config > module default
-    const modelPreference =
-      await this.modelPreferenceStore.getModelPreference(userId);
-    const effectiveModel =
-      modelPreference ||
-      process.env.AGENT_DEFAULT_MODEL ||
-      ClaudeOAuthModule.FALLBACK_MODELS[0]?.id;
-    if (effectiveModel) {
-      if (modelPreference) {
-        logger.info(
-          `Injecting model preference for ${userId}: ${modelPreference}`
-        );
-      }
-      envVars.AGENT_DEFAULT_MODEL = effectiveModel;
-    }
+    // AGENT_DEFAULT_MODEL is now delivered dynamically via session context.
+    // No longer baked into static container env vars.
 
     return envVars;
   }

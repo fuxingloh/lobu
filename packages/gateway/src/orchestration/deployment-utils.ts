@@ -19,7 +19,6 @@ import type {
  * Build environment variables by integrating all registered modules
  */
 export async function buildModuleEnvVars(
-  userId: string,
   agentId: string,
   baseEnv: Record<string, string>
 ): Promise<Record<string, string>> {
@@ -28,7 +27,7 @@ export async function buildModuleEnvVars(
   const orchestratorModules = moduleRegistry.getOrchestratorModules();
   for (const module of orchestratorModules) {
     if (module.buildEnvVars) {
-      envVars = await module.buildEnvVars(userId, agentId, envVars);
+      envVars = await module.buildEnvVars(agentId, envVars);
     }
   }
 

@@ -88,7 +88,6 @@ export function generateDeploymentName(
 
 // Type for module environment variable builder function
 export type ModuleEnvVarsBuilder = (
-  userId: string,
   agentId: string,
   envVars: Record<string, string>
 ) => Promise<Record<string, string>>;
@@ -622,7 +621,7 @@ export abstract class BaseDeploymentManager {
     // Include secrets from process.env for Docker deployments
     if (includeSecrets && this.moduleEnvVarsBuilder) {
       try {
-        envVars = await this.moduleEnvVarsBuilder(userId, agentId, envVars);
+        envVars = await this.moduleEnvVarsBuilder(agentId, envVars);
       } catch (error) {
         logger.warn("Failed to build module environment variables:", error);
       }
@@ -715,13 +714,6 @@ export abstract class BaseDeploymentManager {
         },
         "Selected primary provider"
       );
-
-      // In auto-mode (no explicit model), clear any AGENT_DEFAULT_MODEL that
-      // other modules may have injected so the worker uses the primary
-      // provider's own default model instead of a mismatched one.
-      if (!agentModel) {
-        delete envVars.AGENT_DEFAULT_MODEL;
-      }
 
       const proxyBaseUrl = `${this.getDispatcherUrl()}/api/proxy`;
       const mappings = primaryProvider.getProxyBaseUrlMappings(

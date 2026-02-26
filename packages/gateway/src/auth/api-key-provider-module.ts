@@ -129,7 +129,6 @@ export class ApiKeyProviderModule
   }
 
   async buildEnvVars(
-    _userId: string,
     agentId: string,
     envVars: Record<string, string>
   ): Promise<Record<string, string>> {
