@@ -67,6 +67,14 @@ const DEFAULT_PROVIDER_MODELS: Record<string, string> = {
   "z-ai": "glm-4.7",
 };
 
+/**
+ * Map gateway provider slugs to model-registry provider names.
+ * The gateway uses slugs like "z-ai" while the model registry uses "zai".
+ */
+const PROVIDER_REGISTRY_ALIASES: Record<string, string> = {
+  "z-ai": "zai",
+};
+
 export class OpenClawWorker implements WorkerExecutor {
   private workspaceManager: WorkspaceManager;
   public workerTransport: WorkerTransport;
@@ -339,7 +347,9 @@ export class OpenClawWorker implements WorkerExecutor {
 
     this.progressProcessor.setVerboseLogging(verboseLogging);
 
-    const { provider, modelId } = resolveModelRef(modelRef);
+    const { provider: rawProvider, modelId } = resolveModelRef(modelRef);
+    // Map gateway slug to model-registry provider name (e.g. "z-ai" → "zai")
+    const provider = PROVIDER_REGISTRY_ALIASES[rawProvider] || rawProvider;
 
     // Dynamic provider base URL from agentOptions.providerBaseUrlMappings
     let providerBaseUrl: string | undefined;
@@ -347,7 +357,7 @@ export class OpenClawWorker implements WorkerExecutor {
       | Record<string, string>
       | undefined;
     if (dynamicMappings && typeof dynamicMappings === "object") {
-      const fallbackEnvVar = DEFAULT_PROVIDER_BASE_URL_ENV[provider];
+      const fallbackEnvVar = DEFAULT_PROVIDER_BASE_URL_ENV[rawProvider];
       if (fallbackEnvVar && dynamicMappings[fallbackEnvVar]) {
         providerBaseUrl = dynamicMappings[fallbackEnvVar];
       }
@@ -364,7 +374,7 @@ export class OpenClawWorker implements WorkerExecutor {
           : undefined;
     }
     if (!providerBaseUrl) {
-      const baseUrlEnvVar = DEFAULT_PROVIDER_BASE_URL_ENV[provider];
+      const baseUrlEnvVar = DEFAULT_PROVIDER_BASE_URL_ENV[rawProvider];
       if (baseUrlEnvVar && process.env[baseUrlEnvVar]) {
         providerBaseUrl = process.env[baseUrlEnvVar];
       }
