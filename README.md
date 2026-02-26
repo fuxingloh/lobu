@@ -104,11 +104,11 @@ If you want to deploy agents for your organization but need expert implementatio
 *   **Automated Customer Support** — Build agents that handle complex, multi-step support tickets autonomously while keeping a human in the loop.
 *   **Autonomous Workflows** — Use Lobu to automate background tasks that require persistent state, long-running execution, and scheduled cron jobs.
 *   **Infrastructure Maintenance** — Let us manage your private Lobu deployment on your own Kubernetes cluster, ensuring 99.9% uptime, security updates, and automated scaling.
-*   **Custom Tooling & Skills** — We build specialized MCP servers, Nix-powered runtimes, and OpenClaw skills tailored to your business needs.
+*   **Custom Tooling & Skills** — I build specialized MCP servers, Nix-powered runtimes, and OpenClaw skills tailored to your business needs.
 
 ---
 
-**Built by Experts.** Lobu is led by Burak Emre, a second-time technical founder. Previously, he founded [rakam.io](https://rakam.io), an enterprise analytics PaaS, which was acquired by [LiveRamp](https://liveramp.com) (NYSE: RAMP). We bring years of experience building secure, scalable enterprise infrastructure to the world of autonomous agents.
+**Built by Experts.** Lobu is created by Burak Emre, a second-time technical founder. Previously, I founded [rakam.io](https://rakam.io), an enterprise analytics PaaS acquired by [LiveRamp](https://liveramp.com) (NYSE: RAMP). I bring years of experience building secure, scalable enterprise infrastructure to the world of autonomous agents.
 
 > [!TIP]
 > **Need help architecting your agent workforce?** [🗓️ **Book a Strategy Call**](https://calendar.app.google/LwAk3ecptkJQaYr87)
