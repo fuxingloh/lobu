@@ -6,8 +6,6 @@
 
 ## Messaging & API
 
-Lobu integrates with popular messaging platforms and provides a robust REST API for programmatic control of your persistent agents.
-
 **REST API** — Programmatic agent creation, control, and state management.
 
 [![API Docs](https://img.shields.io/badge/API_Docs-0096FF?style=for-the-badge&logo=readme&logoColor=white)](https://community.lobu.ai/api/docs)
@@ -35,8 +33,6 @@ cd my-bot && docker compose up -d
 
 ### Deployment modes
 
-Lobu supports flexible deployment options tailored for local development, single-machine production, and Kubernetes environments.
-
 - **Docker Compose** — `docker compose up` (One-click, production single-machine)
 - **Kubernetes** — Install via OCI Helm chart (no clone needed):
 
@@ -52,8 +48,6 @@ helm install lobu oci://ghcr.io/lobu-ai/charts/lobu \
   3. `make dev` (Uses Docker Compose Watch for hot-reloading)
 
 ## Architecture
-
-Understand the core components and data flow of Lobu's agent orchestration platform.
 
 ```mermaid
 flowchart LR
