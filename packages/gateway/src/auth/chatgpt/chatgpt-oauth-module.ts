@@ -1,15 +1,10 @@
-import {
-  BaseModule,
-  createLogger,
-  type ModelOption,
-  type ModelProviderModule,
-} from "@lobu/core";
-import { Hono } from "hono";
+import { createLogger, type ModelOption } from "@lobu/core";
 import type { AgentSettingsStore } from "../settings/agent-settings-store";
 import {
   AuthProfilesManager,
   createAuthProfileLabel,
 } from "../settings/auth-profiles-manager";
+import { BaseProviderModule } from "../base-provider-module";
 import { ChatGPTDeviceCodeClient } from "./device-code-client";
 
 const logger = createLogger("chatgpt-oauth-module");
@@ -19,74 +14,34 @@ const logger = createLogger("chatgpt-oauth-module");
  * Stores the access token in AgentSettings.envVars as OPENAI_API_KEY.
  * Pi-ai's openai-codex provider picks up OPENAI_API_KEY automatically.
  */
-export class ChatGPTOAuthModule
-  extends BaseModule
-  implements ModelProviderModule
-{
-  name = "chatgpt-oauth";
-  providerId = "chatgpt";
-  providerDisplayName = "ChatGPT";
-  providerIconUrl =
-    "https://www.google.com/s2/favicons?domain=chatgpt.com&sz=128";
-  authType = "device-code" as const;
-  supportedAuthTypes: ("oauth" | "device-code" | "api-key")[] = [
-    "device-code",
-    "api-key",
-  ];
-  apiKeyInstructions =
-    'Enter your <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-600 underline">OpenAI API key</a>:';
-  apiKeyPlaceholder = "sk-...";
-  catalogDescription = "OpenAI's ChatGPT with device code authentication";
+export class ChatGPTOAuthModule extends BaseProviderModule {
   private deviceCodeClient: ChatGPTDeviceCodeClient;
-  private app: Hono;
-  private authProfilesManager: AuthProfilesManager;
 
-  constructor(private agentSettingsStore: AgentSettingsStore) {
-    super();
-    this.deviceCodeClient = new ChatGPTDeviceCodeClient();
-    this.authProfilesManager = new AuthProfilesManager(this.agentSettingsStore);
-    this.app = new Hono();
-    this.setupRoutes();
-  }
-
-  isEnabled(): boolean {
-    return true;
-  }
-
-  // ---- ModelProviderModule methods ----
-
-  getSecretEnvVarNames(): string[] {
-    return ["OPENAI_API_KEY"];
-  }
-
-  getCredentialEnvVarName(): string {
-    return "OPENAI_API_KEY";
-  }
-
-  getUpstreamConfig(): { slug: string; upstreamBaseUrl: string } {
-    return {
-      slug: "openai-codex",
-      upstreamBaseUrl: "https://chatgpt.com/backend-api",
-    };
-  }
-
-  async hasCredentials(agentId: string): Promise<boolean> {
-    return this.authProfilesManager.hasProviderProfiles(
-      agentId,
-      this.providerId
+  constructor(agentSettingsStore: AgentSettingsStore) {
+    const authProfilesManager = new AuthProfilesManager(agentSettingsStore);
+    super(
+      {
+        providerId: "chatgpt",
+        providerDisplayName: "ChatGPT",
+        providerIconUrl:
+          "https://www.google.com/s2/favicons?domain=chatgpt.com&sz=128",
+        credentialEnvVarName: "OPENAI_API_KEY",
+        secretEnvVarNames: ["OPENAI_API_KEY"],
+        slug: "openai-codex",
+        upstreamBaseUrl: "https://chatgpt.com/backend-api",
+        baseUrlEnvVarName: "OPENAI_BASE_URL",
+        authType: "device-code",
+        supportedAuthTypes: ["device-code", "api-key"],
+        apiKeyInstructions:
+          'Enter your <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-600 underline">OpenAI API key</a>:',
+        apiKeyPlaceholder: "sk-...",
+        catalogDescription: "OpenAI's ChatGPT with device code authentication",
+      },
+      authProfilesManager
     );
-  }
-
-  hasSystemKey(): boolean {
-    return !!process.env.OPENAI_API_KEY;
-  }
-
-  getProxyBaseUrlMappings(
-    proxyUrl: string,
-    agentId?: string
-  ): Record<string, string> {
-    const base = `${proxyUrl}/openai-codex`;
-    return { OPENAI_BASE_URL: agentId ? `${base}/a/${agentId}` : base };
+    // Preserve existing module name
+    this.name = "chatgpt-oauth";
+    this.deviceCodeClient = new ChatGPTDeviceCodeClient();
   }
 
   getCliBackendConfig() {
@@ -96,18 +51,6 @@ export class ChatGPTOAuthModule
       args: ["-y", "acpx@latest", "codex", "--quiet"],
       modelArg: "--model",
     };
-  }
-
-  injectSystemKeyFallback(
-    envVars: Record<string, string>
-  ): Record<string, string> {
-    if (!envVars.OPENAI_API_KEY) {
-      const systemKey = process.env.OPENAI_API_KEY;
-      if (systemKey) {
-        envVars.OPENAI_API_KEY = systemKey;
-      }
-    }
-    return envVars;
   }
 
   async getModelOptions(
@@ -140,38 +83,11 @@ export class ChatGPTOAuthModule
         const slug = model.slug?.trim();
         if (!slug) return null;
         return {
-          value: `openclaw/openai-codex/${slug}`,
+          value: `openai-codex/${slug}`,
           label: model.title?.trim() || slug,
         } satisfies ModelOption;
       })
       .filter((item): item is ModelOption => Boolean(item));
-  }
-
-  /**
-   * Build environment variables for worker deployment.
-   * Reads OPENAI_API_KEY from agent settings envVars.
-   */
-  async buildEnvVars(
-    agentId: string,
-    envVars: Record<string, string>
-  ): Promise<Record<string, string>> {
-    if (!envVars.OPENAI_API_KEY) {
-      const profile = await this.authProfilesManager.getBestProfile(
-        agentId,
-        this.providerId
-      );
-      const token = profile?.credential;
-      if (token) {
-        logger.info(`Injecting OPENAI_API_KEY for agent ${agentId}`);
-        envVars.OPENAI_API_KEY = token;
-      }
-    }
-
-    return envVars;
-  }
-
-  getApp(): Hono {
-    return this.app;
   }
 
   /**
@@ -208,7 +124,7 @@ export class ChatGPTOAuthModule
     }
   }
 
-  private setupRoutes(): void {
+  protected override setupRoutes(): void {
     // Start device code flow
     this.app.post("/start", async (c) => {
       try {
@@ -277,72 +193,6 @@ export class ChatGPTOAuthModule
       }
     });
 
-    // Save API key (alternative to device code)
-    this.app.post("/save-key", async (c) => {
-      try {
-        const body = await c.req.json();
-        const { agentId, apiKey } = body;
-
-        if (!agentId || !apiKey) {
-          return c.json({ error: "Missing agentId or apiKey" }, 400);
-        }
-
-        await this.authProfilesManager.upsertProfile({
-          agentId,
-          provider: this.providerId,
-          credential: apiKey,
-          authType: "api-key",
-          label: createAuthProfileLabel(this.providerDisplayName, apiKey),
-          makePrimary: true,
-        });
-
-        logger.info(`ChatGPT API key saved for agent ${agentId}`);
-        return c.json({ success: true });
-      } catch (error) {
-        logger.error("Failed to save ChatGPT API key", { error });
-        return c.json({ error: "Failed to save API key" }, 500);
-      }
-    });
-
-    // Logout - remove token
-    this.app.post("/logout", async (c) => {
-      try {
-        const body = await c.req.json().catch(() => ({}));
-        const agentId = body.agentId || c.req.query("agentId");
-
-        if (!agentId) {
-          return c.json({ error: "Missing agentId" }, 400);
-        }
-
-        await this.authProfilesManager.deleteProviderProfiles(
-          agentId,
-          this.providerId
-        );
-        logger.info(`ChatGPT token removed for agent ${agentId}`);
-
-        return c.json({ success: true });
-      } catch (error) {
-        logger.error("Failed to logout from ChatGPT", { error });
-        return c.json({ error: "Failed to logout" }, 500);
-      }
-    });
-
     logger.info("ChatGPT auth routes configured");
-  }
-
-  registerEndpoints(_app: any): void {
-    logger.info("ChatGPT auth endpoints registered via module system");
-  }
-
-  private async getCredential(agentId: string): Promise<string | null> {
-    const profile = await this.authProfilesManager.getBestProfile(
-      agentId,
-      this.providerId
-    );
-    if (profile?.credential) {
-      return profile.credential;
-    }
-
-    return process.env.OPENAI_API_KEY || null;
   }
 }

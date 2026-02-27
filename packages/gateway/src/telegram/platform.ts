@@ -8,11 +8,13 @@ import {
   createLogger,
   type UserSuggestion,
 } from "@lobu/core";
+import { Readable } from "node:stream";
 import { Bot } from "grammy";
 import type { Hono } from "hono";
 import { platformAuthRegistry } from "../auth/platform-auth";
 import { CommandDispatcher } from "../commands/command-dispatcher";
 import type { CoreServices, PlatformAdapter } from "../platform";
+import type { IFileHandler } from "../platform/file-handler";
 import {
   type AgentOptions as FactoryAgentOptions,
   type PlatformConfigs,
@@ -24,6 +26,7 @@ import { TelegramAuthAdapter } from "./auth-adapter";
 import type { TelegramConfig } from "./config";
 import { shouldUseWebhook, TELEGRAM_WEBHOOK_PATH } from "./config";
 import { TelegramMessageHandler } from "./events/message-handler";
+import { TelegramFileHandler } from "./file-handler";
 import { TelegramInteractionRenderer } from "./interactions";
 import { TelegramResponseRenderer } from "./response-renderer";
 import { createTelegramWebhookRoute } from "./webhook-route";
@@ -48,6 +51,7 @@ export class TelegramPlatform implements PlatformAdapter {
   private responseRenderer?: TelegramResponseRenderer;
   private interactionRenderer?: TelegramInteractionRenderer;
   private authAdapter?: TelegramAuthAdapter;
+  private fileHandler?: TelegramFileHandler;
   private commandRegistry?: CommandRegistry;
   private running = false;
   private useWebhook = false;
@@ -67,6 +71,10 @@ export class TelegramPlatform implements PlatformAdapter {
 
     // Create Grammy bot instance
     this.bot = new Bot(this.config.telegram.botToken);
+    this.fileHandler = new TelegramFileHandler(
+      this.bot,
+      this.config.telegram.botToken
+    );
 
     // Create message handler
     this.messageHandler = new TelegramMessageHandler(
@@ -278,6 +286,10 @@ export class TelegramPlatform implements PlatformAdapter {
     return this.responseRenderer;
   }
 
+  getFileHandler(): IFileHandler | undefined {
+    return this.fileHandler;
+  }
+
   buildDeploymentMetadata(
     conversationId: string,
     channelId: string,
@@ -333,6 +345,36 @@ export class TelegramPlatform implements PlatformAdapter {
 
     // Clean @me mention
     const cleanMessage = message.replace(/@me\s*/g, "").trim();
+
+    if (options.files && options.files.length > 0) {
+      if (!this.fileHandler) {
+        throw new Error("Telegram file handler is not initialized");
+      }
+
+      let firstMessageId: string | null = null;
+      for (const [index, file] of options.files.entries()) {
+        const result = await this.fileHandler.uploadFile(
+          Readable.from(file.buffer),
+          {
+            filename: file.filename,
+            channelId: options.channelId,
+            threadTs: options.conversationId,
+            initialComment: index === 0 ? cleanMessage || undefined : undefined,
+          }
+        );
+
+        if (!firstMessageId) {
+          const permalinkMatch = /message_id=(\d+)/.exec(result.permalink);
+          firstMessageId = permalinkMatch?.[1] || result.fileId;
+        }
+      }
+
+      return { messageId: firstMessageId || String(Date.now()) };
+    }
+
+    if (!cleanMessage) {
+      throw new Error("Cannot send empty message without files");
+    }
 
     const sent = await this.bot.api.sendMessage(chatId, cleanMessage);
 

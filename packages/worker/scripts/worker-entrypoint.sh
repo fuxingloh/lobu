@@ -49,6 +49,14 @@ if [ ! -w "$WORKSPACE_DIR" ]; then
     exit 1
 fi
 
+# Route temp files and cache to workspace-backed paths.
+# Keep /tmp mounted for compatibility with tools that ignore TMPDIR.
+export TMPDIR="${TMPDIR:-$WORKSPACE_DIR/.tmp}"
+export TMP="${TMP:-$TMPDIR}"
+export TEMP="${TEMP:-$TMPDIR}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$WORKSPACE_DIR/.cache}"
+mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
+
 cd "$WORKSPACE_DIR"
 
 echo "✅ Workspace directory ready: $WORKSPACE_DIR"

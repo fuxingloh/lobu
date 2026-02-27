@@ -39,7 +39,7 @@ export interface CliBackendConfig {
 export interface AuthProfile {
   id: string; // UUID
   provider: string; // "anthropic", "openai-codex", "gemini", "nvidia"
-  model: string; // Full model ref: "openclaw/openai-codex/gpt-5.2-codex"
+  model: string; // Full model ref: "openai-codex/gpt-5.2-codex"
   credential: string; // API key or OAuth access token
   label: string; // "user@gmail.com", "sk-ant-...1234"
   authType: "oauth" | "device-code" | "api-key";

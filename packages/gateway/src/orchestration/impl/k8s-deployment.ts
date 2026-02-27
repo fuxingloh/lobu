@@ -33,7 +33,6 @@ const WORKER_SECURITY = {
   USER_ID: 1001,
   GROUP_ID: 1001,
   TMP_SIZE_LIMIT: "100Mi",
-  BUN_CACHE_SIZE_LIMIT: "200Mi",
 } as const;
 
 const WORKER_SELECTOR_LABELS = {
@@ -1056,10 +1055,6 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                     name: "tmp",
                     mountPath: "/tmp",
                   },
-                  {
-                    name: "bun-cache",
-                    mountPath: "/home/bun/.cache",
-                  },
                   // /dev/shm for shared memory (needed by Chromium and other apps)
                   {
                     name: "dshm",
@@ -1097,13 +1092,6 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
                 emptyDir: {
                   medium: "Memory",
                   sizeLimit: WORKER_SECURITY.TMP_SIZE_LIMIT,
-                },
-              },
-              {
-                name: "bun-cache",
-                emptyDir: {
-                  medium: "Memory",
-                  sizeLimit: WORKER_SECURITY.BUN_CACHE_SIZE_LIMIT,
                 },
               },
               // Shared memory for Chromium and other apps requiring /dev/shm

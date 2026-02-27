@@ -62,7 +62,7 @@ const DEFAULT_PROVIDER_BASE_URL_ENV: Record<string, string> = {
 const DEFAULT_PROVIDER_MODELS: Record<string, string> = {
   anthropic: "claude-sonnet-4-20250514",
   openai: "gpt-4.1",
-  "openai-codex": "codex-mini-latest",
+  "openai-codex": "gpt-5.1-codex-mini",
   google: "gemini-2.5-pro",
   "z-ai": "glm-4.7",
 };
@@ -382,8 +382,8 @@ export class OpenClawWorker implements WorkerExecutor {
 
     const baseModel = getModel(provider as any, modelId as any) as any;
     if (!baseModel) {
-      logger.error(
-        `Model not found in registry: provider=${provider}, modelId=${modelId}`
+      throw new Error(
+        `Model "${modelId}" not found for provider "${provider}". Check that the model ID is valid and registered in the model registry.`
       );
     }
     const model = providerBaseUrl
@@ -939,14 +939,19 @@ function resolveModelRef(rawModelRef: string): {
     );
   }
 
-  const stripped = modelRef.toLowerCase().startsWith("openclaw/")
-    ? modelRef.slice("openclaw/".length)
-    : modelRef;
-
-  const parts = stripped.split("/").filter(Boolean);
+  const parts = modelRef.split("/").filter(Boolean);
   if (parts.length >= 2) {
     const provider = parts[0]!;
-    return { provider, modelId: parts.slice(1).join("/") };
+    let modelId = parts.slice(1).join("/");
+    // Resolve "auto" to the provider's default model
+    if (modelId === "auto") {
+      const fallback = DEFAULT_PROVIDER_MODELS[provider];
+      if (fallback) {
+        logger.info(`Resolved auto model for ${provider}: ${fallback}`);
+        modelId = fallback;
+      }
+    }
+    return { provider, modelId };
   }
 
   if (!defaultProvider) {
@@ -955,7 +960,7 @@ function resolveModelRef(rawModelRef: string): {
     );
   }
 
-  return { provider: defaultProvider, modelId: stripped };
+  return { provider: defaultProvider, modelId: modelRef };
 }
 
 async function openOrCreateSessionManager(

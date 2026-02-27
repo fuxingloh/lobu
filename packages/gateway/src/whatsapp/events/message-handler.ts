@@ -21,6 +21,7 @@ import {
   type AgentSettingsStore,
   buildSettingsUrl,
   formatSettingsTokenTtl,
+  generateChannelSettingsToken,
   generateSettingsToken,
 } from "../../auth/settings";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
@@ -29,7 +30,6 @@ import type {
   MessagePayload,
   QueueProducer,
 } from "../../infrastructure/queue/queue-producer";
-import { generateAgentSelectorToken } from "../../routes/public/agent-selector-page";
 import type { TranscriptionService } from "../../services/transcription-service";
 import type { ISessionManager } from "../../session";
 import { resolveSpace } from "../../spaces";
@@ -134,16 +134,14 @@ export class WhatsAppMessageHandler {
     }
 
     try {
-      const publicGatewayUrl =
-        process.env.PUBLIC_GATEWAY_URL || "http://localhost:8080";
       const userId = context.senderE164 || context.senderJid;
 
-      const token = generateAgentSelectorToken(
+      const token = generateChannelSettingsToken(
         userId,
         "whatsapp",
         context.chatJid
       );
-      const configUrl = `${publicGatewayUrl}/agent-selector?token=${encodeURIComponent(token)}`;
+      const configUrl = buildSettingsUrl(token);
 
       await this.client.sendMessage(context.chatJid, {
         text: `Welcome! To get started, please configure which agent should handle messages here.\n\nConfigure: ${configUrl}`,

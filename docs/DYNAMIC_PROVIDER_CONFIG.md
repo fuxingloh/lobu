@@ -27,11 +27,9 @@ Settings Change → Redis (stored) → Next message → generateEnvironmentVaria
 - `ping` - heartbeat every 30s
 - `job` - message payload with agentOptions
 
-**No `config_changed` event exists.**
-
 ## Proposed Solution
 
-### Phase 1: Add `config_changed` SSE event
+### Phase 1: Add `config_changed` SSE event (COMPLETED)
 
 When settings change, push a notification to affected workers so they refresh their config.
 
@@ -113,7 +111,7 @@ Don't call the endpoint per-message. Cache the provider config and only refresh 
 - `config_changed` SSE event received
 - Cache miss (first message)
 
-### Phase 2: Remove static env vars
+### Phase 2: Remove static env vars (COMPLETED)
 
 Once provider config is dynamic, remove the static env vars from deployment creation:
 
@@ -134,14 +132,11 @@ Once provider config is dynamic, remove the static env vars from deployment crea
 **Remove deployment recreation workaround** (`base-deployment-manager.ts`):
 - Lines 281-295: The "delete and recreate scaled-down deployments" logic is no longer needed since env vars aren't the source of truth
 
-### Phase 3: Handle provider-specific secrets through proxy
+### Phase 3: Handle provider-specific secrets through proxy (PROPOSED)
 
 Provider API keys still need to reach the worker. The secret proxy (`/api/proxy`) already handles this — the worker calls the gateway proxy which injects the real API key. The proxy just needs to know which provider/agent to use, which comes from the worker token + deployment metadata.
 
-Currently secrets are injected as env vars at deployment time via `injectSecretPlaceholders()` (line 520). Instead:
-- The session context response includes which credential env var to use
-- The proxy already resolves the real secret from Redis at request time
-- Short-lived placeholder tokens in env vars can be replaced by per-request token injection through the proxy
+The proxy already resolves real secrets from Redis at request time using agentId from the URL path. Remaining work: remove vestigial `injectSecretPlaceholders` UUID mechanism from deployment creation.
 
 ## Files to Modify
 

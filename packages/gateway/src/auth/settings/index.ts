@@ -7,6 +7,7 @@ export {
 export {
   buildSettingsUrl,
   formatSettingsTokenTtl,
+  generateChannelSettingsToken,
   getSettingsTokenTtlMs,
   generateSettingsToken,
   type PrefillMcpServer,

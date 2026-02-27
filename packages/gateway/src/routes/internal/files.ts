@@ -3,8 +3,8 @@
 import { Readable } from "node:stream";
 import { createLogger, verifyWorkerToken } from "@lobu/core";
 import { Hono } from "hono";
+import type { PlatformRegistry } from "../../platform";
 import type { IFileHandler } from "../../platform/file-handler";
-import type { ISessionManager } from "../../session";
 
 const logger = createLogger("file-routes");
 
@@ -15,11 +15,22 @@ type WorkerContext = {
 };
 
 /**
+ * Resolve the file handler for a given platform from the registry.
+ */
+function resolveFileHandler(
+  platformRegistry: PlatformRegistry,
+  platformName?: string
+): IFileHandler | null {
+  if (!platformName) return null;
+  const platform = platformRegistry.get(platformName);
+  return platform?.getFileHandler?.() ?? null;
+}
+
+/**
  * Create internal file routes (Hono)
  */
 export function createFileRoutes(
-  fileHandler: IFileHandler,
-  _sessionManager: ISessionManager
+  platformRegistry: PlatformRegistry
 ): Hono<WorkerContext> {
   const router = new Hono<WorkerContext>();
 
@@ -49,6 +60,16 @@ export function createFileRoutes(
 
       if (!fileId) {
         return c.json({ error: "Missing fileId parameter" }, 400);
+      }
+
+      const fileHandler = resolveFileHandler(platformRegistry, worker.platform);
+      if (!fileHandler) {
+        return c.json(
+          {
+            error: `No file handler available for platform ${worker.platform || "unknown"}`,
+          },
+          501
+        );
       }
 
       logger.info(
@@ -98,6 +119,16 @@ export function createFileRoutes(
         return c.json({ error: "Missing channel or conversation ID" }, 400);
       }
 
+      const fileHandler = resolveFileHandler(platformRegistry, worker.platform);
+      if (!fileHandler) {
+        return c.json(
+          {
+            error: `No file handler available for platform ${worker.platform || "unknown"}`,
+          },
+          501
+        );
+      }
+
       const formData = await c.req.formData();
       const file = formData.get("file") as File | null;
 
@@ -109,7 +140,7 @@ export function createFileRoutes(
       const initialComment = formData.get("comment") as string | null;
 
       logger.info(
-        `Worker uploading file ${filename} for conversation ${worker.conversationId} to conversation ${conversationId}${voiceMessage ? " as voice message" : ""}`
+        `Worker uploading file ${filename} via ${worker.platform || "unknown"} for conversation ${worker.conversationId} to conversation ${conversationId}${voiceMessage ? " as voice message" : ""}`
       );
 
       const arrayBuffer = await file.arrayBuffer();
@@ -150,6 +181,16 @@ export function createFileRoutes(
 
       if (!channelId || !conversationId) {
         return c.json({ error: "Missing channel or conversation ID" }, 400);
+      }
+
+      const fileHandler = resolveFileHandler(platformRegistry, worker.platform);
+      if (!fileHandler) {
+        return c.json(
+          {
+            error: `No file handler available for platform ${worker.platform || "unknown"}`,
+          },
+          501
+        );
       }
 
       const formData = await c.req.formData();

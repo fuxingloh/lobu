@@ -263,6 +263,28 @@ export function createOpenClawCustomTools(params: {
             { description: "Optional list of MCP servers to pre-fill" }
           )
         ),
+        prefillAllowedDomains: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Optional list of domains to pre-fill in the allowed domains list",
+          })
+        ),
+      }),
+      run: (args) => getSettingsLink(gw, args),
+    }),
+
+    defineTool({
+      name: "GetSettingsLinkForDomain",
+      description:
+        "Shortcut to generate a settings link with domains pre-filled in the allowed domains list. Use when a network request fails with 'Domain not allowed' to help the user approve the blocked domain.",
+      parameters: Type.Object({
+        reason: Type.String({
+          description:
+            "Brief explanation of why this domain is needed (e.g., 'access api.example.com to fetch data')",
+        }),
+        prefillAllowedDomains: Type.Array(Type.String(), {
+          description: "Domains to pre-fill in the allowed domains list",
+        }),
       }),
       run: (args) => getSettingsLink(gw, args),
     }),

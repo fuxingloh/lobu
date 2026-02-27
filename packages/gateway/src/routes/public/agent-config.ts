@@ -6,10 +6,16 @@
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { createLogger } from "@lobu/core";
+import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
 import type { ProviderCatalogService } from "../../auth/provider-catalog";
 import type { ProviderStatus } from "../../auth/provider-status";
 import type { AgentSettings, AgentSettingsStore } from "../../auth/settings";
-import { verifySettingsToken } from "../../auth/settings/token-service";
+import type { AuthProfilesManager } from "../../auth/settings/auth-profiles-manager";
+import {
+  verifySettingsToken,
+  type SettingsTokenPayload,
+} from "../../auth/settings/token-service";
+import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { WorkerConnectionManager } from "../../gateway/connection-manager";
 import type { IMessageQueue } from "../../infrastructure/queue";
 import type { GitHubAppAuth } from "../../modules/git-filesystem/github-app";
@@ -173,12 +179,15 @@ export interface ProviderCredentialStore {
 
 export interface AgentConfigRoutesConfig {
   agentSettingsStore: AgentSettingsStore;
+  userAgentsStore?: UserAgentsStore;
+  agentMetadataStore?: AgentMetadataStore;
   providerStores?: Record<string, ProviderCredentialStore>;
   /**
    * Provider connectivity overrides (e.g., system token means "connected" even if no user credentials are stored).
    */
   providerConnectedOverrides?: Record<string, boolean>;
   providerCatalogService?: ProviderCatalogService;
+  authProfilesManager?: AuthProfilesManager;
   githubAuth?: GitHubAppAuth;
   githubAppInstallUrl?: string;
   githubOAuthClientId?: string;
@@ -191,17 +200,48 @@ export function createAgentConfigRoutes(
 ): OpenAPIHono {
   const app = new OpenAPIHono();
 
-  const verifyToken = (token: string | undefined, agentId: string) => {
+  /**
+   * Verify settings token against agentId.
+   * If token has agentId, it must match. If token has no agentId (channel-based),
+   * verify user owns the agent via userAgentsStore or it's a workspace agent.
+   */
+  const verifyToken = async (
+    token: string | undefined,
+    agentId: string
+  ): Promise<SettingsTokenPayload | null> => {
     if (!token) return null;
     const payload = verifySettingsToken(token);
-    // Validate agentId matches token
-    if (payload && payload.agentId !== agentId) return null;
+    if (!payload) return null;
+
+    if (payload.agentId) {
+      // Agent-based token: must match exactly
+      if (payload.agentId !== agentId) return null;
+    } else {
+      // Channel-based token: verify user owns the agent
+      if (config.userAgentsStore) {
+        const owns = await config.userAgentsStore.ownsAgent(
+          payload.platform,
+          payload.userId,
+          agentId
+        );
+        if (!owns) {
+          // Check workspace agent fallback
+          if (config.agentMetadataStore) {
+            const metadata =
+              await config.agentMetadataStore.getMetadata(agentId);
+            if (!metadata?.isWorkspaceAgent) return null;
+          } else {
+            return null;
+          }
+        }
+      }
+    }
     return payload;
   };
 
   app.openapi(getConfigRoute, async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
-    const payload = verifyToken(c.req.valid("query").token, agentId);
+    const payload = await verifyToken(c.req.valid("query").token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     const settings = await config.agentSettingsStore.getSettings(agentId);
@@ -214,10 +254,29 @@ export function createAgentConfigRoutes(
           const hasSystemCredentials =
             config.providerConnectedOverrides?.[name] === true;
           const hasUserCredentials = await store.hasCredentials(agentId);
+
+          const profiles = config.authProfilesManager
+            ? await config.authProfilesManager.getProviderProfiles(
+                agentId,
+                name
+              )
+            : [];
+          const now = Date.now();
+          const validProfiles = profiles.filter(
+            (p) => !p.metadata?.expiresAt || p.metadata.expiresAt > now
+          );
+
           providers[name] = {
             connected: hasUserCredentials || hasSystemCredentials,
             userConnected: hasUserCredentials,
             systemConnected: hasSystemCredentials,
+            activeAuthType: validProfiles[0]?.authType,
+            authMethods: validProfiles.map((p, i) => ({
+              profileId: p.id,
+              authType: p.authType,
+              label: p.label,
+              isPrimary: i === 0,
+            })),
           };
         } catch {
           providers[name] = {
@@ -290,7 +349,7 @@ export function createAgentConfigRoutes(
 
   app.openapi(updateConfigRoute, async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
-    const payload = verifyToken(c.req.valid("query").token, agentId);
+    const payload = await verifyToken(c.req.valid("query").token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     try {
@@ -361,7 +420,7 @@ export function createAgentConfigRoutes(
   app.get("/providers/catalog", async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
     const token = c.req.query("token");
-    const payload = verifyToken(token, agentId);
+    const payload = await verifyToken(token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     if (!config.providerCatalogService) {
@@ -389,7 +448,7 @@ export function createAgentConfigRoutes(
   app.post("/providers/install", async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
     const token = c.req.query("token");
-    const payload = verifyToken(token, agentId);
+    const payload = await verifyToken(token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     if (!config.providerCatalogService) {
@@ -422,7 +481,7 @@ export function createAgentConfigRoutes(
   app.post("/providers/uninstall", async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
     const token = c.req.query("token");
-    const payload = verifyToken(token, agentId);
+    const payload = await verifyToken(token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     if (!config.providerCatalogService) {
@@ -454,7 +513,7 @@ export function createAgentConfigRoutes(
   app.patch("/providers/reorder", async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
     const token = c.req.query("token");
-    const payload = verifyToken(token, agentId);
+    const payload = await verifyToken(token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     if (!config.providerCatalogService) {

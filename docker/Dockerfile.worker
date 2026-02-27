@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y \
     bash \
     openssh-client \
     jq \
-    sudo \
     ca-certificates \
     procps \
     htop \
@@ -49,10 +48,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}" -o /usr/local/bin/cloudflared && \
     chmod +x /usr/local/bin/cloudflared
 
-# Create a non-root user with home directory and sudo access
+# Create a non-root user with home directory (no sudo - use Nix for system packages)
 RUN addgroup --gid 1001 worker && \
-    adduser --system --uid 1001 --ingroup worker --home /home/worker worker && \
-    echo 'worker ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+    adduser --system --uid 1001 --ingroup worker --home /home/worker worker
 
 # Install Nix (single-user mode for container simplicity)
 # This allows workers to use nix-shell or nix develop for custom environments

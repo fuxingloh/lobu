@@ -11,7 +11,10 @@ import type {
   MessagePayload,
   QueueProducer,
 } from "../../infrastructure/queue/queue-producer";
-import { generateAgentSelectorToken } from "../../routes/public/agent-selector-page";
+import {
+  buildSettingsUrl,
+  generateChannelSettingsToken,
+} from "../../auth/settings/token-service";
 import type { TranscriptionService } from "../../services/transcription-service";
 import type { ISessionManager, ThreadSession } from "../../session";
 import { generateSessionKey } from "../../session";
@@ -659,17 +662,14 @@ export class MessageHandler {
     }
 
     try {
-      const publicGatewayUrl =
-        process.env.PUBLIC_GATEWAY_URL || "http://localhost:8080";
-
-      const token = generateAgentSelectorToken(
+      const token = generateChannelSettingsToken(
         context.userId,
         "slack",
         context.channelId,
         context.teamId
       );
 
-      const configUrl = `${publicGatewayUrl}/agent-selector?token=${encodeURIComponent(token)}`;
+      const configUrl = buildSettingsUrl(token);
       const threadTs = context.threadTs || context.messageTs;
 
       if (isDirectMessage) {

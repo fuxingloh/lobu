@@ -5,7 +5,12 @@
  */
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { verifySettingsToken } from "../../auth/settings/token-service";
+import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
+import {
+  verifySettingsToken,
+  type SettingsTokenPayload,
+} from "../../auth/settings/token-service";
+import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ScheduledWakeupService } from "../../orchestration/scheduled-wakeup";
 
 const TAG = "Agents";
@@ -77,6 +82,8 @@ const cancelScheduleRoute = createRoute({
 
 export interface AgentSchedulesRoutesConfig {
   scheduledWakeupService?: ScheduledWakeupService;
+  userAgentsStore?: UserAgentsStore;
+  agentMetadataStore?: AgentMetadataStore;
 }
 
 export function createAgentSchedulesRoutes(
@@ -84,16 +91,37 @@ export function createAgentSchedulesRoutes(
 ): OpenAPIHono {
   const app = new OpenAPIHono();
 
-  const verifyToken = (token: string | undefined, agentId: string) => {
+  const verifyToken = async (
+    token: string | undefined,
+    agentId: string
+  ): Promise<SettingsTokenPayload | null> => {
     if (!token) return null;
     const payload = verifySettingsToken(token);
-    if (payload && payload.agentId !== agentId) return null;
+    if (!payload) return null;
+
+    if (payload.agentId) {
+      if (payload.agentId !== agentId) return null;
+    } else if (config.userAgentsStore) {
+      const owns = await config.userAgentsStore.ownsAgent(
+        payload.platform,
+        payload.userId,
+        agentId
+      );
+      if (!owns) {
+        if (config.agentMetadataStore) {
+          const metadata = await config.agentMetadataStore.getMetadata(agentId);
+          if (!metadata?.isWorkspaceAgent) return null;
+        } else {
+          return null;
+        }
+      }
+    }
     return payload;
   };
 
   app.openapi(listSchedulesRoute, async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
-    const payload = verifyToken(c.req.valid("query").token, agentId);
+    const payload = await verifyToken(c.req.valid("query").token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     if (!config.scheduledWakeupService) return c.json({ schedules: [] });
@@ -114,7 +142,7 @@ export function createAgentSchedulesRoutes(
 
   app.openapi(cancelScheduleRoute, async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
-    const payload = verifyToken(c.req.valid("query").token, agentId);
+    const payload = await verifyToken(c.req.valid("query").token, agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
     if (!config.scheduledWakeupService) {

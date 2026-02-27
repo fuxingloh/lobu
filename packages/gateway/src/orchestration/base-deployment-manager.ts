@@ -454,6 +454,11 @@ export abstract class BaseDeploymentManager {
       HTTP_PROXY: proxyUrl,
       HTTPS_PROXY: proxyUrl,
       NO_PROXY: `${dispatcherHost},redis,localhost,127.0.0.1`,
+      // Route temporary files and cache to persistent workspace storage.
+      TMPDIR: "/workspace/.tmp",
+      TMP: "/workspace/.tmp",
+      TEMP: "/workspace/.tmp",
+      XDG_CACHE_HOME: "/workspace/.cache",
     };
 
     if (platformMetadata?.botResponseTs) {
@@ -539,16 +544,13 @@ export abstract class BaseDeploymentManager {
       } else {
         // Use UUID placeholder for non-provider secrets (legacy path)
         try {
-          let placeholder = await generatePlaceholder(
+          const placeholder = await generatePlaceholder(
             this.redisClient,
             agentId,
             key,
             value,
             deploymentName
           );
-          if (/OAUTH_TOKEN/i.test(key)) {
-            placeholder = `sk-ant-oat01-${placeholder}`;
-          }
           envVars[key] = placeholder;
           hasSecrets = true;
         } catch (error) {

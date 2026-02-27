@@ -48,11 +48,13 @@ export function getProviderAuthHintFromError(
   const jsonProviderMatch = errorMessage.match(
     /"provider"\s*:\s*"([A-Za-z0-9._-]+)"/i
   );
-  const fallbackProvider = defaultProvider?.trim().toLowerCase();
+  const fallbackProvider = defaultProvider?.trim().toLowerCase() || undefined;
   const providerName =
     explicitProviderMatch?.[1]?.toLowerCase() ||
     jsonProviderMatch?.[1]?.toLowerCase() ||
-    fallbackProvider ||
+    (fallbackProvider && fallbackProvider !== "undefined"
+      ? fallbackProvider
+      : undefined) ||
     "provider";
 
   return {

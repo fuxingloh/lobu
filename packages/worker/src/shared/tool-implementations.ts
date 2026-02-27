@@ -594,6 +594,7 @@ export async function getSettingsLink(
       description?: string;
     }>;
     prefillNixPackages?: string[];
+    prefillAllowedDomains?: string[];
     prefillMcpServers?: Array<{
       id: string;
       name?: string;
@@ -623,6 +624,7 @@ export async function getSettingsLink(
           message: args.message,
           prefillEnvVars: args.prefillEnvVars,
           prefillNixPackages: args.prefillNixPackages,
+          prefillAllowedDomains: args.prefillAllowedDomains,
           prefillSkills: args.prefillSkills,
           prefillMcpServers: args.prefillMcpServers,
         }),
@@ -634,8 +636,12 @@ export async function getSettingsLink(
 
     logger.info(`Generated settings link: ${result.url}`);
 
+    const expiresLabel = result.expiresAt
+      ? `Expires: ${new Date(result.expiresAt).toLocaleString()}`
+      : "";
+
     return textResult(
-      `Settings link generated successfully!\n\nURL: ${result.url}\n\nThis link expires in 1 hour.\n\nReason: ${args.reason}\n\nShare this link with the user so they can configure their settings.`
+      `Settings link generated successfully!\n\nURL: ${result.url}\n\n${expiresLabel}\n\nReason: ${args.reason}\n\nShare this link with the user so they can configure their settings.`
     );
   });
 }

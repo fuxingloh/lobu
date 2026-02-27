@@ -16,6 +16,7 @@ import type { ChannelBindingService } from "./channels";
 import type { WorkerGateway } from "./gateway";
 import type { IMessageQueue, QueueProducer } from "./infrastructure/queue";
 import type { InteractionService } from "./interactions";
+import type { IFileHandler } from "./platform/file-handler";
 import type { ResponseRenderer } from "./platform/response-renderer";
 import type { SecretProxy } from "./proxy/secret-proxy";
 import type { InstructionService } from "./services/instruction-service";
@@ -197,6 +198,13 @@ export interface PlatformAdapter {
       metadata?: Record<string, any>;
     }>
   ): Promise<void>;
+
+  /**
+   * Get the file handler for this platform.
+   * Used by the file upload/download routes to route files
+   * to the correct platform-specific handler.
+   */
+  getFileHandler?(): IFileHandler | undefined;
 
   /**
    * Get the response renderer for this platform.

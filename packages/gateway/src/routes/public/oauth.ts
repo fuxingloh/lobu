@@ -121,8 +121,18 @@ export interface OAuthRoutesConfig {
 export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
   const app = new OpenAPIHono();
 
-  const verifyToken = (token: string | undefined) =>
-    token ? verifySettingsToken(token) : null;
+  const verifyToken = (
+    token: string | undefined
+  ):
+    | (import("../../auth/settings/token-service").SettingsTokenPayload & {
+        agentId: string;
+      })
+    | null => {
+    if (!token) return null;
+    const payload = verifySettingsToken(token);
+    if (!payload || !payload.agentId) return null;
+    return payload as typeof payload & { agentId: string };
+  };
 
   // --- Provider login redirect (excluded from docs) ---
   app.get("/providers/:provider/login", async (c) => {
@@ -193,8 +203,10 @@ export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
       return c.html(renderErrorPage("OAuth state expired"), 400);
     }
 
-    const payload = verifySettingsToken(stateData.settingsToken);
-    if (!payload) return c.html(renderErrorPage("Invalid settings token"), 401);
+    const rawPayload = verifySettingsToken(stateData.settingsToken);
+    if (!rawPayload || !rawPayload.agentId)
+      return c.html(renderErrorPage("Invalid settings token"), 401);
+    const payload = { ...rawPayload, agentId: rawPayload.agentId };
 
     if (
       !config.githubOAuthClientId ||

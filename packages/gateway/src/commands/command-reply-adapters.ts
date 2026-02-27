@@ -35,7 +35,7 @@ export function createTelegramReply(
   chatId: number
 ): CommandContext["reply"] {
   return async (text: string) => {
-    // Extract URL from text for inline button (settings/agent-selector links)
+    // Extract URL from text for inline button (settings links)
     const urlMatch = text.match(/https?:\/\/\S+/);
     if (urlMatch) {
       const url = urlMatch[0];

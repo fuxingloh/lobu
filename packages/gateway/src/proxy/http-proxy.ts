@@ -1,7 +1,8 @@
 import * as http from "node:http";
 import * as net from "node:net";
 import { URL } from "node:url";
-import { createLogger } from "@lobu/core";
+import { createLogger, verifyWorkerToken } from "@lobu/core";
+import type { WorkerTokenData } from "@lobu/core";
 import {
   isUnrestrictedMode,
   loadAllowedDomains,
@@ -30,15 +31,19 @@ function getGlobalConfig(): ResolvedNetworkConfig {
   return globalConfig;
 }
 
+interface ProxyCredentials {
+  deploymentName: string;
+  token: string;
+}
+
 /**
- * Extract deployment name from Proxy-Authorization Basic auth header.
+ * Extract deployment name and token from Proxy-Authorization Basic auth header.
  * Workers send: HTTP_PROXY=http://<deploymentName>:<token>@gateway:8118
- * This creates a Basic auth header with username=deploymentName
- *
- * @param req - HTTP request
- * @returns Deployment name or null if not present
+ * This creates a Basic auth header with username=deploymentName, password=token
  */
-function extractDeploymentName(req: http.IncomingMessage): string | null {
+function extractProxyCredentials(
+  req: http.IncomingMessage
+): ProxyCredentials | null {
   const authHeader = req.headers["proxy-authorization"];
   if (!authHeader || typeof authHeader !== "string") {
     return null;
@@ -56,33 +61,60 @@ function extractDeploymentName(req: http.IncomingMessage): string | null {
     if (colonIndex === -1) {
       return null;
     }
-    // Username is the deployment name
     const deploymentName = decoded.substring(0, colonIndex);
-    return deploymentName || null;
+    const token = decoded.substring(colonIndex + 1);
+    if (!deploymentName || !token) {
+      return null;
+    }
+    return { deploymentName, token };
   } catch {
     return null;
   }
 }
 
-/**
- * Get network config for a request.
- * Extracts deployment name from proxy auth and looks up config.
- * Falls back to global config if no deployment identified.
- *
- * @param req - HTTP request
- * @returns Network configuration to apply
- */
-async function getNetworkConfigForRequest(
-  req: http.IncomingMessage
-): Promise<ResolvedNetworkConfig> {
-  const deploymentName = extractDeploymentName(req);
+interface ValidatedProxy {
+  deploymentName: string;
+  tokenData: WorkerTokenData;
+}
 
-  if (deploymentName) {
-    // Look up per-deployment config
-    return networkConfigStore.get(deploymentName);
+/**
+ * Validate proxy authentication by verifying the encrypted worker token
+ * and cross-checking the claimed deployment name.
+ */
+function validateProxyAuth(req: http.IncomingMessage): ValidatedProxy | null {
+  const creds = extractProxyCredentials(req);
+  if (!creds) {
+    return null;
   }
 
-  // Fall back to global config
+  const tokenData = verifyWorkerToken(creds.token);
+  if (!tokenData) {
+    logger.warn(
+      `Proxy auth failed: invalid token (claimed deployment: ${creds.deploymentName})`
+    );
+    return null;
+  }
+
+  if (tokenData.deploymentName !== creds.deploymentName) {
+    logger.warn(
+      `Proxy auth failed: deployment mismatch (claimed: ${creds.deploymentName}, token: ${tokenData.deploymentName})`
+    );
+    return null;
+  }
+
+  return { deploymentName: creds.deploymentName, tokenData };
+}
+
+/**
+ * Get network config for a validated request.
+ * Looks up per-deployment config or falls back to global.
+ */
+async function getNetworkConfigForRequest(
+  deploymentName: string | null
+): Promise<ResolvedNetworkConfig> {
+  if (deploymentName) {
+    return networkConfigStore.get(deploymentName);
+  }
   return getGlobalConfig();
 }
 
@@ -178,19 +210,36 @@ async function handleConnect(
     return;
   }
 
+  // Validate worker token
+  const auth = validateProxyAuth(req);
+  if (!auth) {
+    logger.warn(`Proxy auth required for CONNECT to ${hostname}`);
+    try {
+      clientSocket.write(
+        'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="lobu-proxy"\r\n\r\n'
+      );
+      clientSocket.end();
+    } catch {
+      // Client may have already disconnected
+    }
+    return;
+  }
+
+  const { deploymentName } = auth;
+
   // Get per-deployment or global config
-  const config = await getNetworkConfigForRequest(req);
-  const deploymentName = extractDeploymentName(req);
+  const config = await getNetworkConfigForRequest(deploymentName);
 
   // Check if hostname is allowed
   if (
     !isHostnameAllowed(hostname, config.allowedDomains, config.deniedDomains)
   ) {
-    const context = deploymentName ? ` (deployment: ${deploymentName})` : "";
-    logger.warn(`Blocked CONNECT to ${hostname}${context}`);
+    logger.warn(
+      `Blocked CONNECT to ${hostname} (deployment: ${deploymentName})`
+    );
     try {
       clientSocket.write(
-        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nDomain not allowed by proxy policy\r\n"
+        `HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\n403 Forbidden - Domain not allowed: ${hostname}. Use GetSettingsLink with prefillAllowedDomains to request access.\r\n`
       );
       clientSocket.end();
     } catch {
@@ -290,18 +339,34 @@ async function handleProxyRequest(
 
   const hostname = parsedUrl.hostname;
 
+  // Validate worker token
+  const auth = validateProxyAuth(req);
+  if (!auth) {
+    logger.warn(`Proxy auth required for ${req.method} ${hostname}`);
+    res.writeHead(407, {
+      "Content-Type": "text/plain",
+      "Proxy-Authenticate": 'Basic realm="lobu-proxy"',
+    });
+    res.end("407 Proxy Authentication Required\n");
+    return;
+  }
+
+  const { deploymentName } = auth;
+
   // Get per-deployment or global config
-  const config = await getNetworkConfigForRequest(req);
-  const deploymentName = extractDeploymentName(req);
+  const config = await getNetworkConfigForRequest(deploymentName);
 
   // Check if hostname is allowed
   if (
     !isHostnameAllowed(hostname, config.allowedDomains, config.deniedDomains)
   ) {
-    const context = deploymentName ? ` (deployment: ${deploymentName})` : "";
-    logger.warn(`Blocked request to ${hostname}${context}`);
+    logger.warn(
+      `Blocked request to ${hostname} (deployment: ${deploymentName})`
+    );
     res.writeHead(403, { "Content-Type": "text/plain" });
-    res.end("Domain not allowed by proxy policy\n");
+    res.end(
+      `403 Forbidden - Domain not allowed: ${hostname}. Use GetSettingsLink with prefillAllowedDomains to request access.\n`
+    );
     return;
   }
 
@@ -347,58 +412,74 @@ async function handleProxyRequest(
  * Workers identify themselves via Proxy-Authorization Basic auth:
  *   HTTP_PROXY=http://<deploymentName>:<token>@gateway:8118
  *
- * The proxy extracts deploymentName and looks up the network config
- * from NetworkConfigStore. Falls back to global config if not found.
+ * The proxy validates the encrypted worker token, cross-checks the
+ * claimed deployment name, and looks up per-deployment network config.
+ * Returns 407 if authentication fails.
+ *
+ * @param port - Port to listen on (default 8118)
+ * @param host - Bind address (default "::" for all interfaces)
+ * @returns Promise that resolves with the server once listening, or rejects on error
  */
-export function startHttpProxy(port: number = 8118): http.Server {
-  const global = getGlobalConfig();
+export function startHttpProxy(
+  port: number = 8118,
+  host: string = "::"
+): Promise<http.Server> {
+  return new Promise((resolve, reject) => {
+    const global = getGlobalConfig();
 
-  const server = http.createServer((req, res) => {
-    handleProxyRequest(req, res).catch((err) => {
-      logger.error("Error handling proxy request:", err);
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("Internal proxy error\n");
+    const server = http.createServer((req, res) => {
+      handleProxyRequest(req, res).catch((err) => {
+        logger.error("Error handling proxy request:", err);
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end("Internal proxy error\n");
+        }
+      });
+    });
+
+    // Handle CONNECT method for HTTPS tunneling
+    server.on("connect", (req, clientSocket, head) => {
+      handleConnect(req, clientSocket, head).catch((err) => {
+        logger.error("Error handling CONNECT:", err);
+        try {
+          clientSocket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+          clientSocket.end();
+        } catch {
+          // Ignore
+        }
+      });
+    });
+
+    server.on("error", (err) => {
+      logger.error("HTTP proxy server error:", err);
+      reject(err);
+    });
+
+    server.listen(port, host, () => {
+      // Remove the startup error listener so it doesn't reject later operational errors
+      server.removeAllListeners("error");
+      server.on("error", (err) => {
+        logger.error("HTTP proxy server error:", err);
+      });
+
+      let mode: string;
+      if (isUnrestrictedMode(global.allowedDomains)) {
+        mode = "unrestricted";
+      } else if (global.allowedDomains.length > 0) {
+        mode = "allowlist";
+      } else {
+        mode = "complete-isolation";
       }
+
+      logger.info(
+        `🔒 HTTP proxy started on ${host}:${port} (global: mode=${mode}, allowed=${global.allowedDomains.length}, denied=${global.deniedDomains.length})`
+      );
+      logger.info(
+        `   Per-deployment configs supported via Proxy-Authorization header`
+      );
+      resolve(server);
     });
   });
-
-  // Handle CONNECT method for HTTPS tunneling
-  server.on("connect", (req, clientSocket, head) => {
-    handleConnect(req, clientSocket, head).catch((err) => {
-      logger.error("Error handling CONNECT:", err);
-      try {
-        clientSocket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
-        clientSocket.end();
-      } catch {
-        // Ignore
-      }
-    });
-  });
-
-  server.on("error", (err) => {
-    logger.error("HTTP proxy server error:", err);
-  });
-
-  server.listen(port, "::", () => {
-    let mode: string;
-    if (isUnrestrictedMode(global.allowedDomains)) {
-      mode = "unrestricted";
-    } else if (global.allowedDomains.length > 0) {
-      mode = "allowlist";
-    } else {
-      mode = "complete-isolation";
-    }
-
-    logger.info(
-      `🔒 HTTP proxy started on port ${port} (global: mode=${mode}, allowed=${global.allowedDomains.length}, denied=${global.deniedDomains.length})`
-    );
-    logger.info(
-      `   Per-deployment configs supported via Proxy-Authorization header`
-    );
-  });
-
-  return server;
 }
 
 /**

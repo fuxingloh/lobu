@@ -706,4 +706,8 @@ export class CoreServices {
       throw new Error("Provider catalog service not initialized");
     return this.providerCatalogService;
   }
+
+  getAuthProfilesManager(): AuthProfilesManager | undefined {
+    return this.authProfilesManager;
+  }
 }

@@ -116,16 +116,27 @@ export function resolveNetworkConfig(agentConfig?: NetworkConfig): {
     };
   }
 
-  // Agent config takes precedence if explicitly provided
-  // Note: We check for undefined specifically, as empty array [] is a valid explicit value (means deny all)
+  // Per-agent config is additive: global domains are always included,
+  // per-agent domains extend them. This ensures operator-level infra domains
+  // (API providers, npm registry, nix cache) are always accessible.
   return {
     allowedDomains:
       agentConfig.allowedDomains !== undefined
-        ? agentConfig.allowedDomains
+        ? [
+            ...new Set([
+              ...globalDefaults.allowedDomains,
+              ...agentConfig.allowedDomains,
+            ]),
+          ]
         : globalDefaults.allowedDomains,
     deniedDomains:
       agentConfig.deniedDomains !== undefined
-        ? agentConfig.deniedDomains
+        ? [
+            ...new Set([
+              ...globalDefaults.deniedDomains,
+              ...agentConfig.deniedDomains,
+            ]),
+          ]
         : globalDefaults.deniedDomains,
   };
 }

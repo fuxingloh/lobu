@@ -38,7 +38,8 @@ export function registerBuiltInCommands(
       const token = generateSettingsToken(
         ctx.agentId,
         ctx.userId,
-        ctx.platform
+        ctx.platform,
+        { channelId: ctx.channelId }
       );
       const settingsUrl = buildSettingsUrl(token);
       const ttlLabel = formatSettingsTokenTtl();

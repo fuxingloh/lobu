@@ -28,8 +28,6 @@ function setupServer(
   secretProxy: any,
   workerGateway: any,
   mcpProxy: any,
-  fileHandler?: any,
-  sessionManager?: any,
   interactionService?: any,
   platformRegistry?: any,
   coreServices?: any,
@@ -154,10 +152,10 @@ function setupServer(
     }
   }
 
-  // File routes (already Hono)
-  if (fileHandler && sessionManager) {
+  // File routes (already Hono) - uses platform registry for per-platform file handling
+  if (platformRegistry) {
     const { createFileRoutes } = require("../routes/internal/files");
-    const fileRouter = createFileRoutes(fileHandler, sessionManager);
+    const fileRouter = createFileRoutes(platformRegistry);
     app.route("/internal/files", fileRouter);
     logger.info("File routes enabled at :8080/internal/files/*");
   }
@@ -313,6 +311,9 @@ function setupServer(
       const { createSettingsPageRoutes } = require("../routes/public/settings");
       const settingsPageRouter = createSettingsPageRoutes({
         agentSettingsStore,
+        userAgentsStore: coreServices.getUserAgentsStore(),
+        agentMetadataStore: coreServices.getAgentMetadataStore(),
+        channelBindingService: coreServices.getChannelBindingService(),
         githubAuth,
         githubAppInstallUrl,
         githubOAuthClientId: process.env.GITHUB_CLIENT_ID,
@@ -340,11 +341,14 @@ function setupServer(
 
       const agentConfigRouter = createAgentConfigRoutes({
         agentSettingsStore,
+        userAgentsStore: coreServices.getUserAgentsStore(),
+        agentMetadataStore: coreServices.getAgentMetadataStore(),
         queue: coreServices.getQueue(),
         providerStores:
           Object.keys(providerStores).length > 0 ? providerStores : undefined,
         providerConnectedOverrides,
         providerCatalogService: coreServices.getProviderCatalogService(),
+        authProfilesManager: coreServices.getAuthProfilesManager(),
         githubAuth,
         githubAppInstallUrl,
         githubOAuthClientId: process.env.GITHUB_CLIENT_ID,
@@ -365,6 +369,8 @@ function setupServer(
       } = require("../routes/public/agent-schedules");
       const agentSchedulesRouter = createAgentSchedulesRoutes({
         scheduledWakeupService,
+        userAgentsStore: coreServices.getUserAgentsStore(),
+        agentMetadataStore: coreServices.getAgentMetadataStore(),
       });
       app.route("/api/v1/agents/:agentId/schedules", agentSchedulesRouter);
       logger.info(
@@ -448,22 +454,7 @@ function setupServer(
       );
     }
 
-    // Agent selector page (/agent-selector)
-    {
-      const userAgentsStore = coreServices.getUserAgentsStore();
-      const agentMetadataStore = coreServices.getAgentMetadataStore();
-      const {
-        createAgentSelectorRoutes,
-      } = require("../routes/public/agent-selector-page");
-      const agentSelectorRouter = createAgentSelectorRoutes({
-        userAgentsStore,
-        agentMetadataStore,
-        agentSettingsStore,
-        channelBindingService,
-      });
-      app.route("", agentSelectorRouter);
-      logger.info("Agent selector page enabled at :8080/agent-selector");
-    }
+    // Agent selector is now handled by the unified settings page (/settings)
   }
 
   // Auto-register any non-openapi routes so everything shows up in the schema
@@ -935,20 +926,11 @@ export async function startGateway(
   );
   logger.info("Orchestrator configured with core services");
 
-  // Get file handler from active platform (Slack or WhatsApp)
-  const fileHandler =
-    slackPlatform?.getFileHandler() ??
-    whatsappPlatform?.getFileHandler() ??
-    null;
-  const sessionManager = coreServices.getSessionManager();
-
   // Setup server on port 8080 (single port for all HTTP traffic)
   setupServer(
     coreServices.getSecretProxy(),
     coreServices.getWorkerGateway(),
     coreServices.getMcpProxy(),
-    fileHandler,
-    sessionManager,
     coreServices.getInteractionService(),
     gateway.getPlatformRegistry(),
     coreServices,

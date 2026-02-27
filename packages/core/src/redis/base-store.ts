@@ -2,6 +2,10 @@ import type Redis from "ioredis";
 import { createLogger, type Logger } from "../logger";
 import { safeJsonParse, safeJsonStringify } from "../utils/json";
 
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export interface RedisStoreConfig {
   redis: Redis;
   keyPrefix: string;
@@ -55,7 +59,10 @@ export abstract class BaseRedisStore<T> {
 
       return value;
     } catch (error) {
-      this.logger.error("Failed to get from Redis", { error, key });
+      this.logger.error("Failed to get from Redis", {
+        error: errMsg(error),
+        key,
+      });
       return null;
     }
   }
@@ -76,7 +83,10 @@ export abstract class BaseRedisStore<T> {
         await this.redis.set(key, data);
       }
     } catch (error) {
-      this.logger.error("Failed to set in Redis", { error, key });
+      this.logger.error("Failed to set in Redis", {
+        error: errMsg(error),
+        key,
+      });
       throw error;
     }
   }
@@ -88,7 +98,10 @@ export abstract class BaseRedisStore<T> {
     try {
       await this.redis.del(key);
     } catch (error) {
-      this.logger.error("Failed to delete from Redis", { error, key });
+      this.logger.error("Failed to delete from Redis", {
+        error: errMsg(error),
+        key,
+      });
     }
   }
 
@@ -100,7 +113,10 @@ export abstract class BaseRedisStore<T> {
       const result = await this.redis.exists(key);
       return result === 1;
     } catch (error) {
-      this.logger.error("Failed to check existence in Redis", { error, key });
+      this.logger.error("Failed to check existence in Redis", {
+        error: errMsg(error),
+        key,
+      });
       return false;
     }
   }

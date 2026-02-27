@@ -1,13 +1,7 @@
-import {
-  BaseModule,
-  createLogger,
-  decrypt,
-  type ModelOption,
-  type ModelProviderModule,
-} from "@lobu/core";
+import { createLogger, decrypt, type ModelOption } from "@lobu/core";
 import type { Context } from "hono";
-import { Hono } from "hono";
 import type { IMessageQueue } from "../../infrastructure/queue";
+import { BaseProviderModule } from "../base-provider-module";
 import { ClaudeOAuthClient } from "../oauth/claude-client";
 import type { ClaudeOAuthStateStore } from "../oauth/state-store";
 import {
@@ -28,105 +22,62 @@ const logger = createLogger("claude-oauth-module");
  * Provides login/logout functionality via Slack home tab
  * Also injects user OAuth tokens and model preferences into worker deployments
  */
-export class ClaudeOAuthModule
-  extends BaseModule
-  implements ModelProviderModule
-{
-  name = "claude-oauth";
-  providerId = "claude";
-  providerDisplayName = "Claude";
-  providerIconUrl =
-    "https://www.google.com/s2/favicons?domain=anthropic.com&sz=128";
-  authType = "oauth" as const;
-  supportedAuthTypes: ("oauth" | "device-code" | "api-key")[] = [
-    "oauth",
-    "api-key",
-  ];
-  apiKeyInstructions =
-    'Enter your <a href="https://console.anthropic.com/settings/keys" target="_blank" class="text-blue-600 underline">Anthropic API key</a>:';
-  apiKeyPlaceholder = "sk-ant-...";
+export class ClaudeOAuthModule extends BaseProviderModule {
   private oauthClient: ClaudeOAuthClient;
   private publicGatewayUrl: string;
   private queue: IMessageQueue;
-  private app: Hono;
-  private authProfilesManager: AuthProfilesManager;
+  private modelPreferenceStore: ClaudeModelPreferenceStore;
+  private stateStore: ClaudeOAuthStateStore;
 
   constructor(
     authProfilesManager: AuthProfilesManager,
-    private stateStore: ClaudeOAuthStateStore,
-    private modelPreferenceStore: ClaudeModelPreferenceStore,
+    stateStore: ClaudeOAuthStateStore,
+    modelPreferenceStore: ClaudeModelPreferenceStore,
     queue: IMessageQueue,
     publicGatewayUrl: string
   ) {
-    super();
-
+    super(
+      {
+        providerId: "claude",
+        providerDisplayName: "Claude",
+        providerIconUrl:
+          "https://www.google.com/s2/favicons?domain=anthropic.com&sz=128",
+        credentialEnvVarName: "CLAUDE_CODE_OAUTH_TOKEN",
+        secretEnvVarNames: [
+          "ANTHROPIC_API_KEY",
+          "ANTHROPIC_AUTH_TOKEN",
+          "CLAUDE_CODE_OAUTH_TOKEN",
+        ],
+        slug: "anthropic",
+        upstreamBaseUrl: "https://api.anthropic.com",
+        baseUrlEnvVarName: "ANTHROPIC_BASE_URL",
+        authType: "oauth",
+        supportedAuthTypes: ["oauth", "api-key"],
+        apiKeyInstructions:
+          'Enter your <a href="https://console.anthropic.com/settings/keys" target="_blank" class="text-blue-600 underline">Anthropic API key</a>:',
+        apiKeyPlaceholder: "sk-ant-...",
+        catalogDescription: "Anthropic's Claude AI with OAuth authentication",
+      },
+      authProfilesManager
+    );
+    // Preserve existing module name
+    this.name = "claude-oauth";
     this.oauthClient = new ClaudeOAuthClient();
-    this.authProfilesManager = authProfilesManager;
+    this.stateStore = stateStore;
+    this.modelPreferenceStore = modelPreferenceStore;
     this.queue = queue;
     this.publicGatewayUrl = publicGatewayUrl;
-    this.app = new Hono();
-    this.setupRoutes();
   }
 
-  isEnabled(): boolean {
-    // Always enabled - we show model selection even with system token
-    return true;
-  }
+  // ---- Overrides for multi-env-var logic ----
 
-  // ---- ModelProviderModule methods ----
-
-  getSecretEnvVarNames(): string[] {
-    return [
-      "ANTHROPIC_API_KEY",
-      "ANTHROPIC_AUTH_TOKEN",
-      "CLAUDE_CODE_OAUTH_TOKEN",
-    ];
-  }
-
-  getCredentialEnvVarName(): string {
-    return "CLAUDE_CODE_OAUTH_TOKEN";
-  }
-
-  getUpstreamConfig(): { slug: string; upstreamBaseUrl: string } {
-    return { slug: "anthropic", upstreamBaseUrl: "https://api.anthropic.com" };
-  }
-
-  async hasCredentials(agentId: string): Promise<boolean> {
-    return this.authProfilesManager.hasProviderProfiles(
-      agentId,
-      this.providerId
-    );
-  }
-
-  hasSystemKey(): boolean {
-    // Only check keys explicitly set in .env — not ANTHROPIC_API_KEY which
-    // can be leaked into the shell env by Claude Code or other tools.
+  override hasSystemKey(): boolean {
     return !!(
       process.env.ANTHROPIC_AUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN
     );
   }
 
-  getProxyBaseUrlMappings(
-    proxyUrl: string,
-    agentId?: string
-  ): Record<string, string> {
-    const base = `${proxyUrl}/anthropic`;
-    return { ANTHROPIC_BASE_URL: agentId ? `${base}/a/${agentId}` : base };
-  }
-
-  catalogDescription = "Anthropic's Claude AI with OAuth authentication";
-
-  getCliBackendConfig() {
-    return {
-      name: "claude-code",
-      command: "npx",
-      args: ["-y", "acpx@latest", "claude", "--print"],
-      modelArg: "--model",
-      sessionArg: "--session",
-    };
-  }
-
-  injectSystemKeyFallback(
+  override injectSystemKeyFallback(
     envVars: Record<string, string>
   ): Record<string, string> {
     if (!envVars.ANTHROPIC_API_KEY && !envVars.CLAUDE_CODE_OAUTH_TOKEN) {
@@ -145,18 +96,7 @@ export class ClaudeOAuthModule
     return envVars;
   }
 
-  /**
-   * Get the Hono app
-   */
-  getApp(): Hono {
-    return this.app;
-  }
-
-  /**
-   * Build environment variables for worker deployment
-   * Injects space's Claude OAuth token and user's model preference if available
-   */
-  async buildEnvVars(
+  override async buildEnvVars(
     agentId: string,
     envVars: Record<string, string>
   ): Promise<Record<string, string>> {
@@ -178,6 +118,16 @@ export class ClaudeOAuthModule
     // No longer baked into static container env vars.
 
     return envVars;
+  }
+
+  getCliBackendConfig() {
+    return {
+      name: "claude-code",
+      command: "npx",
+      args: ["-y", "acpx@latest", "claude", "--print"],
+      modelArg: "--model",
+      sessionArg: "--session",
+    };
   }
 
   async getModelOptions(
@@ -255,55 +205,16 @@ export class ClaudeOAuthModule
   }
 
   /**
-   * Setup OAuth routes on Hono app
+   * Setup Claude-specific OAuth routes
    */
-  private setupRoutes(): void {
+  protected override setupRoutes(): void {
     // Initialize OAuth flow
     this.app.get("/init", (c) => this.handleOAuthInit(c));
 
     // OAuth callback endpoint
     this.app.get("/callback", (c) => this.handleOAuthCallback(c));
 
-    // Logout endpoint
-    this.app.post("/logout", (c) => this.handleLogout(c));
-
-    // Save API key (alternative to OAuth)
-    this.app.post("/save-key", async (c) => {
-      try {
-        const body = await c.req.json();
-        const { agentId, apiKey } = body;
-
-        if (!agentId || !apiKey) {
-          return c.json({ error: "Missing agentId or apiKey" }, 400);
-        }
-
-        await this.authProfilesManager.upsertProfile({
-          agentId,
-          provider: this.providerId,
-          credential: apiKey,
-          authType: "api-key",
-          label: createAuthProfileLabel(this.providerDisplayName, apiKey),
-          makePrimary: true,
-        });
-
-        logger.info(`Claude API key saved for agent ${agentId}`);
-        return c.json({ success: true });
-      } catch (error) {
-        logger.error("Failed to save Claude API key", { error });
-        return c.json({ error: "Failed to save API key" }, 500);
-      }
-    });
-
     logger.info("Claude OAuth routes configured");
-  }
-
-  /**
-   * Register OAuth endpoints (for backward compatibility with module system)
-   */
-  registerEndpoints(_app: any): void {
-    // Routes are already registered in constructor via setupRoutes()
-    // This method is kept for module interface compatibility
-    logger.info("Claude OAuth endpoints registered via module system");
   }
 
   /**
@@ -766,37 +677,6 @@ export class ClaudeOAuthModule
         ),
         500
       );
-    }
-  }
-
-  /**
-   * Handle logout - delete credentials
-   */
-  private async handleLogout(c: Context): Promise<Response> {
-    let agentId: string | undefined;
-
-    // Try to get agentId from body or query
-    try {
-      const body = await c.req.json().catch(() => ({}));
-      agentId = body.agentId || c.req.query("agentId");
-    } catch {
-      agentId = c.req.query("agentId");
-    }
-
-    if (!agentId) {
-      return c.json({ error: "Missing agentId" }, 400);
-    }
-
-    try {
-      await this.authProfilesManager.deleteProviderProfiles(
-        agentId,
-        this.providerId
-      );
-      logger.info(`Space ${agentId} logged out from Claude`);
-      return c.json({ success: true });
-    } catch (error) {
-      logger.error("Failed to logout", { error, agentId });
-      return c.json({ error: "Failed to logout" }, 500);
     }
   }
 

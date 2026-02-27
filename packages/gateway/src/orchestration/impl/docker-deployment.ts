@@ -68,6 +68,9 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
 
     // Check for gvisor availability on initialization
     this.checkGvisorAvailability();
+
+    // Ensure the internal network exists for worker isolation
+    this.ensureInternalNetwork();
   }
 
   private async checkGvisorAvailability(): Promise<void> {
@@ -89,6 +92,51 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
       logger.warn(
         `⚠️  Failed to check Docker runtime availability: ${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  /**
+   * Ensure the internal Docker network exists with `internal: true` for worker isolation.
+   * Skipped when WORKER_NETWORK is explicitly set (e.g. local dev using bridge).
+   * Creates the network if it doesn't exist (e.g. production without docker-compose).
+   */
+  private async ensureInternalNetwork(): Promise<void> {
+    // If explicitly overridden (e.g. WORKER_NETWORK=bridge for local dev), skip
+    if (process.env.WORKER_NETWORK) {
+      return;
+    }
+
+    const composeProjectName = process.env.COMPOSE_PROJECT_NAME || "lobu";
+    const networkName = `${composeProjectName}_lobu-internal`;
+
+    try {
+      const network = this.docker.getNetwork(networkName);
+      const info = await network.inspect();
+      if (!info.Internal) {
+        logger.warn(
+          `⚠️  Network ${networkName} exists but is NOT internal — workers may have direct internet access`
+        );
+      }
+    } catch {
+      // Network doesn't exist — create it with internal: true
+      try {
+        await this.docker.createNetwork({
+          Name: networkName,
+          Internal: true,
+          Driver: "bridge",
+          Labels: {
+            "lobu.io/managed": "true",
+            "lobu.io/purpose": "worker-isolation",
+          },
+        });
+        logger.info(
+          `✅ Created internal network ${networkName} for worker isolation`
+        );
+      } catch (createError) {
+        logger.error(
+          `Failed to create internal network ${networkName}: ${createError instanceof Error ? createError.message : String(createError)}`
+        );
+      }
     }
   }
 
@@ -443,7 +491,6 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
             process.env.WORKER_READONLY_ROOTFS !== "false" && {
               Tmpfs: {
                 "/tmp": "rw,noexec,nosuid,size=100m",
-                "/home/bun/.cache": "rw,noexec,nosuid,size=200m",
               },
             }),
           // Shared memory for Chromium and other apps requiring /dev/shm

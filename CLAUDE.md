@@ -1,6 +1,9 @@
 @AGENTS.md
 Use lobu UI components per project conventions when applicable.
-To test Telegram bot, use `TEST_PLATFORM=telegram TEST_CHANNEL=<chat_id|@username> ./scripts/test-bot.sh "message"` (or set `TELEGRAM_TEST_CHAT_ID`); this path uses `tguser` and sends as your real user account.
-Direct option: `tguser send @lobuaibot "message"` (requires TG_API_ID and TG_API_HASH from .env).
+Local dev Telegram bot is `@clawdotfreebot` (NOT `@lobuaibot` which is production).
+To test Telegram bot, use `TEST_PLATFORM=telegram TEST_CHANNEL=@clawdotfreebot ./scripts/test-bot.sh "message"` (or set `TELEGRAM_TEST_CHAT_ID`); this path uses `tguser` and sends as your real user account.
+Direct option: `tguser send @clawdotfreebot "message"` (requires TG_API_ID and TG_API_HASH from .env).
 Settings link token TTL defaults to 1 hour and can be overridden in development via `SETTINGS_TOKEN_TTL_MS` (milliseconds, e.g. `4233600000` for 7 weeks).
 Settings page provider ordering is drag-sortable via handle, and each provider model selector is inline in the provider row.
+When testing locally, always run the gateway as a background process (`cd packages/gateway && bun run dev` in background) so you can watch its logs.
+Default to Telegram (`TEST_PLATFORM=telegram TEST_CHANNEL=@clawdotfreebot`) for bot testing unless a specific platform is specified.

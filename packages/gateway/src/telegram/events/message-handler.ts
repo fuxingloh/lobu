@@ -20,7 +20,10 @@ import type {
   MessagePayload,
   QueueProducer,
 } from "../../infrastructure/queue/queue-producer";
-import { generateAgentSelectorToken } from "../../routes/public/agent-selector-page";
+import {
+  buildSettingsUrl,
+  generateChannelSettingsToken,
+} from "../../auth/settings/token-service";
 import type { ISessionManager } from "../../session";
 import { resolveSpace } from "../../spaces";
 import type { TelegramConfig } from "../config";
@@ -503,8 +506,6 @@ export class TelegramMessageHandler {
     }
 
     try {
-      const publicGatewayUrl =
-        process.env.PUBLIC_GATEWAY_URL || "http://localhost:8080";
       const userId = String(context.senderId);
       const chatId = String(context.chatId);
 
@@ -524,8 +525,8 @@ export class TelegramMessageHandler {
         }
       }
 
-      const token = generateAgentSelectorToken(userId, "telegram", chatId);
-      const configUrl = `${publicGatewayUrl}/agent-selector?token=${encodeURIComponent(token)}`;
+      const token = generateChannelSettingsToken(userId, "telegram", chatId);
+      const configUrl = buildSettingsUrl(token);
 
       // Telegram rejects inline keyboard URLs like http://localhost:...; fall back to plain text in that case.
       let includeButton = true;

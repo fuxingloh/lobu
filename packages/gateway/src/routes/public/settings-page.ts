@@ -3,6 +3,7 @@
  */
 
 import type { ModelOption } from "@lobu/core";
+import type { AgentMetadata } from "../../auth/agent-metadata-store";
 import type { AgentSettings } from "../../auth/settings";
 import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 import { platformRegistry } from "../../platform";
@@ -76,6 +77,16 @@ export interface SettingsPageOptions {
   providers?: ProviderMeta[];
   catalogProviders?: ProviderMeta[];
   providerModelOptions?: Record<string, ModelOption[]>;
+  /** Show agent switcher in settings page (channel-based tokens) */
+  showSwitcher?: boolean;
+  /** User's agents for the switcher */
+  agents?: (AgentMetadata & { channelCount: number })[];
+  /** Agent name from metadata */
+  agentName?: string;
+  /** Agent description from metadata */
+  agentDescription?: string;
+  /** Whether the token has a channelId (for post-delete behavior) */
+  hasChannelId?: boolean;
 }
 
 export function renderSettingsPage(
@@ -108,6 +119,12 @@ export function renderSettingsPage(
       .join("\n");
   })();
 
+  const showSwitcher = options?.showSwitcher ?? false;
+  const agents = options?.agents ?? [];
+  const agentName = options?.agentName ?? "";
+  const agentDescription = options?.agentDescription ?? "";
+  const hasChannelId = options?.hasChannelId ?? false;
+
   const initialState = {
     token,
     agentId: payload.agentId,
@@ -134,7 +151,6 @@ export function renderSettingsPage(
       iconUrl: p.iconUrl,
       authType: p.authType,
       supportedAuthTypes: p.supportedAuthTypes,
-      description: p.catalogDescription || "",
       apiKeyInstructions: p.apiKeyInstructions,
       apiKeyPlaceholder: p.apiKeyPlaceholder,
     })),
@@ -142,6 +158,12 @@ export function renderSettingsPage(
     initialMcpServers: s.mcpServers || {},
     prefillSkills: payload.prefillSkills || [],
     prefillMcpServers: payload.prefillMcpServers || [],
+    prefillAllowedDomains: payload.prefillAllowedDomains || [],
+    prefillNixPackages: payload.prefillNixPackages || [],
+    prefillEnvVars: payload.prefillEnvVars || [],
+    agentName,
+    agentDescription,
+    hasChannelId,
   };
 
   return `<!DOCTYPE html>
@@ -155,10 +177,112 @@ export function renderSettingsPage(
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-700 to-slate-900 p-4" x-data="settingsApp()" x-cloak>
   <div class="max-w-xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
-    <div class="text-center mb-5">
-      <div class="text-4xl mb-1">&#129438;</div>
-      <h1 class="text-xl font-bold text-slate-900">Agent Settings</h1>
-      <p class="text-xs text-gray-500">${getPlatformDisplay(payload.platform).icon} ${escapeHtml(formatUserId(payload.userId))}</p>
+    <div class="mb-5" x-data="{ ${showSwitcher ? "switcherOpen: false, switching: false, creatingInSwitcher: false, switcherNewName: '', " : ""}editingIdentity: false, showDeleteConfirm: false, deleteConfirmText: '', deleting: false }">
+      <div class="text-center mb-3">
+        <div class="text-4xl mb-1">&#129438;</div>
+        <div class="relative inline-block" x-show="!editingIdentity">
+${
+  showSwitcher
+    ? `          <button type="button" @click="switcherOpen = !switcherOpen" class="inline-flex items-center gap-1.5 text-xl font-bold text-slate-900 hover:text-slate-700 transition-colors" title="${escapeHtml(payload.agentId || "")}">
+            <span x-text="agentName || 'Agent Settings'"></span>
+            <svg class="w-4 h-4 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+          </button>
+          <div x-show="switcherOpen" @click.away="switcherOpen = false" class="absolute left-1/2 -translate-x-1/2 mt-2 w-72 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden z-20">
+            <div class="max-h-48 overflow-y-auto">
+${agents
+  .map(
+    (agent) => `
+              <div class="w-full flex items-center justify-between px-3 py-2 text-left ${agent.agentId !== payload.agentId ? "hover:bg-slate-50 cursor-pointer" : "bg-slate-50"} transition-colors border-b border-slate-100 last:border-b-0"${agent.agentId !== payload.agentId ? ` @click="switching = true; switchAgent('${escapeHtml(agent.agentId)}')"` : ""}>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-800" title="${escapeHtml(agent.agentId)}">${escapeHtml(agent.name)}${agent.isWorkspaceAgent ? ' <span class="text-xs text-slate-500">(workspace)</span>' : ""}</p>
+                </div>
+                ${
+                  agent.agentId === payload.agentId
+                    ? `<div class="flex items-center gap-1 flex-shrink-0 ml-2">
+                  <span class="text-xs text-slate-600">Current</span>
+                  <button type="button" @click.stop="switcherOpen = false; editingIdentity = true" class="p-1 text-slate-400 hover:text-slate-600 transition-colors" title="Edit">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                  </button>
+                  <button type="button" @click.stop="switcherOpen = false; showDeleteConfirm = true" class="p-1 text-slate-400 hover:text-red-500 transition-colors" title="Delete">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>`
+                    : ""
+                }
+              </div>`
+  )
+  .join("")}
+            </div>
+            <!-- Create New Agent -->
+            <div class="border-t border-slate-200">
+              <template x-if="!creatingInSwitcher">
+                <button type="button" @click.stop="creatingInSwitcher = true"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors text-slate-600">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                  <span class="text-sm font-medium">Create new agent</span>
+                </button>
+              </template>
+              <template x-if="creatingInSwitcher">
+                <div class="px-3 py-2 space-y-2" @click.stop>
+                  <input type="text" x-model="switcherNewName" placeholder="Agent name" maxlength="100"
+                    class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none"
+                    @keydown.enter.prevent="if (switcherNewName.trim()) createAgentFromSwitcher(switcherNewName)">
+                  <div class="flex gap-2">
+                    <button type="button" @click="creatingInSwitcher = false; switcherNewName = ''"
+                      class="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">Cancel</button>
+                    <button type="button" @click="createAgentFromSwitcher(switcherNewName)" :disabled="!switcherNewName.trim() || switching"
+                      class="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-slate-600 text-white hover:bg-slate-700 transition-all disabled:opacity-60"
+                      x-text="switching ? 'Creating...' : 'Create'"></button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>`
+    : `          <div class="inline-flex items-center gap-2">
+            <h1 class="text-xl font-bold text-slate-900" x-text="agentName || 'Agent Settings'" title="${escapeHtml(payload.agentId || "")}"></h1>
+            <button type="button" @click="editingIdentity = true" class="p-1 text-slate-400 hover:text-slate-600 transition-colors" title="Edit">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+            <button type="button" @click="showDeleteConfirm = true" class="p-1 text-slate-400 hover:text-red-500 transition-colors" title="Delete">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </div>`
+}
+        </div>
+        <p x-show="!editingIdentity && agentDescription" class="text-xs text-gray-500 mt-0.5" x-text="agentDescription"></p>
+        <p class="text-xs text-gray-500 mt-1">${getPlatformDisplay(payload.platform).icon} ${escapeHtml(formatUserId(payload.userId))}</p>
+      </div>
+
+      <!-- Inline identity edit -->
+      <div x-show="editingIdentity" x-transition class="space-y-2 mb-3">
+        <input type="text" x-model="agentName" maxlength="100" placeholder="Agent name"
+          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">
+        <input type="text" x-model="agentDescription" maxlength="200" placeholder="Short description"
+          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">
+        <div class="flex gap-2 justify-center">
+          <button type="button" @click="editingIdentity = false; agentName = _initialAgentName; agentDescription = _initialAgentDescription"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">Cancel</button>
+          <button type="button" @click="await saveIdentity(); editingIdentity = false"
+            :disabled="savingIdentity || (agentName === _initialAgentName && agentDescription === _initialAgentDescription)"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-600 text-white hover:bg-slate-700 transition-all disabled:opacity-60"
+            x-text="savingIdentity ? 'Saving...' : 'Save'"></button>
+        </div>
+      </div>
+
+      <!-- Delete confirmation -->
+      <div x-show="showDeleteConfirm" x-transition class="mt-2 space-y-2">
+        <p class="text-xs text-gray-600 text-center">Type <strong class="font-mono">${escapeHtml(payload.agentId || "")}</strong> to confirm deletion:</p>
+        <input type="text" x-model="deleteConfirmText" placeholder="${escapeHtml(payload.agentId || "")}"
+          class="w-full px-3 py-2 border border-red-200 rounded-lg text-xs font-mono focus:border-red-400 focus:ring-1 focus:ring-red-200 outline-none"
+          @keydown.enter.prevent="if (deleteConfirmText === '${escapeHtml(payload.agentId || "")}') deleteAgent()">
+        <div class="flex gap-2">
+          <button type="button" @click="showDeleteConfirm = false; deleteConfirmText = ''"
+            class="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">Cancel</button>
+          <button type="button" @click="deleteAgent()" :disabled="deleteConfirmText !== '${escapeHtml(payload.agentId || "")}' || deleting"
+            class="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all disabled:opacity-60"
+            x-text="deleting ? 'Deleting...' : 'Delete'"></button>
+        </div>
+      </div>
     </div>
 
     <div x-show="successMsg" x-transition class="bg-green-100 text-green-800 px-3 py-2 rounded-lg mb-4 text-center text-sm" x-text="successMsg"></div>
@@ -173,69 +297,85 @@ export function renderSettingsPage(
     </div>`
         : ""
     }
-    ${
-      payload.prefillSkills?.length || payload.prefillMcpServers?.length
-        ? `<!-- Suggested Additions Section -->
-    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
-      <h3 class="text-sm font-medium text-slate-900 mb-3 flex items-center gap-2">
-        <span>&#9889;</span> Quick Setup
-      </h3>
-      ${
-        payload.prefillSkills?.length
-          ? `<div class="mb-3">
-        <p class="text-xs font-medium text-slate-800 mb-2">Suggested Skills:</p>
-        <div class="space-y-2">
-          ${payload.prefillSkills
-            .map(
-              (skill, idx) => `
-          <div class="flex items-center justify-between bg-white rounded-lg p-2 border border-slate-200" x-data="{ added: false, adding: false }">
-            <div class="flex-1 min-w-0">
-              <p class="text-xs font-medium text-gray-800">${escapeHtml(skill.name || skill.repo)}</p>
-              ${skill.description ? `<p class="text-xs text-gray-500 truncate">${escapeHtml(skill.description)}</p>` : ""}
-              <p class="text-xs text-gray-400 font-mono">${escapeHtml(skill.repo)}</p>
-            </div>
-            <button type="button" @click="adding = true; if (await addPrefillSkill(${idx})) added = true; adding = false" :disabled="adding || added"
-              class="ml-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex-shrink-0"
-              :class="added ? 'bg-green-600 text-white' : 'bg-slate-600 text-white hover:bg-slate-700'"
-              x-text="adding ? 'Adding...' : (added ? 'Added \\u2713' : 'Add')">
-            </button>
-          </div>`
-            )
-            .join("")}
+    <!-- Prefill Confirmation Banner -->
+    <div x-show="hasPrefills && !prefillBannerDismissed" x-transition class="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4">
+      <div class="flex items-start gap-2 mb-3">
+        <span class="text-lg">&#9888;&#65039;</span>
+        <div>
+          <h3 class="text-sm font-semibold text-amber-900">Pending changes from your agent</h3>
+          <p class="text-xs text-amber-700 mt-0.5">Review and approve the requested configuration changes.</p>
         </div>
-      </div>`
-          : ""
-      }
-      ${
-        payload.prefillMcpServers?.length
-          ? `<div>
-        <p class="text-xs font-medium text-slate-800 mb-2">Suggested External Integrations (MCP):</p>
-        <div class="space-y-2">
-          ${payload.prefillMcpServers
-            .map(
-              (mcp, idx) => `
-          <div class="flex items-center justify-between bg-white rounded-lg p-2 border border-slate-200" x-data="{ added: false, adding: false }">
-            <div class="flex-1 min-w-0">
-              <p class="text-xs font-medium text-gray-800">${escapeHtml(mcp.name || mcp.id)}</p>
-              ${mcp.url ? `<p class="text-xs text-gray-500 truncate">${escapeHtml(mcp.url)}</p>` : ""}
-              ${mcp.command ? `<p class="text-xs text-gray-400 font-mono">${escapeHtml(mcp.command)} ${(mcp.args || []).join(" ")}</p>` : ""}
-              ${mcp.envVars?.length ? `<p class="text-xs text-slate-600">Requires: ${mcp.envVars.join(", ")}</p>` : ""}
+      </div>
+      <div class="space-y-2 mb-3">
+        <template x-if="prefillAllowedDomains.length > 0">
+          <div>
+            <p class="text-xs font-medium text-amber-800 mb-1">&#127760; Network Access Domains</p>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="d in prefillAllowedDomains" :key="d">
+                <span class="inline-block px-1.5 py-0.5 bg-white border border-amber-200 rounded text-xs font-mono text-amber-900" x-text="d"></span>
+              </template>
             </div>
-            <button type="button" @click="adding = true; if (await addPrefillMcp(${idx})) added = true; adding = false" :disabled="adding || added"
-              class="ml-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex-shrink-0"
-              :class="added ? 'bg-green-600 text-white' : 'bg-slate-600 text-white hover:bg-slate-700'"
-              x-text="adding ? 'Adding...' : (added ? 'Added \\u2713' : 'Add')">
-            </button>
-          </div>`
-            )
-            .join("")}
-        </div>
-      </div>`
-          : ""
-      }
-    </div>`
-        : ""
-    }
+          </div>
+        </template>
+        <template x-if="prefillNixPackages.length > 0">
+          <div>
+            <p class="text-xs font-medium text-amber-800 mb-1">&#128230; System Packages</p>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="p in prefillNixPackages" :key="p">
+                <span class="inline-block px-1.5 py-0.5 bg-white border border-amber-200 rounded text-xs font-mono text-amber-900" x-text="p"></span>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="prefillEnvVars.length > 0">
+          <div>
+            <p class="text-xs font-medium text-amber-800 mb-1">&#128203; Environment Variables</p>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="v in prefillEnvVars" :key="v">
+                <span class="inline-block px-1.5 py-0.5 bg-white border border-amber-200 rounded text-xs font-mono text-amber-900" x-text="v"></span>
+              </template>
+            </div>
+            <p class="text-xs text-amber-700 mt-1">You'll need to fill in values after approving.</p>
+          </div>
+        </template>
+        <template x-if="prefillSkills.length > 0">
+          <div>
+            <p class="text-xs font-medium text-amber-800 mb-1">&#9889; Skills</p>
+            <div class="space-y-1">
+              <template x-for="s in prefillSkills" :key="s.repo">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-amber-900" x-text="s.name || s.repo"></span>
+                  <span class="text-xs text-amber-600 font-mono" x-text="s.repo"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="prefillMcpServers.length > 0">
+          <div>
+            <p class="text-xs font-medium text-amber-800 mb-1">&#128268; MCP Servers</p>
+            <div class="space-y-1">
+              <template x-for="m in prefillMcpServers" :key="m.id">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-amber-900" x-text="m.name || m.id"></span>
+                  <span class="text-xs text-amber-600 font-mono" x-text="m.url || ''"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" @click="approveAllPrefills()" :disabled="approvingPrefills"
+          class="px-4 py-2 text-xs font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-all disabled:opacity-60"
+          x-text="approvingPrefills ? 'Approving...' : 'Approve All'">
+        </button>
+        <button type="button" @click="prefillBannerDismissed = true; advancedOpen = true"
+          class="px-4 py-2 text-xs font-medium rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-100 transition-all">
+          Dismiss
+        </button>
+      </div>
+    </div>
 
     <form @submit.prevent="saveSettings()" @keydown.enter="if ($event.target.tagName !== 'TEXTAREA' && $event.target.type !== 'submit') $event.preventDefault()" class="space-y-3">
       <!-- Model Selection -->
@@ -268,7 +408,23 @@ export function renderSettingsPage(
             </label>
             <img src="${escapeHtml(p.iconUrl)}" alt="${escapeHtml(p.name)}" class="w-5 h-5 rounded">
             <div class="min-w-0">
-              <p class="text-sm font-medium text-gray-800">${escapeHtml(p.name)}</p>
+              <div class="flex items-center gap-2">
+                <p class="text-sm font-medium text-gray-800">${escapeHtml(p.name)}</p>
+                <div class="flex flex-wrap gap-1 items-center">
+                  ${(p.supportedAuthTypes || [p.authType])
+                    .map(
+                      (at) => `
+                    <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border"
+                      :class="providerState['${p.id}']?.activeAuthType === '${at}'
+                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        : 'bg-gray-100 text-gray-400 border-gray-100'">
+                      ${at}
+                    </span>
+                  `
+                    )
+                    .join("")}
+                </div>
+              </div>
               <p class="text-xs"
                 :class="providerState['${p.id}']?.connected ? (providerState['${p.id}']?.userConnected ? 'text-emerald-600' : 'text-amber-600') : 'text-gray-500'"
                 x-text="providerState['${p.id}']?.status || 'Checking...'"></p>
@@ -302,11 +458,31 @@ export function renderSettingsPage(
                 </template>
               </div>
             </div>
-            <button type="button" @click="providerState['${p.id}']?.userConnected ? disconnectProvider('${p.id}') : connectProvider('${p.id}')"
-              class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
-              :class="providerState['${p.id}']?.userConnected ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'"
-              x-text="providerState['${p.id}']?.userConnected ? 'Disconnect' : 'Connect'">
-            </button>
+            <template x-if="providerState['${p.id}']?.authMethods?.length > 0">
+              <div class="flex items-center gap-1 flex-wrap">
+                <template x-for="method in providerState['${p.id}'].authMethods" :key="method.profileId">
+                  <span class="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span x-text="method.authType"></span>
+                    <button type="button" @click="disconnectProvider('${p.id}', method.profileId)"
+                      class="ml-0.5 text-emerald-400 hover:text-red-500 transition-colors" title="Disconnect this method">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                  </span>
+                </template>
+                <button type="button" @click="connectProvider('${p.id}')"
+                  x-show="${JSON.stringify((p.supportedAuthTypes || [p.authType]).length)} > (providerState['${p.id}']?.authMethods?.length || 0)"
+                  class="inline-flex items-center justify-center w-6 h-6 text-xs font-medium rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all" title="Add another auth method">
+                  +
+                </button>
+              </div>
+            </template>
+            <template x-if="!providerState['${p.id}']?.authMethods?.length">
+              <button type="button" @click="providerState['${p.id}']?.userConnected ? disconnectProvider('${p.id}') : connectProvider('${p.id}')"
+                class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
+                :class="providerState['${p.id}']?.userConnected ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'"
+                x-text="providerState['${p.id}']?.userConnected ? 'Disconnect' : 'Connect'">
+              </button>
+            </template>
             <button type="button" @click="uninstallProvider('${p.id}')"
               title="Remove ${escapeHtml(p.name)}"
               class="p-1.5 text-xs rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all">
@@ -429,9 +605,13 @@ export function renderSettingsPage(
                       <img :src="cp.iconUrl" :alt="cp.name" class="w-4 h-4 rounded">
                       <div class="flex-1 min-w-0">
                         <p class="text-xs font-medium text-gray-800" x-text="cp.name"></p>
-                        <p class="text-xs text-gray-500 truncate" x-text="cp.description"></p>
                       </div>
-                      <span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500" x-text="cp.authType"></span>
+                      <div class="flex flex-wrap gap-1 justify-end">
+                        <template x-for="at in (cp.supportedAuthTypes || [cp.authType])" :key="at">
+                          <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 border border-gray-100"
+                            x-text="at"></span>
+                        </template>
+                      </div>
                     </div>
                   </div>
                 </template>
@@ -454,20 +634,20 @@ export function renderSettingsPage(
               </div>
 
               <!-- Tab bar for multi-auth pending providers -->
-              <template x-if="pendingProvider && (pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length > 1">
+              <template x-if="pendingProvider && !pendingProvider.success && (pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length > 1">
                 <div class="flex gap-1 mb-3 border-b border-gray-200">
                   <template x-for="at in (pendingProvider.supportedAuthTypes || [pendingProvider.authType])" :key="at">
                     <button type="button" @click="providerState[pendingProvider.id].activeAuthTab = at; if (at !== 'api-key') connectProvider(pendingProvider.id)"
                       class="px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all border-b-2 -mb-px"
                       :class="providerState[pendingProvider.id]?.activeAuthTab === at ? 'border-slate-600 text-slate-800 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'"
-                      x-text="at === 'api-key' ? 'API Key' : at === 'device-code' ? 'Device Auth' : 'OAuth'">
+                      x-text="at">
                     </button>
                   </template>
                 </div>
               </template>
 
               <!-- API Key input for pending provider -->
-              <template x-if="pendingProvider && (providerState[pendingProvider.id]?.activeAuthTab === 'api-key' || ((pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length === 1 && pendingProvider.authType === 'api-key'))">
+              <template x-if="pendingProvider && !pendingProvider.success && (providerState[pendingProvider.id]?.activeAuthTab === 'api-key' || ((pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length === 1 && pendingProvider.authType === 'api-key'))">
                 <div>
                   <p class="text-xs text-gray-600 mb-2" x-html="pendingProvider.apiKeyInstructions || 'Enter your API key:'"></p>
                   <div class="flex gap-2">
@@ -480,7 +660,7 @@ export function renderSettingsPage(
               </template>
 
               <!-- OAuth code input for pending provider -->
-              <template x-if="pendingProvider && providerState[pendingProvider.id]?.activeAuthTab !== 'api-key' && (providerState[pendingProvider.id]?.showCodeInput || ((pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length === 1 && pendingProvider.authType === 'oauth'))">
+              <template x-if="pendingProvider && !pendingProvider.success && providerState[pendingProvider.id]?.activeAuthTab !== 'api-key' && (providerState[pendingProvider.id]?.showCodeInput || ((pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length === 1 && pendingProvider.authType === 'oauth'))">
                 <div>
                   <div class="mb-3 text-center">
                     <a :href="'/api/v1/oauth/providers/' + pendingProvider.id + '/login?token=' + encodeURIComponent(token)" target="_blank" class="inline-block px-4 py-2 text-xs font-medium rounded-lg bg-slate-600 text-white hover:bg-slate-700 transition-all" x-text="'Login with ' + pendingProvider.name">
@@ -498,7 +678,7 @@ export function renderSettingsPage(
               </template>
 
               <!-- Device code flow for pending provider -->
-              <template x-if="pendingProvider && providerState[pendingProvider.id]?.activeAuthTab !== 'api-key' && (providerState[pendingProvider.id]?.showDeviceCode || ((pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length === 1 && pendingProvider.authType === 'device-code'))">
+              <template x-if="pendingProvider && !pendingProvider.success && providerState[pendingProvider.id]?.activeAuthTab !== 'api-key' && (providerState[pendingProvider.id]?.showDeviceCode || ((pendingProvider.supportedAuthTypes || [pendingProvider.authType]).length === 1 && pendingProvider.authType === 'device-code'))">
                 <div class="text-center">
                   <p class="text-xs text-gray-600 mb-2">Enter this code at the verification page:</p>
                   <p class="text-2xl font-mono font-bold text-slate-800 mb-2" x-text="providerState[pendingProvider.id].userCode || ''"></p>
@@ -506,6 +686,16 @@ export function renderSettingsPage(
                     Login
                   </a>
                   <p class="text-xs text-gray-400" x-text="providerState[pendingProvider.id].pollStatus || 'Waiting for authorization...'"></p>
+                </div>
+              </template>
+
+              <!-- Success state for pending provider -->
+              <template x-if="pendingProvider?.success">
+                <div class="text-center py-4">
+                  <svg class="w-8 h-8 mx-auto text-emerald-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  <p class="text-sm font-medium text-emerald-700">Connected!</p>
                 </div>
               </template>
             </div>
@@ -794,13 +984,13 @@ export function renderSettingsPage(
       </div>
 
       <!-- Advanced Section -->
-      <div class="border border-gray-200 rounded-lg" x-data="{ open: false }">
-        <h3 class="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer select-none p-3" @click="open = !open">
+      <div class="border border-gray-200 rounded-lg">
+        <h3 class="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer select-none p-3" @click="advancedOpen = !advancedOpen">
           <span>&#9881;</span>
           Advanced
-          <span class="ml-auto text-xs text-gray-400 transition-transform" :class="open ? '' : 'rotate-[-90deg]'">&#9660;</span>
+          <span class="ml-auto text-xs text-gray-400 transition-transform" :class="advancedOpen ? '' : 'rotate-[-90deg]'">&#9660;</span>
         </h3>
-        <div x-show="open" x-transition class="px-3 pb-3 space-y-3">
+        <div x-show="advancedOpen" x-transition class="px-3 pb-3 space-y-3">
 
       <!-- Network Configuration -->
       <div class="bg-gray-50 rounded-lg p-3" x-data="{ open: false }">
@@ -812,7 +1002,14 @@ export function renderSettingsPage(
         <div x-show="open" x-transition class="pt-3 space-y-3">
           <div>
             <label for="allowedDomains" class="block text-xs font-medium text-gray-600 mb-1">Allowed Domains</label>
-            <textarea id="allowedDomains" name="allowedDomains" placeholder="github.com&#10;*.trusted.com" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono min-h-[60px] resize-y focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">${escapeHtml((s.networkConfig?.allowedDomains || []).join("\n"))}</textarea>
+            <textarea id="allowedDomains" name="allowedDomains" placeholder="github.com&#10;*.trusted.com" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono min-h-[60px] resize-y focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">${escapeHtml(
+              (() => {
+                const existing = s.networkConfig?.allowedDomains || [];
+                const prefill = payload.prefillAllowedDomains || [];
+                const merged = [...new Set([...existing, ...prefill])];
+                return merged.join("\n");
+              })()
+            )}</textarea>
           </div>
           <div>
             <label for="deniedDomains" class="block text-xs font-medium text-gray-600 mb-1">Denied Domains</label>
@@ -965,11 +1162,10 @@ export function renderSettingsPage(
       }
 
       <!-- System Packages -->
-      <div class="bg-gray-50 rounded-lg p-3" x-data="{ open: ${payload.prefillNixPackages?.length ? "true" : "false"} }">
+      <div class="bg-gray-50 rounded-lg p-3" x-data="{ open: false }">
         <h3 class="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer select-none" @click="open = !open">
           <span>&#128230;</span>
           System Packages
-          ${payload.prefillNixPackages?.length ? '<span class="text-xs text-slate-600 font-normal">(action needed)</span>' : ""}
           <span class="ml-auto text-xs text-gray-400 transition-transform" :class="open ? '' : 'rotate-[-90deg]'">&#9660;</span>
         </h3>
         <div x-show="open" x-transition class="pt-3 space-y-3">
@@ -983,26 +1179,19 @@ export function renderSettingsPage(
                 return merged.join("\n");
               })()
             )}</textarea>
-            ${payload.prefillNixPackages?.length ? '<p class="text-xs text-slate-600 mt-1">&#11014;&#65039; Suggested packages have been pre-filled. Review and save to apply.</p>' : ""}
           </div>
         </div>
       </div>
 
       <!-- Environment Variables -->
-      <div class="bg-gray-50 rounded-lg p-3" x-data="{ open: ${payload.prefillEnvVars?.length ? "true" : "false"} }">
-        <h3 class="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer select-none" @click="open = !open">
+      <div class="bg-gray-50 rounded-lg p-3">
+        <h3 class="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer select-none" @click="envVarsOpen = !envVarsOpen">
           <span>&#128203;</span>
           Environment Variables
-          ${payload.prefillEnvVars?.length ? '<span class="text-xs text-slate-600 font-normal">(action needed)</span>' : ""}
-          <span class="ml-auto text-xs text-gray-400 transition-transform" :class="open ? '' : 'rotate-[-90deg]'">&#9660;</span>
+          <span class="ml-auto text-xs text-gray-400 transition-transform" :class="envVarsOpen ? '' : 'rotate-[-90deg]'">&#9660;</span>
         </h3>
-        <div x-show="open" x-transition class="pt-3">
+        <div x-show="envVarsOpen" x-transition class="pt-3">
           <textarea id="envVars" name="envVars" placeholder="API_KEY=your_key&#10;DEBUG=true" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono min-h-[60px] resize-y focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">${escapeHtml(envVarsValue)}</textarea>
-          ${
-            payload.prefillEnvVars?.length
-              ? `<p class="text-xs text-slate-600 mt-1">&#11014;&#65039; Please fill in the values for the highlighted variables above.</p>`
-              : ""
-          }
         </div>
       </div>
 
@@ -1037,6 +1226,14 @@ export function renderSettingsPage(
         githubAppConfigured: __STATE__.githubAppConfigured,
         githubAppInstallUrl: __STATE__.githubAppInstallUrl,
         PROVIDERS: __STATE__.PROVIDERS,
+
+        // Agent Identity
+        agentName: __STATE__.agentName || '',
+        agentDescription: __STATE__.agentDescription || '',
+        _initialAgentName: __STATE__.agentName || '',
+        _initialAgentDescription: __STATE__.agentDescription || '',
+        savingIdentity: false,
+        hasChannelId: __STATE__.hasChannelId || false,
 
         // UI
         successMsg: '',
@@ -1105,6 +1302,19 @@ export function renderSettingsPage(
         // Prefills
         prefillSkills: __STATE__.prefillSkills,
         prefillMcpServers: __STATE__.prefillMcpServers,
+        prefillAllowedDomains: __STATE__.prefillAllowedDomains,
+        prefillNixPackages: __STATE__.prefillNixPackages,
+        prefillEnvVars: __STATE__.prefillEnvVars,
+        prefillBannerDismissed: false,
+        approvingPrefills: false,
+
+        // Section open states (lifted for programmatic control)
+        advancedOpen: false,
+        envVarsOpen: false,
+
+        get hasPrefills() {
+          return !!(this.prefillAllowedDomains.length || this.prefillNixPackages.length || this.prefillEnvVars.length || this.prefillSkills.length || this.prefillMcpServers.length);
+        },
 
         get mcpServerIds() {
           return Object.keys(this.mcpServers);
@@ -1214,6 +1424,105 @@ export function renderSettingsPage(
 
         apiUrl(path) {
           return '/api/v1/agents/' + encodeURIComponent(this.agentId) + path + '?token=' + encodeURIComponent(this.token);
+        },
+
+        async switchAgent(agentId) {
+          try {
+            var resp = await fetch('/settings/switch-agent?token=' + encodeURIComponent(this.token), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ agentId: agentId })
+            });
+            var result = await resp.json();
+            if (resp.ok) {
+              window.location.reload();
+            } else {
+              this.errorMsg = result.error || 'Failed to switch agent';
+            }
+          } catch (e) {
+            this.errorMsg = 'Network error: ' + e.message;
+          }
+        },
+
+        // === Agent Identity ===
+        async saveIdentity() {
+          this.savingIdentity = true;
+          this.successMsg = '';
+          this.errorMsg = '';
+
+          try {
+            var body = {};
+            if (this.agentName !== this._initialAgentName) body.name = this.agentName;
+            if (this.agentDescription !== this._initialAgentDescription) body.description = this.agentDescription;
+
+            var resp = await fetch('/settings/update-agent?token=' + encodeURIComponent(this.token), {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            });
+            var result = await resp.json();
+            if (resp.ok) {
+              this._initialAgentName = this.agentName;
+              this._initialAgentDescription = this.agentDescription;
+              this.successMsg = 'Agent identity updated!';
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              throw new Error(result.error || 'Failed to update');
+            }
+          } catch (e) {
+            this.errorMsg = e.message;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } finally {
+            this.savingIdentity = false;
+          }
+        },
+
+        async createAgentFromSwitcher(name) {
+          if (!name || !name.trim()) return;
+          var agentId = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          if (agentId.length > 40) agentId = agentId.substring(0, 40);
+          if (agentId.length < 3 || !/^[a-z]/.test(agentId)) {
+            this.errorMsg = 'Invalid agent name (must start with a letter, at least 3 characters)';
+            return;
+          }
+
+          try {
+            var resp = await fetch('/settings/create-agent?token=' + encodeURIComponent(this.token), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ agentId: agentId, name: name.trim() })
+            });
+            var result = await resp.json();
+            if (resp.ok) {
+              window.location.reload();
+            } else {
+              this.errorMsg = result.error || 'Failed to create agent';
+            }
+          } catch (e) {
+            this.errorMsg = 'Network error: ' + e.message;
+          }
+        },
+
+        async deleteAgent() {
+          try {
+            var resp = await fetch('/api/v1/agent-management/agents/' + encodeURIComponent(this.agentId) + '?token=' + encodeURIComponent(this.token), {
+              method: 'DELETE'
+            });
+            var result = await resp.json();
+            if (resp.ok) {
+              if (this.hasChannelId) {
+                window.location.reload();
+              } else {
+                document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="text-align:center;color:white"><p style="font-size:1.5rem;margin-bottom:0.5rem">Agent deleted</p><p style="font-size:0.875rem;opacity:0.7">This agent has been permanently removed.</p></div></div>';
+              }
+            } else {
+              this.errorMsg = result.error || 'Failed to delete agent';
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+          } catch (e) {
+            this.errorMsg = 'Network error: ' + e.message;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         },
 
         // === Provider Install/Uninstall ===
@@ -1436,7 +1745,9 @@ export function renderSettingsPage(
                 provider,
                 info.connected,
                 info.userConnected,
-                info.systemConnected
+                info.systemConnected,
+                info.activeAuthType,
+                info.authMethods
               );
             }
           } catch (e) {
@@ -1446,12 +1757,14 @@ export function renderSettingsPage(
           }
         },
 
-        updateProviderStatus(provider, connected, userConnected, systemConnected) {
+        updateProviderStatus(provider, connected, userConnected, systemConnected, activeAuthType, authMethods) {
           if (!this.providerState[provider]) return;
           var ps = this.providerState[provider];
           ps.connected = !!connected;
           ps.userConnected = !!userConnected;
           ps.systemConnected = !!systemConnected;
+          ps.activeAuthType = activeAuthType || null;
+          ps.authMethods = authMethods || [];
           ps.status = !ps.connected
             ? 'Not connected'
             : ps.userConnected
@@ -1515,10 +1828,14 @@ export function renderSettingsPage(
               this.providerState[provider].showAuthFlow = false;
               this.providerState[provider].code = '';
 
-              // If this is a pending add flow, install the provider then reload
+              // If this is a pending add flow, show success then install
               if (this.pendingProvider && this.pendingProvider.id === provider) {
-                this.pendingProvider = null;
-                await this.installAndReload(provider, 'Provider added and connected!');
+                this.pendingProvider = Object.assign({}, this.pendingProvider, { success: true });
+                var self = this;
+                setTimeout(async function() {
+                  self.pendingProvider = null;
+                  await self.installAndReload(provider, 'Provider added and connected!');
+                }, 800);
                 return;
               }
 
@@ -1550,10 +1867,14 @@ export function renderSettingsPage(
               this.providerState[provider].showAuthFlow = false;
               this.providerState[provider].apiKey = '';
 
-              // If this is a pending add flow, install the provider then reload
+              // If this is a pending add flow, show success then install
               if (this.pendingProvider && this.pendingProvider.id === provider) {
-                this.pendingProvider = null;
-                await this.installAndReload(provider, 'Provider added and connected!');
+                this.pendingProvider = Object.assign({}, this.pendingProvider, { success: true });
+                var self = this;
+                setTimeout(async function() {
+                  self.pendingProvider = null;
+                  await self.installAndReload(provider, 'Provider added and connected!');
+                }, 800);
                 return;
               }
 
@@ -1615,10 +1936,14 @@ export function renderSettingsPage(
               ps.showDeviceCode = false;
               ps.showAuthFlow = false;
 
-              // If this is a pending add flow, install the provider then reload
+              // If this is a pending add flow, show success then install
               if (this.pendingProvider && this.pendingProvider.id === provider) {
-                this.pendingProvider = null;
-                await this.installAndReload(provider, 'Provider added and connected!');
+                this.pendingProvider = Object.assign({}, this.pendingProvider, { success: true });
+                var self = this;
+                setTimeout(async function() {
+                  self.pendingProvider = null;
+                  await self.installAndReload(provider, 'Provider added and connected!');
+                }, 800);
                 return;
               }
 
@@ -1634,16 +1959,19 @@ export function renderSettingsPage(
           }
         },
 
-        async disconnectProvider(provider) {
+        async disconnectProvider(provider, profileId) {
           var info = this.PROVIDERS[provider];
           var name = info?.name || provider;
-          if (!confirm('Disconnect from ' + name + '? You will need to reconnect to use this provider.')) return;
+          if (!confirm('Disconnect from ' + name + '?')) return;
+
+          var body = { agentId: this.agentId };
+          if (profileId) body.profileId = profileId;
 
           // All providers have /logout on their auth app; try that first, fall back to OAuth route
           var resp = await fetch('/api/v1/auth/' + provider + '/logout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agentId: this.agentId })
+            body: JSON.stringify(body)
           });
           if (!resp.ok && info?.authType === 'oauth') {
             await fetch('/api/v1/oauth/providers/' + provider + '/logout?token=' + encodeURIComponent(this.token), { method: 'POST' });
@@ -2339,8 +2667,302 @@ export function renderSettingsPage(
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return false;
           }
+        },
+
+        // === Approve All Prefills ===
+        async approveAllPrefills() {
+          this.approvingPrefills = true;
+          this.errorMsg = '';
+          this.successMsg = '';
+          var hasEnvVars = this.prefillEnvVars.length > 0;
+
+          try {
+            // 1. Merge domains and packages into existing values and PATCH
+            var patchPayload = {};
+            if (this.prefillAllowedDomains.length > 0) {
+              var domainsEl = document.getElementById('allowedDomains');
+              var existingDomains = this.parseLines(domainsEl.value);
+              var mergedDomains = existingDomains.slice();
+              for (var d = 0; d < this.prefillAllowedDomains.length; d++) {
+                if (mergedDomains.indexOf(this.prefillAllowedDomains[d]) === -1) {
+                  mergedDomains.push(this.prefillAllowedDomains[d]);
+                }
+              }
+              domainsEl.value = mergedDomains.join('\\n');
+              patchPayload.networkConfig = { allowedDomains: mergedDomains };
+              // Preserve denied domains
+              var deniedEl = document.getElementById('deniedDomains');
+              var denied = this.parseLines(deniedEl.value);
+              if (denied.length) patchPayload.networkConfig.deniedDomains = denied;
+            }
+
+            if (this.prefillNixPackages.length > 0) {
+              var pkgsEl = document.getElementById('nixPackages');
+              var existingPkgs = this.parseLines(pkgsEl.value);
+              var mergedPkgs = existingPkgs.slice();
+              for (var p = 0; p < this.prefillNixPackages.length; p++) {
+                if (mergedPkgs.indexOf(this.prefillNixPackages[p]) === -1) {
+                  mergedPkgs.push(this.prefillNixPackages[p]);
+                }
+              }
+              pkgsEl.value = mergedPkgs.join('\\n');
+              patchPayload.nixConfig = { packages: mergedPkgs };
+            }
+
+            // Save domains/packages if any
+            if (patchPayload.networkConfig || patchPayload.nixConfig) {
+              var cfgResp = await fetch(this.apiUrl('/config'), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(patchPayload)
+              });
+              if (!cfgResp.ok) {
+                var cfgErr = await cfgResp.json();
+                throw new Error(cfgErr.error || 'Failed to save network/package config');
+              }
+            }
+
+            // 2. Add prefill skills (skip already installed)
+            var failures = [];
+            for (var si = 0; si < this.prefillSkills.length; si++) {
+              var skill = this.prefillSkills[si];
+              var alreadyInstalled = false;
+              for (var j = 0; j < this.skills.length; j++) {
+                if (this.skills[j].repo === skill.repo) { alreadyInstalled = true; break; }
+              }
+              if (!alreadyInstalled) {
+                // Suppress per-item messages during batch
+                this.successMsg = '';
+                this.errorMsg = '';
+                var ok = await this.addPrefillSkill(si);
+                if (!ok) failures.push(skill.name || skill.repo);
+              }
+            }
+
+            // 3. Add prefill MCPs (skip already installed)
+            for (var mi = 0; mi < this.prefillMcpServers.length; mi++) {
+              var mcp = this.prefillMcpServers[mi];
+              if (!this.mcpServers[mcp.id]) {
+                this.successMsg = '';
+                this.errorMsg = '';
+                var ok2 = await this.addPrefillMcp(mi);
+                if (!ok2) failures.push(mcp.name || mcp.id);
+              }
+            }
+
+            // 4. Handle env vars — add keys to textarea, expand sections
+            if (hasEnvVars) {
+              var envEl = document.getElementById('envVars');
+              var currentText = envEl.value;
+              for (var ei = 0; ei < this.prefillEnvVars.length; ei++) {
+                var envKey = this.prefillEnvVars[ei];
+                if (currentText.indexOf(envKey + '=') === -1) {
+                  currentText = currentText.trim() + (currentText.trim() ? '\\n' : '') + envKey + '=';
+                }
+              }
+              envEl.value = currentText;
+              this.advancedOpen = true;
+              this.envVarsOpen = true;
+            }
+
+            // 5. Dismiss banner and show result
+            this.prefillBannerDismissed = true;
+            this.errorMsg = '';
+            if (failures.length > 0) {
+              this.errorMsg = 'Some items failed to add: ' + failures.join(', ');
+            }
+            if (hasEnvVars) {
+              this.successMsg = 'Changes approved! Please fill in environment variable values below, then Save Settings.';
+            } else {
+              this.successMsg = failures.length > 0 ? 'Changes partially applied.' : 'All changes approved and saved!';
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } catch (e) {
+            this.errorMsg = 'Error approving changes: ' + e.message;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } finally {
+            this.approvingPrefills = false;
+          }
         }
       };
+    }
+  </script>
+</body>
+</html>`;
+}
+
+/**
+ * Render the agent picker / creation page.
+ * Shown when a channel-based token has no agent bound.
+ */
+export function renderPickerPage(
+  payload: SettingsTokenPayload,
+  agents: (AgentMetadata & { channelCount: number })[],
+  token: string
+): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configure Agent - Lobu</title>
+  <style>${settingsPageCSS}</style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-700 to-slate-900 p-4">
+  <div class="max-w-xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
+    <div class="text-center mb-5">
+      <div class="text-4xl mb-1">&#129438;</div>
+      <h1 class="text-xl font-bold text-slate-900">Configure Agent</h1>
+      <p class="text-xs text-gray-500">${getPlatformDisplay(payload.platform).icon} ${escapeHtml(formatUserId(payload.userId))}</p>
+      ${payload.channelId ? `<p class="text-xs text-gray-400 mt-1">Channel: ${escapeHtml(payload.channelId)}</p>` : ""}
+    </div>
+
+    <div id="success-msg" class="hidden bg-green-100 text-green-800 px-3 py-2 rounded-lg mb-4 text-center text-sm"></div>
+    <div id="error-msg" class="hidden bg-red-100 text-red-800 px-3 py-2 rounded-lg mb-4 text-center text-sm"></div>
+
+    ${
+      agents.length > 0
+        ? `<!-- Existing Agents -->
+    <div class="mb-4">
+      <h2 class="text-sm font-medium text-gray-800 mb-2">Your Agents</h2>
+      <div class="space-y-2" id="agents-list">
+${agents
+  .map(
+    (agent) => `
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800">${escapeHtml(agent.name)}${agent.isWorkspaceAgent ? ' <span class="text-xs text-slate-600">(workspace)</span>' : ""}</p>
+            <p class="text-xs text-gray-500">${escapeHtml(agent.agentId)} &middot; ${agent.channelCount} channel${agent.channelCount !== 1 ? "s" : ""}</p>
+            ${agent.description ? `<p class="text-xs text-gray-400 truncate">${escapeHtml(agent.description)}</p>` : ""}
+          </div>
+          <button type="button" onclick="selectAgent('${escapeHtml(agent.agentId)}')"
+            class="ml-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-600 text-white hover:bg-slate-700 transition-all flex-shrink-0">
+            Select
+          </button>
+        </div>`
+  )
+  .join("")}
+      </div>
+    </div>`
+        : `<div class="mb-4">
+      <p class="text-sm text-gray-500 p-3 bg-gray-50 rounded-lg text-center">No agents yet. Create one below to get started.</p>
+    </div>`
+    }
+
+    <!-- Create New Agent -->
+    <div class="border-t border-gray-200 pt-4">
+      <h2 class="text-sm font-medium text-gray-800 mb-3">Create New Agent</h2>
+      <div class="space-y-2">
+        <div>
+          <label for="agentName" class="block text-xs font-medium text-gray-600 mb-1">Name</label>
+          <input type="text" id="agentName" placeholder="My Agent" maxlength="100"
+            oninput="autoGenerateId()"
+            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">
+        </div>
+        <div>
+          <label for="agentId" class="block text-xs font-medium text-gray-600 mb-1">Agent ID</label>
+          <input type="text" id="agentId" placeholder="my-agent" pattern="[a-z][a-z0-9-]*" minlength="3" maxlength="40"
+            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none">
+          <p class="text-xs text-gray-400 mt-1">Auto-generated from name. Lowercase letters, numbers, hyphens.</p>
+        </div>
+        <button type="button" id="create-btn" onclick="createAgent()"
+          class="w-full py-2.5 bg-gradient-to-r from-slate-700 to-slate-800 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all">
+          Create Agent
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var token = ${JSON.stringify(token)};
+    var idManuallyEdited = false;
+
+    document.getElementById('agentId').addEventListener('input', function() {
+      idManuallyEdited = true;
+    });
+
+    function autoGenerateId() {
+      if (idManuallyEdited) return;
+      var name = document.getElementById('agentName').value;
+      var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (slug.length > 40) slug = slug.substring(0, 40);
+      document.getElementById('agentId').value = slug;
+    }
+
+    async function selectAgent(agentId) {
+      hideMessages();
+      try {
+        var resp = await fetch('/settings/switch-agent?token=' + encodeURIComponent(token), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: agentId })
+        });
+        var result = await resp.json();
+        if (resp.ok) {
+          showSuccess('Agent selected! Loading settings...');
+          setTimeout(function() { window.location.reload(); }, 500);
+        } else {
+          showError(result.error || 'Failed to select agent');
+        }
+      } catch (e) {
+        showError('Network error: ' + e.message);
+      }
+    }
+
+    async function createAgent() {
+      var agentId = document.getElementById('agentId').value.trim();
+      var name = document.getElementById('agentName').value.trim();
+
+      if (!name) {
+        showError('Agent name is required.');
+        return;
+      }
+      if (!agentId) {
+        showError('Agent ID is required.');
+        return;
+      }
+
+      var btn = document.getElementById('create-btn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      hideMessages();
+
+      try {
+        var resp = await fetch('/settings/create-agent?token=' + encodeURIComponent(token), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: agentId, name: name })
+        });
+        var result = await resp.json();
+        if (resp.ok) {
+          showSuccess('Agent created! Loading settings...');
+          setTimeout(function() { window.location.reload(); }, 500);
+        } else {
+          showError(result.error || 'Failed to create agent');
+        }
+      } catch (e) {
+        showError('Network error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create Agent';
+      }
+    }
+
+    function showSuccess(msg) {
+      var el = document.getElementById('success-msg');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function showError(msg) {
+      var el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideMessages() {
+      document.getElementById('success-msg').classList.add('hidden');
+      document.getElementById('error-msg').classList.add('hidden');
     }
   </script>
 </body>

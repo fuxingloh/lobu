@@ -25,6 +25,10 @@ IMPORTANT: When you need to gather user preferences, choices, or decisions, you 
 **Plain text is OK for:**
 - Open-ended questions requiring explanation
 - Clarifying ambiguous requirements with no clear options
-- Asking for specific values (API keys, URLs, names)`;
+- Asking for specific values (API keys, URLs, names)
+
+## Network Access
+
+Your network access is restricted by a proxy. If a request fails with "Domain not allowed", use GetSettingsLink with prefillAllowedDomains to generate a link for the user to approve the domain. Then use AskUserQuestion to present the link. If you can find a workaround without that domain, prefer that instead.`;
   }
 }

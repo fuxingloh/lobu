@@ -46,13 +46,23 @@ export interface SettingsSourceContext {
 }
 
 /**
- * Payload stored in the settings token
+ * Payload stored in the settings token.
+ *
+ * Supports two entry modes:
+ * - Agent-based: `agentId` is set (from /configure, Slack Home tab, worker endpoint)
+ * - Channel-based: `channelId` is set, `agentId` may be absent (from message handlers when no agent bound)
+ * At least one of `agentId` or `channelId` must be present.
  */
 export interface SettingsTokenPayload {
-  agentId: string;
+  /** Agent to configure. Optional when using channel-based entry (user picks agent on page). */
+  agentId?: string;
   userId: string;
   platform: string;
   exp: number; // Expiration timestamp (ms)
+  /** Channel that triggered the settings link. Used for agent switching and binding. */
+  channelId?: string;
+  /** Team/workspace ID for multi-tenant platforms (Slack). */
+  teamId?: string;
   /** Optional message to display on the settings page (e.g., instructions to get an API key) */
   message?: string;
   /** Optional env vars to pre-fill in the settings page (just the keys, user fills values) */
@@ -63,6 +73,8 @@ export interface SettingsTokenPayload {
   prefillMcpServers?: PrefillMcpServer[];
   /** Optional Nix packages to pre-fill in the system packages section */
   prefillNixPackages?: string[];
+  /** Optional domains to pre-fill in the allowed domains list */
+  prefillAllowedDomains?: string[];
   /** Optional source context for post-install notifications */
   sourceContext?: SettingsSourceContext;
 }
@@ -132,6 +144,10 @@ export function formatSettingsTokenTtl(
 export interface SettingsTokenOptions {
   /** TTL in milliseconds (default: 1 hour) */
   ttlMs?: number;
+  /** Channel ID for channel-based entry (agent picker mode) */
+  channelId?: string;
+  /** Team/workspace ID for multi-tenant platforms */
+  teamId?: string;
   /** Optional message to display on the settings page */
   message?: string;
   /** Optional env var keys to pre-fill (user fills the values) */
@@ -142,25 +158,23 @@ export interface SettingsTokenOptions {
   prefillMcpServers?: PrefillMcpServer[];
   /** Optional Nix packages to pre-fill in system packages section */
   prefillNixPackages?: string[];
+  /** Optional domains to pre-fill in the allowed domains list */
+  prefillAllowedDomains?: string[];
   /** Optional source context for post-install notifications */
   sourceContext?: SettingsSourceContext;
 }
 
 /**
- * Generate a magic link token for accessing settings page
+ * Generate a magic link token for accessing settings page.
  *
- * Token is encrypted using AES-256-GCM and contains:
- * - agentId: The agent to configure
- * - userId: The user requesting access
- * - platform: The platform (slack/whatsapp)
- * - exp: Expiration timestamp
- * - message: Optional instructions to display
- * - prefillEnvVars: Optional env var keys to pre-fill
- * - prefillSkills: Optional skills to pre-fill
- * - prefillMcpServers: Optional MCP servers to pre-fill
+ * Supports two modes:
+ * - Agent-based: agentId provided, goes directly to settings
+ * - Channel-based: agentId omitted, channelId in options, shows agent picker
+ *
+ * At least one of agentId or options.channelId must be provided.
  */
 export function generateSettingsToken(
-  agentId: string,
+  agentId: string | undefined,
   userId: string,
   platform: string,
   options: SettingsTokenOptions | number = {}
@@ -170,11 +184,19 @@ export function generateSettingsToken(
     typeof options === "number" ? { ttlMs: options } : options;
   const ttlMs = opts.ttlMs ?? getSettingsTokenTtlMs();
 
+  if (!agentId && !opts.channelId) {
+    throw new Error(
+      "generateSettingsToken requires at least one of agentId or channelId"
+    );
+  }
+
   const payload: SettingsTokenPayload = {
-    agentId,
     userId,
     platform,
     exp: Date.now() + ttlMs,
+    ...(agentId && { agentId }),
+    ...(opts.channelId && { channelId: opts.channelId }),
+    ...(opts.teamId && { teamId: opts.teamId }),
     ...(opts.message && { message: opts.message }),
     ...(opts.prefillEnvVars?.length && { prefillEnvVars: opts.prefillEnvVars }),
     ...(opts.prefillSkills?.length && { prefillSkills: opts.prefillSkills }),
@@ -184,19 +206,40 @@ export function generateSettingsToken(
     ...(opts.prefillNixPackages?.length && {
       prefillNixPackages: opts.prefillNixPackages,
     }),
+    ...(opts.prefillAllowedDomains?.length && {
+      prefillAllowedDomains: opts.prefillAllowedDomains,
+    }),
     ...(opts.sourceContext && { sourceContext: opts.sourceContext }),
   };
 
   const encrypted = encrypt(JSON.stringify(payload));
-  logger.info(`Generated settings token for agent ${agentId}, user ${userId}`);
+  logger.info(
+    `Generated settings token for ${agentId ? `agent ${agentId}` : `channel ${opts.channelId}`}, user ${userId}`
+  );
   return encrypted;
+}
+
+/**
+ * Generate a channel-based settings token (no agentId).
+ * Used by message handlers when no agent is bound to a channel.
+ */
+export function generateChannelSettingsToken(
+  userId: string,
+  platform: string,
+  channelId: string,
+  teamId?: string
+): string {
+  return generateSettingsToken(undefined, userId, platform, {
+    channelId,
+    teamId,
+  });
 }
 
 /**
  * Verify and decode a settings token
  *
  * Returns the payload if valid and not expired, null otherwise.
- * Logs warnings for invalid or expired tokens.
+ * Requires at least one of agentId or channelId.
  */
 export function verifySettingsToken(
   token: string
@@ -205,24 +248,29 @@ export function verifySettingsToken(
     const decrypted = decrypt(token);
     const payload = JSON.parse(decrypted) as SettingsTokenPayload;
 
-    // Validate required fields
-    if (
-      !payload.agentId ||
-      !payload.userId ||
-      !payload.platform ||
-      !payload.exp
-    ) {
+    // Validate required fields: userId, platform, exp, and at least one of agentId/channelId
+    if (!payload.userId || !payload.platform || !payload.exp) {
       logger.warn("Invalid settings token: missing required fields");
+      return null;
+    }
+    if (!payload.agentId && !payload.channelId) {
+      logger.warn(
+        "Invalid settings token: must have at least one of agentId or channelId"
+      );
       return null;
     }
 
     // Check expiration
     if (Date.now() > payload.exp) {
-      logger.warn(`Settings token expired for agent ${payload.agentId}`);
+      logger.warn(
+        `Settings token expired for ${payload.agentId ? `agent ${payload.agentId}` : `channel ${payload.channelId}`}`
+      );
       return null;
     }
 
-    logger.debug(`Verified settings token for agent ${payload.agentId}`);
+    logger.debug(
+      `Verified settings token for ${payload.agentId ? `agent ${payload.agentId}` : `channel ${payload.channelId}`}`
+    );
     return payload;
   } catch (error) {
     logger.warn("Failed to verify settings token", { error });
