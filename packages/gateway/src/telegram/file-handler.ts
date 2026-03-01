@@ -7,12 +7,11 @@ import { Readable } from "node:stream";
 import { createLogger, sanitizeFilename } from "@lobu/core";
 import type { Bot } from "grammy";
 import { InputFile } from "grammy";
-import jwt from "jsonwebtoken";
+import { BaseFileHandler } from "../platform/base-file-handler";
 import type {
   FileMetadata,
   FileUploadOptions,
   FileUploadResult,
-  IFileHandler,
 } from "../platform/file-handler";
 
 const logger = createLogger("telegram-file-handler");
@@ -62,14 +61,6 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 };
 
 type UploadKind = "voice" | "photo" | "video" | "audio" | "document";
-
-function getJwtSecret(): string {
-  const secret = process.env.ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error("ENCRYPTION_KEY required for file token generation");
-  }
-  return secret;
-}
 
 function toTelegramChatId(channelId: string): number | string {
   const parsed = Number(channelId);
@@ -138,15 +129,12 @@ function extractSentFile(sent: any): {
   };
 }
 
-export class TelegramFileHandler implements IFileHandler {
-  private uploadedFiles = new Map<string, Set<string>>();
-  private jwtSecret: string;
-
+export class TelegramFileHandler extends BaseFileHandler {
   constructor(
     private readonly bot: Bot,
     private readonly botToken: string
   ) {
-    this.jwtSecret = getJwtSecret();
+    super();
   }
 
   async downloadFile(
@@ -255,10 +243,7 @@ export class TelegramFileHandler implements IFileHandler {
 
     const { fileId, fileSize } = extractSentFile(sent);
     if (options.sessionKey) {
-      if (!this.uploadedFiles.has(options.sessionKey)) {
-        this.uploadedFiles.set(options.sessionKey, new Set());
-      }
-      this.uploadedFiles.get(options.sessionKey)?.add(fileId);
+      this.trackUpload(options.sessionKey, fileId);
     }
 
     return {
@@ -267,70 +252,5 @@ export class TelegramFileHandler implements IFileHandler {
       name: safeFilename,
       size: fileSize || fileBuffer.length,
     };
-  }
-
-  generateFileToken(
-    sessionKey: string,
-    fileId: string,
-    expiresIn = 3600
-  ): string {
-    return jwt.sign(
-      {
-        sessionKey,
-        fileId,
-        type: "file_access",
-        iat: Math.floor(Date.now() / 1000),
-      },
-      this.jwtSecret,
-      {
-        expiresIn,
-        algorithm: "HS256",
-        issuer: "lobu-gateway",
-        audience: "lobu-worker",
-      }
-    );
-  }
-
-  validateFileToken(token: string): {
-    valid: boolean;
-    sessionKey?: string;
-    fileId?: string;
-    error?: string;
-  } {
-    try {
-      const decoded = jwt.verify(token, this.jwtSecret, {
-        algorithms: ["HS256"],
-        issuer: "lobu-gateway",
-        audience: "lobu-worker",
-      });
-
-      if (
-        typeof decoded === "string" ||
-        typeof decoded.sessionKey !== "string" ||
-        typeof decoded.fileId !== "string" ||
-        decoded.type !== "file_access"
-      ) {
-        return { valid: false, error: "Invalid token structure" };
-      }
-
-      return {
-        valid: true,
-        sessionKey: decoded.sessionKey,
-        fileId: decoded.fileId,
-      };
-    } catch (error) {
-      if (error instanceof jwt.TokenExpiredError) {
-        return { valid: false, error: "Token expired" };
-      }
-      return { valid: false, error: "Invalid token" };
-    }
-  }
-
-  getSessionFiles(sessionKey: string): string[] {
-    return Array.from(this.uploadedFiles.get(sessionKey) || []);
-  }
-
-  cleanupSession(sessionKey: string): void {
-    this.uploadedFiles.delete(sessionKey);
   }
 }

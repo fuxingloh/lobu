@@ -14,21 +14,19 @@ import {
   type MediaType,
   type WAMessage,
 } from "@whiskeysockets/baileys";
-import jwt from "jsonwebtoken";
 import pino from "pino";
+import { BaseFileHandler } from "../platform/base-file-handler";
+import type {
+  FileMetadata,
+  FileUploadOptions,
+  FileUploadResult,
+} from "../platform/file-handler";
+import type { BaileysClient } from "./connection/baileys-client";
 
 // Verbose logger for Baileys download operations to debug media download issues
 const baileysLogger = pino({ level: "debug" }) as unknown as ReturnType<
   typeof pino
 >;
-
-import type {
-  FileMetadata,
-  FileUploadOptions,
-  FileUploadResult,
-  IFileHandler,
-} from "../platform/file-handler";
-import type { BaileysClient } from "./connection/baileys-client";
 
 const logger = createLogger("whatsapp-file-handler");
 
@@ -57,14 +55,6 @@ async function withTimeout<T>(
   }
 }
 
-function getJwtSecret(): string {
-  const secret = process.env.ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error("ENCRYPTION_KEY required for file token generation");
-  }
-  return secret;
-}
-
 export interface ExtractedMedia {
   id: string;
   name: string;
@@ -88,16 +78,14 @@ export interface MediaExtractionResult {
  * WhatsApp file handler.
  * Stores extracted media in memory for worker download.
  */
-export class WhatsAppFileHandler implements IFileHandler {
+export class WhatsAppFileHandler extends BaseFileHandler {
   private fileStore = new Map<
     string,
     { buffer: Buffer; metadata: FileMetadata }
   >();
-  private uploadedFiles = new Map<string, Set<string>>();
-  private jwtSecret: string;
 
   constructor(private client: BaileysClient) {
-    this.jwtSecret = getJwtSecret();
+    super();
   }
 
   /**
@@ -665,12 +653,8 @@ export class WhatsAppFileHandler implements IFileHandler {
 
     const fileId = randomUUID();
 
-    // Track uploaded file
     if (options.sessionKey) {
-      if (!this.uploadedFiles.has(options.sessionKey)) {
-        this.uploadedFiles.set(options.sessionKey, new Set());
-      }
-      this.uploadedFiles.get(options.sessionKey)!.add(fileId);
+      this.trackUpload(options.sessionKey, fileId);
     }
 
     return {
@@ -758,83 +742,6 @@ export class WhatsAppFileHandler implements IFileHandler {
     };
 
     return mimeTypes[ext] || "application/octet-stream";
-  }
-
-  /**
-   * Generate a JWT token for file access.
-   */
-  generateFileToken(
-    sessionKey: string,
-    fileId: string,
-    expiresIn = 3600
-  ): string {
-    return jwt.sign(
-      {
-        sessionKey,
-        fileId,
-        type: "file_access",
-        iat: Math.floor(Date.now() / 1000),
-      },
-      this.jwtSecret,
-      {
-        expiresIn,
-        algorithm: "HS256",
-        issuer: "lobu-gateway",
-        audience: "lobu-worker",
-      }
-    );
-  }
-
-  /**
-   * Validate a file access token.
-   */
-  validateFileToken(token: string): {
-    valid: boolean;
-    sessionKey?: string;
-    fileId?: string;
-    error?: string;
-  } {
-    try {
-      const decoded = jwt.verify(token, this.jwtSecret, {
-        algorithms: ["HS256"],
-        issuer: "lobu-gateway",
-        audience: "lobu-worker",
-      });
-
-      if (
-        typeof decoded === "string" ||
-        typeof decoded.sessionKey !== "string" ||
-        typeof decoded.fileId !== "string" ||
-        decoded.type !== "file_access"
-      ) {
-        return { valid: false, error: "Invalid token structure" };
-      }
-
-      return {
-        valid: true,
-        sessionKey: decoded.sessionKey,
-        fileId: decoded.fileId,
-      };
-    } catch (error) {
-      if (error instanceof jwt.TokenExpiredError) {
-        return { valid: false, error: "Token expired" };
-      }
-      return { valid: false, error: "Invalid token" };
-    }
-  }
-
-  /**
-   * Get files uploaded in a session.
-   */
-  getSessionFiles(sessionKey: string): string[] {
-    return Array.from(this.uploadedFiles.get(sessionKey) || []);
-  }
-
-  /**
-   * Cleanup session data.
-   */
-  cleanupSession(sessionKey: string): void {
-    this.uploadedFiles.delete(sessionKey);
   }
 
   /**

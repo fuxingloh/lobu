@@ -5,32 +5,22 @@
 import { Readable } from "node:stream";
 import { createLogger, sanitizeFilename } from "@lobu/core";
 import type { WebClient } from "@slack/web-api";
-import jwt from "jsonwebtoken";
+import { BaseFileHandler } from "../platform/base-file-handler";
 import type {
   FileMetadata,
   FileUploadOptions,
   FileUploadResult,
-  IFileHandler,
 } from "../platform/file-handler";
 import type { SlackInstallationStore } from "./installation-store";
 
 const logger = createLogger("slack-file-handler");
-
-function getJwtSecret(): string {
-  const secret = process.env.ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error("ENCRYPTION_KEY required for file token generation");
-  }
-  return secret;
-}
 
 interface SlackFileMetadata extends FileMetadata {
   url_private: string;
   url_private_download: string;
 }
 
-export class SlackFileHandler implements IFileHandler {
-  private uploadedFiles = new Map<string, Set<string>>();
+export class SlackFileHandler extends BaseFileHandler {
   private bearerToken: string;
   private installationStore?: SlackInstallationStore;
 
@@ -39,7 +29,7 @@ export class SlackFileHandler implements IFileHandler {
     bearerToken?: string,
     installationStore?: SlackInstallationStore
   ) {
-    // Get token from parameter or environment
+    super();
     this.bearerToken = bearerToken || process.env.SLACK_BOT_TOKEN || "";
     this.installationStore = installationStore;
     if (!this.bearerToken && !installationStore) {
@@ -141,10 +131,7 @@ export class SlackFileHandler implements IFileHandler {
     const file = files[0];
 
     if (options.sessionKey) {
-      if (!this.uploadedFiles.has(options.sessionKey)) {
-        this.uploadedFiles.set(options.sessionKey, new Set());
-      }
-      this.uploadedFiles.get(options.sessionKey)!.add(file.id);
+      this.trackUpload(options.sessionKey, file.id);
     }
 
     return {
@@ -153,72 +140,5 @@ export class SlackFileHandler implements IFileHandler {
       name: file.name,
       size: file.size || fileBuffer.length,
     };
-  }
-
-  getSessionFiles(sessionKey: string): string[] {
-    return Array.from(this.uploadedFiles.get(sessionKey) || []);
-  }
-
-  cleanupSession(sessionKey: string): void {
-    this.uploadedFiles.delete(sessionKey);
-  }
-
-  generateFileToken(
-    sessionKey: string,
-    fileId: string,
-    expiresIn = 3600
-  ): string {
-    const jwtSecret = getJwtSecret();
-    return jwt.sign(
-      {
-        sessionKey,
-        fileId,
-        type: "file_access",
-        iat: Math.floor(Date.now() / 1000),
-      },
-      jwtSecret,
-      {
-        expiresIn,
-        algorithm: "HS256",
-        issuer: "lobu-gateway",
-        audience: "lobu-worker",
-      }
-    );
-  }
-
-  validateFileToken(token: string): {
-    valid: boolean;
-    sessionKey?: string;
-    fileId?: string;
-    error?: string;
-  } {
-    try {
-      const jwtSecret = getJwtSecret();
-      const decoded = jwt.verify(token, jwtSecret, {
-        algorithms: ["HS256"],
-        issuer: "lobu-gateway",
-        audience: "lobu-worker",
-      });
-
-      if (
-        typeof decoded === "string" ||
-        typeof decoded.sessionKey !== "string" ||
-        typeof decoded.fileId !== "string" ||
-        decoded.type !== "file_access"
-      ) {
-        return { valid: false, error: "Invalid token structure" };
-      }
-
-      return {
-        valid: true,
-        sessionKey: decoded.sessionKey,
-        fileId: decoded.fileId,
-      };
-    } catch (error) {
-      if (error instanceof jwt.TokenExpiredError) {
-        return { valid: false, error: "Token expired" };
-      }
-      return { valid: false, error: "Invalid token" };
-    }
   }
 }
