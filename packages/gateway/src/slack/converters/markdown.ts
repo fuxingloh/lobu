@@ -2,8 +2,13 @@
 
 import { createLogger } from "@lobu/core";
 import { marked } from "marked";
+import {
+  collapseNewlines,
+  decodeHtmlEntities,
+  ensureString,
+} from "../../platform/renderer-utils";
 
-const logger = createLogger("dispatcher");
+const logger = createLogger("slack-markdown");
 
 /**
  * Custom renderer for converting markdown to Slack's mrkdwn format
@@ -98,15 +103,7 @@ class SlackRenderer extends marked.Renderer {
  * Convert markdown to Slack's mrkdwn format using marked with custom renderer
  */
 export function convertMarkdownToSlack(content: string): string {
-  // Defensive type check - ensure content is a string
-  if (typeof content !== "string") {
-    logger.warn(
-      `convertMarkdownToSlack received non-string content (type: ${typeof content}), converting to string`
-    );
-    // If it's an object, stringify it; otherwise convert to string
-    content =
-      typeof content === "object" ? JSON.stringify(content) : String(content);
-  }
+  content = ensureString(content, "convertMarkdownToSlack");
 
   // Pre-process tool/task lines (starting with └) to use double newlines for line breaks
   // This ensures each tool execution appears on its own line in Slack streaming
@@ -139,10 +136,7 @@ export function convertMarkdownToSlack(content: string): string {
   try {
     let processed = marked.parse(preprocessed) as string;
 
-    // Clean up extra whitespace but preserve intentional line breaks
-    processed = processed
-      .replace(/\n{3,}/g, "\n\n") // Max 2 consecutive newlines
-      .trim();
+    processed = collapseNewlines(processed);
 
     // Handle code blocks specially - marked converts them to HTML, we need to convert back to Slack format
     // Note: Slack doesn't support triple backtick code blocks in text fields, only in blocks
@@ -150,13 +144,7 @@ export function convertMarkdownToSlack(content: string): string {
     processed = processed.replace(
       /<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g,
       (_match, _language, code) => {
-        // Decode HTML entities in code blocks
-        const decodedCode = code
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'");
+        const decodedCode = decodeHtmlEntities(code);
 
         // For Slack text field, use single backticks for inline code
         // For multi-line code, we'll use indentation instead of backticks
@@ -172,13 +160,7 @@ export function convertMarkdownToSlack(content: string): string {
       }
     );
 
-    // Clean up any remaining HTML entities that might have been introduced
-    processed = processed
-      .replace(/&gt;/g, ">")
-      .replace(/&lt;/g, "<")
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
+    processed = decodeHtmlEntities(processed);
 
     return processed;
   } catch (error) {

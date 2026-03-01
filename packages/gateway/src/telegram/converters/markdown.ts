@@ -12,6 +12,7 @@
  */
 
 import { createLogger } from "@lobu/core";
+import { collapseNewlines, ensureString } from "../../platform/renderer-utils";
 
 const logger = createLogger("telegram-markdown");
 
@@ -29,13 +30,7 @@ function escapeHtml(text: string): string {
  * Convert markdown to Telegram HTML format.
  */
 export function convertMarkdownToTelegramHtml(content: string): string {
-  if (typeof content !== "string") {
-    logger.warn(
-      `convertMarkdownToTelegramHtml received non-string content (type: ${typeof content}), converting to string`
-    );
-    content =
-      typeof content === "object" ? JSON.stringify(content) : String(content);
-  }
+  content = ensureString(content, "convertMarkdownToTelegramHtml");
 
   if (!content.trim()) {
     return content;
@@ -103,8 +98,7 @@ export function convertMarkdownToTelegramHtml(content: string): string {
       result = result.replace(`\x00INLINE_CODE_${i}\x00`, inlineCodes[i]!);
     }
 
-    // Clean up excess newlines
-    result = result.replace(/\n{3,}/g, "\n\n").trim();
+    result = collapseNewlines(result);
 
     return result;
   } catch (error) {

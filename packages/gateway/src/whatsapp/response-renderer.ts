@@ -6,6 +6,7 @@
 
 import { createLogger, extractTraceId } from "@lobu/core";
 import type { ThreadResponsePayload } from "../infrastructure/queue";
+import { chunkMessage, delay } from "../platform/renderer-utils";
 import type { ResponseRenderer } from "../platform/response-renderer";
 import type { WhatsAppConfig } from "./config";
 import type { BaileysClient } from "./connection/baileys-client";
@@ -295,7 +296,7 @@ export class WhatsAppResponseRenderer implements ResponseRenderer {
   private async sendMessage(chatJid: string, text: string): Promise<void> {
     // Convert markdown to WhatsApp formatting
     const formatted = convertMarkdownToWhatsApp(text);
-    const chunks = this.chunkMessage(formatted, this.config.messageChunkSize);
+    const chunks = chunkMessage(formatted, this.config.messageChunkSize);
 
     for (const chunk of chunks) {
       try {
@@ -303,7 +304,7 @@ export class WhatsAppResponseRenderer implements ResponseRenderer {
 
         // Small delay between chunks to maintain order
         if (chunks.length > 1) {
-          await this.delay(500);
+          await delay(500);
         }
       } catch (err) {
         logger.error(
@@ -323,52 +324,6 @@ export class WhatsAppResponseRenderer implements ResponseRenderer {
       { chatJid, chunks: chunks.length, totalLength: text.length },
       "Message sent"
     );
-  }
-
-  /**
-   * Chunk message into smaller parts.
-   */
-  private chunkMessage(text: string, maxLength: number): string[] {
-    if (text.length <= maxLength) {
-      return [text];
-    }
-
-    const chunks: string[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= maxLength) {
-        chunks.push(remaining);
-        break;
-      }
-
-      // Try to break at a natural point
-      let breakPoint = maxLength;
-
-      // Look for newline
-      const newlineIndex = remaining.lastIndexOf("\n", maxLength);
-      if (newlineIndex > maxLength * 0.5) {
-        breakPoint = newlineIndex + 1;
-      } else {
-        // Look for space
-        const spaceIndex = remaining.lastIndexOf(" ", maxLength);
-        if (spaceIndex > maxLength * 0.5) {
-          breakPoint = spaceIndex + 1;
-        }
-      }
-
-      chunks.push(remaining.substring(0, breakPoint).trim());
-      remaining = remaining.substring(breakPoint).trim();
-    }
-
-    return chunks.filter((c) => c.length > 0);
-  }
-
-  /**
-   * Delay helper.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

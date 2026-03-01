@@ -1,5 +1,10 @@
 import { createLogger } from "@lobu/core";
 import { marked } from "marked";
+import {
+  collapseNewlines,
+  decodeHtmlEntities,
+  ensureString,
+} from "../../platform/renderer-utils";
 
 const logger = createLogger("whatsapp-markdown");
 
@@ -115,13 +120,7 @@ class WhatsAppRenderer extends marked.Renderer {
  * Convert markdown to WhatsApp's formatting syntax.
  */
 export function convertMarkdownToWhatsApp(content: string): string {
-  if (typeof content !== "string") {
-    logger.warn(
-      `convertMarkdownToWhatsApp received non-string content (type: ${typeof content}), converting to string`
-    );
-    content =
-      typeof content === "object" ? JSON.stringify(content) : String(content);
-  }
+  content = ensureString(content, "convertMarkdownToWhatsApp");
 
   // Handle empty content
   if (!content.trim()) {
@@ -151,31 +150,19 @@ export function convertMarkdownToWhatsApp(content: string): string {
   try {
     let processed = marked.parse(preprocessed) as string;
 
-    // Clean up extra whitespace
-    processed = processed.replace(/\n{3,}/g, "\n\n").trim();
+    processed = collapseNewlines(processed);
 
     // Convert code blocks back to WhatsApp format (triple backticks)
     processed = processed.replace(
       /<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g,
       (_match, _language, code) => {
-        const decodedCode = code
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'");
+        const decodedCode = decodeHtmlEntities(code);
 
         return `\`\`\`\n${decodedCode.trim()}\n\`\`\``;
       }
     );
 
-    // Clean up remaining HTML entities
-    processed = processed
-      .replace(/&gt;/g, ">")
-      .replace(/&lt;/g, "<")
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
+    processed = decodeHtmlEntities(processed);
 
     return processed;
   } catch (error) {

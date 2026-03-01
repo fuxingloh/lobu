@@ -7,6 +7,7 @@
 import { createLogger, extractTraceId } from "@lobu/core";
 import type { Bot } from "grammy";
 import type { ThreadResponsePayload } from "../infrastructure/queue";
+import { chunkMessage, delay } from "../platform/renderer-utils";
 import type { ResponseRenderer } from "../platform/response-renderer";
 import type { TelegramConfig } from "./config";
 import { convertMarkdownToTelegramHtml } from "./converters/markdown";
@@ -265,7 +266,7 @@ export class TelegramResponseRenderer implements ResponseRenderer {
 
     // Message too long for a single HTML message. Chunk the plain text and
     // convert each chunk individually so links/formatting still render.
-    const plainChunks = this.chunkMessage(
+    const plainChunks = chunkMessage(
       stream.buffer,
       this.config.messageChunkSize
     );
@@ -315,7 +316,7 @@ export class TelegramResponseRenderer implements ResponseRenderer {
         }
       }
       if (i < plainChunks.length - 1) {
-        await this.delay(500);
+        await delay(500);
       }
     }
   }
@@ -412,49 +413,6 @@ export class TelegramResponseRenderer implements ResponseRenderer {
       platformMetadata.responseChannel ||
       payload.channelId;
     return typeof chatId === "number" ? chatId : Number(chatId);
-  }
-
-  /**
-   * Chunk message into smaller parts.
-   */
-  private chunkMessage(text: string, maxLength: number): string[] {
-    if (text.length <= maxLength) {
-      return [text];
-    }
-
-    const chunks: string[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= maxLength) {
-        chunks.push(remaining);
-        break;
-      }
-
-      let breakPoint = maxLength;
-
-      const newlineIndex = remaining.lastIndexOf("\n", maxLength);
-      if (newlineIndex > maxLength * 0.5) {
-        breakPoint = newlineIndex + 1;
-      } else {
-        const spaceIndex = remaining.lastIndexOf(" ", maxLength);
-        if (spaceIndex > maxLength * 0.5) {
-          breakPoint = spaceIndex + 1;
-        }
-      }
-
-      chunks.push(remaining.substring(0, breakPoint).trim());
-      remaining = remaining.substring(breakPoint).trim();
-    }
-
-    return chunks.filter((c) => c.length > 0);
-  }
-
-  /**
-   * Delay helper.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
