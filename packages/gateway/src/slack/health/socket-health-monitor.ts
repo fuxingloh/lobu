@@ -151,7 +151,7 @@ export class SocketHealthMonitor {
 
   private attemptReconnect(): void {
     this.isReconnecting = true;
-    this.reconnectFn!()
+    this.reconnectFn?.()
       .then(() => {
         logger.info(
           "Socket Mode reconnection initiated, resetting event timer"

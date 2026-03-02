@@ -29,7 +29,7 @@ describe("WorkerConnectionManager", () => {
     test("adds new connection and sends initial event", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       expect(manager.isConnected("worker-1")).toBe(true);
       expect(res.getWritten().length).toBeGreaterThan(0);
@@ -48,7 +48,7 @@ describe("WorkerConnectionManager", () => {
     test("removes connection and ends response", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
       expect(manager.isConnected("worker-1")).toBe(true);
 
       manager.removeConnection("worker-1");
@@ -64,7 +64,7 @@ describe("WorkerConnectionManager", () => {
     test("gets connection by deployment name", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       const connection = manager.getConnection("worker-1");
       expect(connection).toBeDefined();
@@ -83,9 +83,9 @@ describe("WorkerConnectionManager", () => {
       const res2 = new MockResponse() as any;
       const res3 = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res1);
-      manager.addConnection("worker-2", "U456", "thread-2", res2);
-      manager.addConnection("worker-3", "U789", "thread-3", res3);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res1);
+      manager.addConnection("worker-2", "U456", "thread-2", "agent-2", res2);
+      manager.addConnection("worker-3", "U789", "thread-3", "agent-3", res3);
 
       expect(manager.isConnected("worker-1")).toBe(true);
       expect(manager.isConnected("worker-2")).toBe(true);
@@ -103,7 +103,7 @@ describe("WorkerConnectionManager", () => {
     test("updates connection activity timestamp", async () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       const conn1 = manager.getConnection("worker-1");
       const initialActivity = conn1?.lastActivity;
@@ -172,8 +172,8 @@ describe("WorkerConnectionManager", () => {
       const res1 = new MockResponse() as any;
       const res2 = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res1);
-      manager.addConnection("worker-2", "U456", "thread-2", res2);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res1);
+      manager.addConnection("worker-2", "U456", "thread-2", "agent-2", res2);
 
       // Clear initial connection events
       res1.clearWrites();
@@ -201,7 +201,7 @@ describe("WorkerConnectionManager", () => {
     test("updates lastPing timestamp after sending heartbeat", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       const conn1 = manager.getConnection("worker-1");
       const initialPing = conn1?.lastPing;
@@ -219,10 +219,28 @@ describe("WorkerConnectionManager", () => {
         write: () => {
           throw new Error("Connection failed");
         },
+        end: () => {
+          // noop
+        },
+        onClose: () => {
+          // noop
+        },
       } as any;
 
-      manager.addConnection("worker-good", "U123", "thread-1", goodRes);
-      manager.addConnection("worker-bad", "U456", "thread-2", badRes);
+      manager.addConnection(
+        "worker-good",
+        "U123",
+        "thread-1",
+        "agent-1",
+        goodRes
+      );
+      manager.addConnection(
+        "worker-bad",
+        "U456",
+        "thread-2",
+        "agent-2",
+        badRes
+      );
 
       goodRes.clearWrites();
 
@@ -240,7 +258,7 @@ describe("WorkerConnectionManager", () => {
     test("removes connections exceeding timeout threshold", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       const connection = manager.getConnection("worker-1");
       if (connection) {
@@ -257,7 +275,7 @@ describe("WorkerConnectionManager", () => {
     test("keeps connections within timeout threshold", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       const connection = manager.getConnection("worker-1");
       if (connection) {
@@ -278,7 +296,13 @@ describe("WorkerConnectionManager", () => {
       const customManager = new WorkerConnectionManager();
       const res = new MockResponse() as any;
 
-      customManager.addConnection("worker-1", "U123", "thread-1", res);
+      customManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       const connection = customManager.getConnection("worker-1");
       if (connection) {
@@ -299,8 +323,20 @@ describe("WorkerConnectionManager", () => {
       const staleRes = new MockResponse() as any;
       const activeRes = new MockResponse() as any;
 
-      manager.addConnection("worker-stale", "U123", "thread-1", staleRes);
-      manager.addConnection("worker-active", "U456", "thread-2", activeRes);
+      manager.addConnection(
+        "worker-stale",
+        "U123",
+        "thread-1",
+        "agent-1",
+        staleRes
+      );
+      manager.addConnection(
+        "worker-active",
+        "U456",
+        "thread-2",
+        "agent-2",
+        activeRes
+      );
 
       const staleConn = manager.getConnection("worker-stale");
       if (staleConn) {
@@ -331,9 +367,9 @@ describe("WorkerConnectionManager", () => {
       const res2 = new MockResponse() as any;
       const res3 = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res1);
-      manager.addConnection("worker-2", "U456", "thread-2", res2);
-      manager.addConnection("worker-3", "U789", "thread-3", res3);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res1);
+      manager.addConnection("worker-2", "U456", "thread-2", "agent-2", res2);
+      manager.addConnection("worker-3", "U789", "thread-3", "agent-3", res3);
 
       manager.shutdown();
 
@@ -349,7 +385,7 @@ describe("WorkerConnectionManager", () => {
     test("shutdown is idempotent", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
 
       manager.shutdown();
       manager.shutdown(); // Call twice
@@ -362,7 +398,7 @@ describe("WorkerConnectionManager", () => {
     test("handles connection removal when response already ended", () => {
       const res = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res);
       res.end(); // End response manually
 
       // Should not throw when removing
@@ -391,8 +427,14 @@ describe("WorkerConnectionManager", () => {
       const res1 = new MockResponse() as any;
       const res2 = new MockResponse() as any;
 
-      manager.addConnection("worker-alpha", "U123", "thread-1", res1);
-      manager.addConnection("worker-beta", "U456", "thread-2", res2);
+      manager.addConnection(
+        "worker-alpha",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res1
+      );
+      manager.addConnection("worker-beta", "U456", "thread-2", "agent-2", res2);
 
       const activeConnections = manager.getActiveConnections();
       expect(activeConnections).toHaveLength(2);
@@ -404,8 +446,8 @@ describe("WorkerConnectionManager", () => {
       const res1 = new MockResponse() as any;
       const res2 = new MockResponse() as any;
 
-      manager.addConnection("worker-1", "U123", "thread-1", res1);
-      manager.addConnection("worker-2", "U456", "thread-2", res2);
+      manager.addConnection("worker-1", "U123", "thread-1", "agent-1", res1);
+      manager.addConnection("worker-2", "U456", "thread-2", "agent-2", res2);
 
       expect(manager.getActiveConnections()).toHaveLength(2);
 

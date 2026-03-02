@@ -115,7 +115,7 @@ const skillFetchRoute = createRoute({
 
 const mcpByIdRoute = createRoute({
   method: "get",
-  path: "/mcps/:id",
+  path: "/mcps/{id}",
   tags: [TAG],
   summary: "Get MCP server by ID",
   description:

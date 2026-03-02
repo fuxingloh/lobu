@@ -27,6 +27,7 @@ export class RedisQueue implements IMessageQueue {
   private config: RedisQueueConfig;
   private queues: Map<string, Queue> = new Map();
   private workers: Map<string, Worker> = new Map();
+  private pendingWorkers: Set<string> = new Set(); // Workers created with autorun:false, not yet started
   private queueEvents: Map<string, QueueEvents> = new Map();
   private isConnected = false;
   private redisClient?: Redis;
@@ -168,7 +169,11 @@ export class RedisQueue implements IMessageQueue {
     return job.id || "unknown";
   }
 
-  async work<T>(queueName: string, handler: JobHandler<T>): Promise<void> {
+  async work<T>(
+    queueName: string,
+    handler: JobHandler<T>,
+    options?: { startPaused?: boolean }
+  ): Promise<void> {
     if (!this.isConnected) {
       throw new Error("Queue is not connected");
     }
@@ -181,6 +186,8 @@ export class RedisQueue implements IMessageQueue {
       if (!this.redisClient) {
         throw new Error("Redis client not initialized. Call start() first.");
       }
+
+      const startPaused = options?.startPaused ?? false;
 
       const worker = new Worker(
         queueName,
@@ -198,6 +205,7 @@ export class RedisQueue implements IMessageQueue {
         {
           connection: this.redisClient,
           concurrency: 1, // Process one job at a time per worker
+          ...(startPaused ? { autorun: false } : {}),
         }
       );
 
@@ -218,7 +226,12 @@ export class RedisQueue implements IMessageQueue {
       });
 
       this.workers.set(queueName, worker);
-      logger.info(`Created worker for queue: ${queueName}`);
+      if (startPaused) {
+        this.pendingWorkers.add(queueName);
+      }
+      logger.info(
+        `Created worker for queue: ${queueName}${startPaused ? " (paused, awaiting resumeWorker)" : ""}`
+      );
     }
   }
 
@@ -279,6 +292,14 @@ export class RedisQueue implements IMessageQueue {
       logger.warn(
         `Cannot resume worker for queue ${queueName} - worker not found`
       );
+      return;
+    }
+
+    // First-time start: worker was created with autorun:false and never started
+    if (this.pendingWorkers.has(queueName)) {
+      this.pendingWorkers.delete(queueName);
+      worker.run();
+      logger.info(`▶️  Started worker for queue ${queueName} (first run)`);
       return;
     }
 

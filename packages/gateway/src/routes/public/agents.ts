@@ -1,10 +1,11 @@
 /**
- * Agent Management Routes - Create, list, and delete user agents
+ * Agent Management Routes - Create, list, update, and delete user agents
  *
  * Routes:
- * - POST /api/v1/agent-management/agents - Create a new agent
- * - GET /api/v1/agent-management/agents - List user's agents (requires token)
- * - DELETE /api/v1/agent-management/agents/{agentId} - Delete an agent
+ * - POST /api/v1/manage/agents - Create a new agent
+ * - GET /api/v1/manage/agents - List user's agents (requires token)
+ * - PATCH /api/v1/manage/agents/{agentId} - Update agent name/description
+ * - DELETE /api/v1/manage/agents/{agentId} - Delete an agent
  */
 
 import { createLogger } from "@lobu/core";
@@ -56,6 +57,7 @@ export function createAgentRoutes(config: AgentRoutesConfig): Hono {
         agentId: string;
         name: string;
         description?: string;
+        channelId?: string;
       }>();
 
       if (!body.agentId || !body.name) {
@@ -114,8 +116,19 @@ export function createAgentRoutes(config: AgentRoutesConfig): Hono {
         agentId
       );
 
+      // Auto-bind to channel if channelId provided (from session context)
+      if (body.channelId) {
+        await config.channelBindingService.createBinding(
+          agentId,
+          payload.platform,
+          body.channelId,
+          payload.teamId,
+          { configuredBy: payload.userId }
+        );
+      }
+
       logger.info(
-        `Created agent ${agentId} for user ${payload.platform}/${payload.userId}`
+        `Created agent ${agentId} for user ${payload.platform}/${payload.userId}${body.channelId ? ` (bound to ${body.channelId})` : ""}`
       );
 
       return c.json({
@@ -173,7 +186,75 @@ export function createAgentRoutes(config: AgentRoutesConfig): Hono {
     }
   });
 
-  // DELETE /api/v1/agents/{agentId} - Delete an agent
+  // PATCH /api/v1/manage/agents/{agentId} - Update agent name/description
+  router.patch("/:agentId", async (c) => {
+    const payload = verifySettingsSession(c);
+    if (!payload) {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
+
+    const agentId = c.req.param("agentId");
+    if (!agentId) {
+      return c.json({ error: "Missing agentId" }, 400);
+    }
+
+    try {
+      // Verify ownership
+      const owns = await config.userAgentsStore.ownsAgent(
+        payload.platform,
+        payload.userId,
+        agentId
+      );
+      if (!owns) {
+        // Check workspace agent fallback
+        const metadata = await config.agentMetadataStore.getMetadata(agentId);
+        if (!metadata?.isWorkspaceAgent) {
+          return c.json({ error: "Agent not found or not owned by you" }, 404);
+        }
+      }
+
+      const body = await c.req.json<{ name?: string; description?: string }>();
+      const updates: { name?: string; description?: string } = {};
+
+      if (body.name !== undefined) {
+        const name = body.name.trim();
+        if (!name || name.length > 100) {
+          return c.json({ error: "Name must be 1-100 characters" }, 400);
+        }
+        updates.name = name;
+      }
+
+      if (body.description !== undefined) {
+        const desc = body.description.trim();
+        if (desc.length > 200) {
+          return c.json(
+            { error: "Description must be at most 200 characters" },
+            400
+          );
+        }
+        updates.description = desc;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return c.json({ error: "No fields to update" }, 400);
+      }
+
+      await config.agentMetadataStore.updateMetadata(agentId, updates);
+      logger.info(`Updated agent identity for ${agentId}`);
+      return c.json({ success: true });
+    } catch (error) {
+      logger.error("Failed to update agent", { error, agentId });
+      return c.json(
+        {
+          error:
+            error instanceof Error ? error.message : "Failed to update agent",
+        },
+        500
+      );
+    }
+  });
+
+  // DELETE /api/v1/manage/agents/{agentId} - Delete an agent
   router.delete("/:agentId", async (c) => {
     const payload = verifySettingsSession(c);
     if (!payload) {

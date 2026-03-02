@@ -136,7 +136,7 @@
       }
     },
     {
-      "includes": ["**/settings-input.css"],
+      "includes": ["**/settings-input.css", "**/landing/src/globals.css"],
       "linter": {
         "rules": {
           "suspicious": {

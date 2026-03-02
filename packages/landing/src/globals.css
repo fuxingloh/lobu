@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* Scan gateway settings components so their Tailwind classes are generated */
+@source "../../gateway/src/routes/public/settings-page/**/*.tsx";
+
+@theme {
+  --color-page-bg: rgb(8, 10, 12);
+  --color-page-surface: rgba(17, 19, 24, 0.8);
+  --color-page-surface-dim: rgba(17, 19, 24, 0.4);
+  --color-page-border: rgba(45, 54, 67, 0.5);
+  --color-page-border-active: rgba(148, 163, 184, 0.5);
+  --color-page-text: rgb(248, 250, 252);
+  --color-page-text-muted: rgb(117, 136, 163);
+
+  --color-tg-bg: rgb(33, 33, 33);
+  --color-tg-bg-secondary: rgb(15, 15, 15);
+  --color-tg-bubble-out: #b91c1c;
+  --color-tg-bubble-in: rgb(33, 33, 33);
+  --color-tg-accent: #ef4444;
+  --color-tg-border: rgb(48, 48, 48);
+  --color-tg-text: white;
+  --color-tg-meta: rgba(255, 255, 255, 0.533);
+}
+
+html {
+  background-color: var(--color-page-bg);
+  color: var(--color-page-text);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+}
+
+/* Typing animation */
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.typing-dot {
+  animation: typing-dot 1.4s infinite;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Message appear animation */
+@keyframes msg-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.msg-appear {
+  animation: msg-appear 0.3s ease-out forwards;
+}
+
+/* Settings slide up */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slide-up 0.4s ease-out forwards;
+}
+
+/* Fade in */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+/* Card hover glow */
+.card-glow {
+  transition:
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+}
+.card-glow:hover {
+  box-shadow:
+    0 0 24px rgba(239, 68, 68, 0.12),
+    0 0 48px rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Gateway pulse */
+@keyframes gateway-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.35);
+  }
+}
+.gateway-pulse {
+  animation: gateway-pulse 3s ease-in-out infinite;
+}

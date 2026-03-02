@@ -21,6 +21,7 @@ interface WorkerConnection {
   writer: SSEWriter;
   lastActivity: number;
   lastPing: number;
+  httpUrl?: string;
 }
 
 /**
@@ -52,8 +53,13 @@ export class WorkerConnectionManager {
     userId: string,
     conversationId: string,
     agentId: string,
-    writer: SSEWriter
+    writer: SSEWriter,
+    httpPort?: number
   ): void {
+    const httpUrl = httpPort
+      ? `http://${deploymentName}:${httpPort}`
+      : undefined;
+
     const connection: WorkerConnection = {
       deploymentName,
       userId,
@@ -62,6 +68,7 @@ export class WorkerConnectionManager {
       writer,
       lastActivity: Date.now(),
       lastPing: Date.now(),
+      httpUrl,
     };
 
     this.connections.set(deploymentName, connection);
@@ -70,7 +77,7 @@ export class WorkerConnectionManager {
     if (!this.agentDeployments.has(agentId)) {
       this.agentDeployments.set(agentId, new Set());
     }
-    this.agentDeployments.get(agentId)!.add(deploymentName);
+    this.agentDeployments.get(agentId)?.add(deploymentName);
 
     // Send initial connection event
     this.sendSSE(writer, "connected", {
@@ -234,6 +241,21 @@ export class WorkerConnectionManager {
         this.sendSSE(connection.writer, event, data);
       }
     }
+  }
+
+  /**
+   * Get the HTTP URL for a worker serving the given agentId.
+   * Returns the httpUrl of the first connected deployment for the agent.
+   */
+  getHttpUrl(agentId: string): string | undefined {
+    const deployments = this.getDeploymentsForAgent(agentId);
+    for (const deploymentName of deployments) {
+      const connection = this.connections.get(deploymentName);
+      if (connection?.httpUrl) {
+        return connection.httpUrl;
+      }
+    }
+    return undefined;
   }
 
   /**

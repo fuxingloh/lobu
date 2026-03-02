@@ -41,9 +41,15 @@ export class WorkerJobRouter {
     await this.queue.createQueue(queueName);
 
     // Register job handler (idempotent - BullMQ handles duplicates)
-    await this.queue.work(queueName, async (job: unknown) => {
-      await this.handleJob(deploymentName, job);
-    });
+    // Start paused so jobs aren't consumed before the SSE connection is live.
+    // The caller must call resumeWorker() after SSE connects.
+    await this.queue.work(
+      queueName,
+      async (job: unknown) => {
+        await this.handleJob(deploymentName, job);
+      },
+      { startPaused: true }
+    );
 
     logger.info(`Registered worker for queue ${queueName}`);
   }
@@ -73,10 +79,12 @@ export class WorkerJobRouter {
   }
 
   /**
-   * Handle a job from the queue and route it to the worker
+   * Handle a job from the queue and route it to the worker.
    *
-   * Jobs are sent immediately without blocking the queue, allowing multiple messages
-   * to reach the worker's MessageBatcher for proper batching during active sessions.
+   * Sends the job via SSE and waits for a delivery receipt from the worker.
+   * If the worker doesn't acknowledge within the timeout, the job is retried
+   * by BullMQ. This prevents jobs from being silently lost when sent to a
+   * stale SSE connection (e.g., after a container dies without cleanly closing TCP).
    */
   private async handleJob(deploymentName: string, job: unknown): Promise<void> {
     const connection = this.connectionManager.getConnection(deploymentName);
@@ -100,41 +108,58 @@ export class WorkerJobRouter {
         ? { payload: jobData, jobId: jobId }
         : { payload: { data: jobData }, jobId: jobId };
 
-    this.connectionManager.sendSSE(connection.writer, "job", jobPayload);
+    const sent = this.connectionManager.sendSSE(
+      connection.writer,
+      "job",
+      jobPayload
+    );
+    if (!sent) {
+      logger.warn(
+        `SSE write failed for job ${jobId} to ${deploymentName}, will retry`
+      );
+      throw new Error("SSE write failed - worker connection may be dead");
+    }
     this.connectionManager.touchConnection(deploymentName);
 
-    // Track job for monitoring but don't block queue
-    this.trackJobTimeout(jobId, deploymentName);
-
-    logger.debug(`Job ${jobId} sent to worker ${deploymentName}`);
+    // Wait for delivery receipt from worker. If the SSE connection is stale
+    // (container dead but TCP not yet closed), the worker will never ack and
+    // BullMQ will retry the job after the timeout.
+    await this.awaitDeliveryReceipt(jobId, deploymentName);
   }
 
   /**
-   * Track job timeout for monitoring without blocking queue processing
+   * Wait for the worker to acknowledge receipt of a job.
+   * Rejects after timeout so BullMQ retries the job.
    */
-  private trackJobTimeout(jobId: string, deploymentName: string): void {
-    const timeout = setTimeout(
-      () => {
-        const pending = this.pendingJobs.get(jobId);
-        if (pending) {
-          logger.warn(
-            `Job ${jobId} timeout - worker ${deploymentName} may be stuck or overwhelmed`
-          );
-          this.pendingJobs.delete(jobId);
-        }
-      },
-      1 * 60 * 1000
-    ); // 1 minute timeout for monitoring
+  private awaitDeliveryReceipt(
+    jobId: string,
+    deploymentName: string
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingJobs.delete(jobId);
+        logger.warn(
+          `Job ${jobId} delivery receipt timeout - worker ${deploymentName} may be dead`
+        );
+        reject(
+          new Error(
+            `Delivery receipt timeout for job ${jobId} - worker may be dead`
+          )
+        );
+      }, 5000); // 5 second timeout for delivery receipt
 
-    this.pendingJobs.set(jobId, {
-      resolve: () => {
-        // No-op, we don't block on acknowledgment
-      },
-      reject: () => {
-        // No-op
-      },
-      timeout,
-      jobId,
+      this.pendingJobs.set(jobId, {
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        reject: (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+        timeout,
+        jobId,
+      });
     });
   }
 

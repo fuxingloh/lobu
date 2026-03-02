@@ -12,10 +12,7 @@ import type { Bot } from "grammy";
 import type { AdminStatusCache } from "../../auth/admin-status-cache";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
 import type { AgentSettingsStore } from "../../auth/settings";
-import {
-  buildSettingsUrl,
-  generateChannelSettingsToken,
-} from "../../auth/settings/token-service";
+import { buildTelegramSettingsUrl } from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
 import type { CommandDispatcher } from "../../commands/command-dispatcher";
@@ -96,6 +93,11 @@ export class TelegramMessageHandler {
   private adminStatusCache?: AdminStatusCache;
   private commandDispatcher?: CommandDispatcher;
   private botUsername?: string;
+  private statusCallback?: (
+    channelId: string,
+    conversationId: string,
+    status: string | null
+  ) => Promise<void>;
 
   constructor(
     private bot: Bot,
@@ -127,6 +129,16 @@ export class TelegramMessageHandler {
 
   setCommandDispatcher(dispatcher: CommandDispatcher): void {
     this.commandDispatcher = dispatcher;
+  }
+
+  setStatusCallback(
+    callback: (
+      channelId: string,
+      conversationId: string,
+      status: string | null
+    ) => Promise<void>
+  ): void {
+    this.statusCallback = callback;
   }
 
   /**
@@ -440,6 +452,11 @@ export class TelegramMessageHandler {
       },
       "Message enqueued"
     );
+
+    // Send persistent status indicator
+    if (this.statusCallback) {
+      await this.statusCallback(chatId, conversationId, "Waking up agent...");
+    }
   }
 
   /**
@@ -473,8 +490,7 @@ export class TelegramMessageHandler {
         }
       }
 
-      const token = generateChannelSettingsToken(userId, "telegram", chatId);
-      const configUrl = buildSettingsUrl(token);
+      const configUrl = buildTelegramSettingsUrl(chatId);
 
       // Telegram rejects inline keyboard URLs like http://localhost:...; fall back to plain text in that case.
       let includeButton = true;
@@ -494,14 +510,14 @@ export class TelegramMessageHandler {
       if (includeButton) {
         await this.bot.api.sendMessage(
           context.chatId,
-          `Welcome! To get started, please configure which agent should handle messages here.\n\nConfigure: ${configUrl}`,
+          "Welcome! To get started, tap the button below to configure which agent should handle messages here.",
           {
             reply_markup: {
               inline_keyboard: [
                 [
                   {
                     text: "Configure Agent",
-                    url: configUrl,
+                    web_app: { url: configUrl },
                   },
                 ],
               ],

@@ -10,7 +10,9 @@ import {
 } from "../../platform/link-buttons";
 import { convertMarkdownToTelegramHtml } from "./markdown";
 
-export type InlineKeyboardButton = { text: string; url: string };
+export type InlineKeyboardButton =
+  | { text: string; url: string }
+  | { text: string; web_app: { url: string } };
 export type InlineKeyboard = { inline_keyboard: InlineKeyboardButton[][] };
 
 export interface TelegramBlockResult {
@@ -37,7 +39,9 @@ export class TelegramBlockBuilder {
     if (buttons.length === 0) return undefined;
 
     return {
-      inline_keyboard: buttons.map((btn) => [{ text: btn.text, url: btn.url }]),
+      inline_keyboard: buttons.map((btn) => [
+        { text: btn.text, web_app: { url: btn.url } },
+      ]),
     };
   }
 }

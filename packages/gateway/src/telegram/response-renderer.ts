@@ -27,6 +27,23 @@ export type StoreOutgoingMessageCallback = (
 ) => void;
 
 /**
+ * Callback type for clearing a status message.
+ */
+export type ClearStatusCallback = (
+  chatId: number,
+  conversationId: string
+) => Promise<void>;
+
+/**
+ * Callback type for editing a status message.
+ */
+export type EditStatusCallback = (
+  chatId: number,
+  conversationId: string,
+  text: string
+) => Promise<void>;
+
+/**
  * Active stream state for a response being rendered.
  */
 interface StreamState {
@@ -45,6 +62,8 @@ interface StreamState {
 export class TelegramResponseRenderer implements ResponseRenderer {
   private streams = new Map<string, StreamState>();
   private storeOutgoingCallback?: StoreOutgoingMessageCallback;
+  private clearStatusCallback?: ClearStatusCallback;
+  private editStatusCallback?: EditStatusCallback;
   private blockBuilder = new TelegramBlockBuilder();
 
   constructor(
@@ -57,6 +76,20 @@ export class TelegramResponseRenderer implements ResponseRenderer {
    */
   setStoreOutgoingCallback(callback: StoreOutgoingMessageCallback): void {
     this.storeOutgoingCallback = callback;
+  }
+
+  /**
+   * Set callback for clearing the status message when response starts.
+   */
+  setClearStatusCallback(callback: ClearStatusCallback): void {
+    this.clearStatusCallback = callback;
+  }
+
+  /**
+   * Set callback for editing the status message during processing.
+   */
+  setEditStatusCallback(callback: EditStatusCallback): void {
+    this.editStatusCallback = callback;
   }
 
   async handleDelta(
@@ -74,6 +107,11 @@ export class TelegramResponseRenderer implements ResponseRenderer {
     let stream = this.streams.get(key);
 
     if (!stream) {
+      // First delta - clear status message before sending response
+      if (this.clearStatusCallback) {
+        await this.clearStatusCallback(chatId, payload.conversationId);
+      }
+
       // First delta - send initial message
       const initialText = payload.delta || "...";
       try {
@@ -337,6 +375,11 @@ export class TelegramResponseRenderer implements ResponseRenderer {
     const chatId = this.getChatId(payload);
     const key = `${chatId}:${payload.conversationId}`;
 
+    // Clear status message
+    if (this.clearStatusCallback) {
+      await this.clearStatusCallback(chatId, payload.conversationId);
+    }
+
     // Clean up stream state
     const stream = this.streams.get(key);
     if (stream?.editTimer) {
@@ -371,13 +414,22 @@ export class TelegramResponseRenderer implements ResponseRenderer {
 
     const chatId = this.getChatId(payload);
 
-    try {
-      await this.bot.api.sendChatAction(chatId, "typing");
-    } catch (err) {
-      logger.debug(
-        { error: String(err), chatId },
-        "Failed to send typing action"
-      );
+    // Edit the status message with elapsed time and state
+    if (this.editStatusCallback) {
+      const elapsed = payload.statusUpdate.elapsedSeconds;
+      const state = payload.statusUpdate.state || "Processing";
+      const statusText = `${state} (${elapsed}s)`;
+      await this.editStatusCallback(chatId, payload.conversationId, statusText);
+    } else {
+      // Fallback to typing action
+      try {
+        await this.bot.api.sendChatAction(chatId, "typing");
+      } catch (err) {
+        logger.debug(
+          { error: String(err), chatId },
+          "Failed to send typing action"
+        );
+      }
     }
   }
 

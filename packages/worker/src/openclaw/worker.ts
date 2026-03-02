@@ -697,9 +697,25 @@ Use it when the user references past discussions or you need context.`);
         });
       }, HEARTBEAT_INTERVAL_MS);
 
-      const effectivePrompt = sessionSummary
-        ? `${sessionSummary}\n\n${userPrompt}`
-        : userPrompt;
+      // Consume any pending config change notifications from SSE events
+      const { consumePendingConfigNotifications } = await import(
+        "../gateway/sse-client"
+      );
+      const configNotifications = consumePendingConfigNotifications();
+
+      let configNotice = "";
+      if (configNotifications.length > 0) {
+        const lines = configNotifications.map((n) => {
+          let line = `- ${n.summary}`;
+          if (n.details?.length) {
+            line += `: ${n.details.join("; ")}`;
+          }
+          return line;
+        });
+        configNotice = `[System notice: Your configuration was updated since the last message]\n${lines.join("\n")}\n\n`;
+      }
+
+      const effectivePrompt = `${configNotice}${sessionSummary ? `${sessionSummary}\n\n` : ""}${userPrompt}`;
       await session.prompt(effectivePrompt);
       await done;
       session.dispose();

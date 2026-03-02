@@ -24,6 +24,22 @@ const ErrorResponse = z.object({ error: z.string() });
 const TokenQuery = z.object({ token: z.string().optional() });
 const logger = createLogger("agent-config-routes");
 const REDACTED_VALUE = "__LOBU_REDACTED__";
+
+export interface ConfigChangeEntry {
+  category:
+    | "mcp"
+    | "provider"
+    | "model"
+    | "packages"
+    | "skills"
+    | "instructions"
+    | "env"
+    | "plugins"
+    | "logging";
+  action: "added" | "removed" | "updated" | "reordered";
+  summary: string;
+  details?: string[];
+}
 const SENSITIVE_KEY_PATTERN =
   /(?:credential|secret|token|password|api(?:_|-)?key|authorization)/i;
 
@@ -192,6 +208,162 @@ export interface AgentConfigRoutesConfig {
   grantStore?: GrantStore;
 }
 
+function buildConfigChanges(
+  existing: AgentSettings | null,
+  updates: Partial<AgentSettings>
+): ConfigChangeEntry[] {
+  const changes: ConfigChangeEntry[] = [];
+
+  // MCP servers
+  if (updates.mcpServers !== undefined) {
+    const oldIds = new Set(Object.keys(existing?.mcpServers || {}));
+    const newIds = new Set(Object.keys(updates.mcpServers || {}));
+    for (const id of newIds) {
+      if (!oldIds.has(id)) {
+        changes.push({
+          category: "mcp",
+          action: "added",
+          summary: `MCP server "${id}" installed`,
+        });
+      }
+    }
+    for (const id of oldIds) {
+      if (!newIds.has(id)) {
+        changes.push({
+          category: "mcp",
+          action: "removed",
+          summary: `MCP server "${id}" removed`,
+        });
+      }
+    }
+    // Check for updates on existing servers
+    for (const id of newIds) {
+      if (oldIds.has(id)) {
+        const oldCfg = JSON.stringify(existing?.mcpServers?.[id] || {});
+        const newCfg = JSON.stringify(updates.mcpServers?.[id] || {});
+        if (oldCfg !== newCfg) {
+          changes.push({
+            category: "mcp",
+            action: "updated",
+            summary: `MCP server "${id}" updated`,
+          });
+        }
+      }
+    }
+  }
+
+  // Nix packages
+  if (updates.nixConfig !== undefined) {
+    const oldPkgs = existing?.nixConfig?.packages || [];
+    const newPkgs = updates.nixConfig?.packages || [];
+    const added = newPkgs.filter((p) => !oldPkgs.includes(p));
+    const removed = oldPkgs.filter((p) => !newPkgs.includes(p));
+    if (added.length > 0 || removed.length > 0) {
+      const details: string[] = [];
+      if (added.length > 0) details.push(`Added: ${added.join(", ")}`);
+      if (removed.length > 0) details.push(`Removed: ${removed.join(", ")}`);
+      changes.push({
+        category: "packages",
+        action: added.length > 0 ? "updated" : "removed",
+        summary: "System packages updated",
+        details,
+      });
+    }
+  }
+
+  // Model
+  if (updates.model !== undefined && updates.model !== existing?.model) {
+    changes.push({
+      category: "model",
+      action: "updated",
+      summary: updates.model
+        ? `Model changed to "${updates.model}"`
+        : "Model reset to default",
+    });
+  }
+
+  // Skills
+  if (updates.skillsConfig !== undefined) {
+    const oldSkills = (existing?.skillsConfig?.skills || []).filter(
+      (s) => s.enabled
+    );
+    const newSkills = (updates.skillsConfig?.skills || []).filter(
+      (s) => s.enabled
+    );
+    const oldNames = new Set(oldSkills.map((s) => s.name));
+    const newNames = new Set(newSkills.map((s) => s.name));
+    const added = [...newNames].filter((n) => !oldNames.has(n));
+    const removed = [...oldNames].filter((n) => !newNames.has(n));
+    if (added.length > 0 || removed.length > 0) {
+      const details: string[] = [];
+      if (added.length > 0) details.push(`Enabled: ${added.join(", ")}`);
+      if (removed.length > 0) details.push(`Disabled: ${removed.join(", ")}`);
+      changes.push({
+        category: "skills",
+        action: "updated",
+        summary: "Skills configuration updated",
+        details,
+      });
+    }
+  }
+
+  // Instructions (soulMd, userMd, identityMd)
+  if (
+    (updates.soulMd !== undefined && updates.soulMd !== existing?.soulMd) ||
+    (updates.userMd !== undefined && updates.userMd !== existing?.userMd) ||
+    (updates.identityMd !== undefined &&
+      updates.identityMd !== existing?.identityMd)
+  ) {
+    changes.push({
+      category: "instructions",
+      action: "updated",
+      summary: "Agent instructions updated",
+    });
+  }
+
+  // Env vars
+  if (updates.envVars !== undefined) {
+    const oldKeys = new Set(Object.keys(existing?.envVars || {}));
+    const newKeys = new Set(Object.keys(updates.envVars || {}));
+    const added = [...newKeys].filter((k) => !oldKeys.has(k));
+    const removed = [...oldKeys].filter((k) => !newKeys.has(k));
+    if (added.length > 0 || removed.length > 0) {
+      const details: string[] = [];
+      if (added.length > 0) details.push(`Added: ${added.join(", ")}`);
+      if (removed.length > 0) details.push(`Removed: ${removed.join(", ")}`);
+      changes.push({
+        category: "env",
+        action: "updated",
+        summary: "Environment variables updated",
+        details,
+      });
+    }
+  }
+
+  // Plugins
+  if (updates.pluginsConfig !== undefined) {
+    changes.push({
+      category: "plugins",
+      action: "updated",
+      summary: "Plugins configuration updated",
+    });
+  }
+
+  // Verbose logging
+  if (
+    updates.verboseLogging !== undefined &&
+    updates.verboseLogging !== existing?.verboseLogging
+  ) {
+    changes.push({
+      category: "logging",
+      action: "updated",
+      summary: `Verbose logging ${updates.verboseLogging ? "enabled" : "disabled"}`,
+    });
+  }
+
+  return changes;
+}
+
 export function createAgentConfigRoutes(
   config: AgentConfigRoutesConfig
 ): OpenAPIHono {
@@ -321,10 +493,13 @@ export function createAgentConfigRoutes(
       }
 
       if (Object.keys(updates).length > 0) {
+        const changes = buildConfigChanges(existingSettings, updates);
         await config.agentSettingsStore.updateSettings(agentId, updates);
 
         // Notify active workers of config changes
-        config.connectionManager?.notifyAgent(agentId, "config_changed", {});
+        config.connectionManager?.notifyAgent(agentId, "config_changed", {
+          changes,
+        });
       }
 
       if (body.mcpServers && config.queue && payload.sourceContext) {
@@ -397,9 +572,10 @@ export function createAgentConfigRoutes(
     return c.json({ catalog, installedProviders: installed });
   });
 
-  // POST /providers/install
-  app.post("/providers/install", async (c): Promise<any> => {
+  // PUT /providers/:providerId - Install (enabled: true) or uninstall (enabled: false) a provider
+  app.put("/providers/:providerId", async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";
+    const providerId = c.req.param("providerId") || "";
     const payload = await verifyToken(verifySettingsSession(c), agentId);
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
@@ -407,54 +583,49 @@ export function createAgentConfigRoutes(
       return c.json({ error: "Provider catalog not available" }, 503);
     }
 
-    try {
-      const body = await c.req.json();
-      const { providerId, config: providerConfig } = body;
-      if (!providerId || typeof providerId !== "string") {
-        return c.json({ error: "providerId is required" }, 400);
-      }
-
-      await config.providerCatalogService.installProvider(
-        agentId,
-        providerId.trim(),
-        providerConfig
-      );
-      config.connectionManager?.notifyAgent(agentId, "config_changed", {});
-      return c.json({ success: true, agentId });
-    } catch (e) {
-      return c.json(
-        { error: e instanceof Error ? e.message : "Install failed" },
-        400
-      );
-    }
-  });
-
-  // POST /providers/uninstall
-  app.post("/providers/uninstall", async (c): Promise<any> => {
-    const agentId = c.req.param("agentId") || "";
-    const payload = await verifyToken(verifySettingsSession(c), agentId);
-    if (!payload) return c.json({ error: "Unauthorized" }, 401);
-
-    if (!config.providerCatalogService) {
-      return c.json({ error: "Provider catalog not available" }, 503);
+    if (!providerId) {
+      return c.json({ error: "providerId is required" }, 400);
     }
 
     try {
       const body = await c.req.json();
-      const { providerId } = body;
-      if (!providerId || typeof providerId !== "string") {
-        return c.json({ error: "providerId is required" }, 400);
+      const { enabled, config: providerConfig } = body;
+
+      if (enabled === false) {
+        await config.providerCatalogService.uninstallProvider(
+          agentId,
+          providerId.trim()
+        );
+        config.connectionManager?.notifyAgent(agentId, "config_changed", {
+          changes: [
+            {
+              category: "provider",
+              action: "removed",
+              summary: `Provider "${providerId.trim()}" removed`,
+            },
+          ] satisfies ConfigChangeEntry[],
+        });
+      } else {
+        await config.providerCatalogService.installProvider(
+          agentId,
+          providerId.trim(),
+          providerConfig
+        );
+        config.connectionManager?.notifyAgent(agentId, "config_changed", {
+          changes: [
+            {
+              category: "provider",
+              action: "added",
+              summary: `Provider "${providerId.trim()}" installed`,
+            },
+          ] satisfies ConfigChangeEntry[],
+        });
       }
 
-      await config.providerCatalogService.uninstallProvider(
-        agentId,
-        providerId.trim()
-      );
-      config.connectionManager?.notifyAgent(agentId, "config_changed", {});
       return c.json({ success: true, agentId });
     } catch (e) {
       return c.json(
-        { error: e instanceof Error ? e.message : "Uninstall failed" },
+        { error: e instanceof Error ? e.message : "Operation failed" },
         400
       );
     }
@@ -477,11 +648,19 @@ export function createAgentConfigRoutes(
         return c.json({ error: "providerIds array is required" }, 400);
       }
 
-      await config.providerCatalogService.reorderProviders(
-        agentId,
-        providerIds.filter((id): id is string => typeof id === "string")
+      const orderedIds = providerIds.filter(
+        (id): id is string => typeof id === "string"
       );
-      config.connectionManager?.notifyAgent(agentId, "config_changed", {});
+      await config.providerCatalogService.reorderProviders(agentId, orderedIds);
+      config.connectionManager?.notifyAgent(agentId, "config_changed", {
+        changes: [
+          {
+            category: "provider",
+            action: "reordered",
+            summary: `Provider priority: ${orderedIds.join(" > ")}`,
+          },
+        ] satisfies ConfigChangeEntry[],
+      });
       return c.json({ success: true, agentId });
     } catch (e) {
       return c.json(

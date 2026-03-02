@@ -106,6 +106,6 @@ export abstract class BaseFileHandler implements IFileHandler {
     if (!this.uploadedFiles.has(sessionKey)) {
       this.uploadedFiles.set(sessionKey, new Set());
     }
-    this.uploadedFiles.get(sessionKey)!.add(fileId);
+    this.uploadedFiles.get(sessionKey)?.add(fileId);
   }
 }

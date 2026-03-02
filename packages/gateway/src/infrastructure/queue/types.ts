@@ -58,9 +58,14 @@ export interface IMessageQueue {
   send<T>(queueName: string, data: T, options?: QueueOptions): Promise<string>;
 
   /**
-   * Subscribe to a queue and process jobs
+   * Subscribe to a queue and process jobs.
+   * @param startPaused - If true, worker is created but won't process jobs until resumeWorker() is called.
    */
-  work<T>(queueName: string, handler: JobHandler<T>): Promise<void>;
+  work<T>(
+    queueName: string,
+    handler: JobHandler<T>,
+    options?: { startPaused?: boolean }
+  ): Promise<void>;
 
   /**
    * Pause a queue worker (stops processing jobs)

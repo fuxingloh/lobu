@@ -6,6 +6,7 @@ import {
 import type { AgentSettingsStore } from "../auth/settings";
 import {
   buildSettingsUrl,
+  buildTelegramSettingsUrl,
   formatSettingsTokenTtl,
   generateSettingsToken,
 } from "../auth/settings";
@@ -35,6 +36,16 @@ export function registerBuiltInCommands(
         await ctx.reply("No agent is configured for this conversation yet.");
         return;
       }
+
+      if (ctx.platform === "telegram") {
+        const settingsUrl = buildTelegramSettingsUrl(ctx.channelId);
+        await ctx.reply(
+          "Here's your settings link.\n\nUse this page to configure your agent's model, network access, and more.",
+          { url: settingsUrl, urlLabel: "Open Settings" }
+        );
+        return;
+      }
+
       const token = generateSettingsToken(
         ctx.agentId,
         ctx.userId,
@@ -44,7 +55,8 @@ export function registerBuiltInCommands(
       const settingsUrl = buildSettingsUrl(token);
       const ttlLabel = formatSettingsTokenTtl();
       await ctx.reply(
-        `Here's your settings link (valid for ${ttlLabel}):\n${settingsUrl}\n\nUse this page to configure your agent's model, network access, and more.`
+        `Here's your settings link (valid for ${ttlLabel}).\n\nUse this page to configure your agent's model, network access, and more.`,
+        { url: settingsUrl, urlLabel: "Open Settings" }
       );
     },
   });

@@ -10,10 +10,7 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import type { GatewayConfig } from "../config";
 import { getModelProviderModules } from "../modules/module-system";
-import {
-  getAllRoutes,
-  registerAutoOpenApiRoutes,
-} from "../routes/openapi-auto";
+import { registerAutoOpenApiRoutes } from "../routes/openapi-auto";
 import type { SlackConfig } from "../slack";
 import { TELEGRAM_WEBHOOK_PATH, type TelegramConfig } from "../telegram/config";
 import type { TelegramPlatform } from "../telegram/platform";
@@ -225,7 +222,10 @@ function setupServer(
     const {
       createSettingsLinkRoutes,
     } = require("../routes/internal/settings-link");
-    const settingsLinkRouter = createSettingsLinkRoutes();
+    const settingsLinkRouter = createSettingsLinkRoutes(
+      interactionService,
+      coreServices?.getGrantStore()
+    );
     app.route("", settingsLinkRouter);
     logger.info("Settings link routes enabled at :8080/internal/settings-link");
   }
@@ -296,6 +296,89 @@ function setupServer(
 
     // Dynamically mount model provider auth routes
     const providerModules = getModelProviderModules();
+
+    // Shared save-key + logout handlers (parameterized by :provider)
+    const authProfilesManager = coreServices.getAuthProfilesManager();
+    if (authProfilesManager) {
+      const { verifySettingsToken } = require("../auth/settings/token-service");
+      const {
+        createAuthProfileLabel,
+      } = require("../auth/settings/auth-profiles-manager");
+
+      const providerModuleMap = new Map(
+        providerModules.map((m) => [m.providerId, m])
+      );
+
+      authRouter.post("/:provider/save-key", async (c: any) => {
+        try {
+          const providerId = c.req.param("provider");
+          const mod = providerModuleMap.get(providerId);
+          if (!mod) return c.json({ error: "Unknown provider" }, 404);
+
+          const body = await c.req.json();
+          const { agentId, apiKey, token } = body;
+          if (!agentId || !apiKey) {
+            return c.json({ error: "Missing agentId or apiKey" }, 400);
+          }
+
+          const queryToken = c.req.query("token");
+          const authToken = typeof token === "string" ? token : queryToken;
+          const payload = authToken ? verifySettingsToken(authToken) : null;
+          if (!payload?.agentId || payload.agentId !== agentId) {
+            return c.json({ error: "Unauthorized" }, 401);
+          }
+
+          await authProfilesManager.upsertProfile({
+            agentId,
+            provider: providerId,
+            credential: apiKey,
+            authType: "api-key",
+            label: createAuthProfileLabel(mod.providerDisplayName, apiKey),
+            makePrimary: true,
+          });
+
+          return c.json({ success: true });
+        } catch (error) {
+          logger.error("Failed to save API key", { error });
+          return c.json({ error: "Failed to save API key" }, 500);
+        }
+      });
+
+      authRouter.post("/:provider/logout", async (c: any) => {
+        try {
+          const providerId = c.req.param("provider");
+          const mod = providerModuleMap.get(providerId);
+          if (!mod) return c.json({ error: "Unknown provider" }, 404);
+
+          const body = await c.req.json().catch(() => ({}));
+          const agentId = body.agentId || c.req.query("agentId");
+          const queryToken = c.req.query("token");
+          const authToken =
+            typeof body.token === "string" ? body.token : queryToken;
+
+          if (!agentId) {
+            return c.json({ error: "Missing agentId" }, 400);
+          }
+
+          const payload = authToken ? verifySettingsToken(authToken) : null;
+          if (!payload?.agentId || payload.agentId !== agentId) {
+            return c.json({ error: "Unauthorized" }, 401);
+          }
+
+          await authProfilesManager.deleteProviderProfiles(
+            agentId,
+            providerId,
+            body.profileId
+          );
+
+          return c.json({ success: true });
+        } catch (error) {
+          logger.error("Failed to logout", { error });
+          return c.json({ error: "Failed to logout" }, 500);
+        }
+      });
+    }
+
     for (const mod of providerModules) {
       if (mod.getApp) {
         authRouter.route(`/${mod.providerId}`, mod.getApp());
@@ -309,15 +392,7 @@ function setupServer(
       registeredProviders.push("mcp");
     }
 
-    // Mount unified auth router
-    if (registeredProviders.length > 0) {
-      app.route("/api/v1/auth", authRouter);
-      logger.info(
-        `Auth routes enabled at :8080/api/v1/auth/{provider}/* for providers: ${registeredProviders.join(", ")}`
-      );
-    }
-
-    // Get shared dependencies
+    // Get shared dependencies (needed before mounting auth router)
     const agentSettingsStore = coreServices.getAgentSettingsStore();
     const claudeOAuthStateStore = coreServices.getClaudeOAuthStateStore();
     const scheduledWakeupService = coreServices.getScheduledWakeupService();
@@ -355,6 +430,40 @@ function setupServer(
       });
       app.route("", landingRouter);
       logger.info("Landing page enabled at :8080/");
+    }
+
+    // Agent history routes (proxy to worker HTTP server)
+    {
+      const connectionManager = coreServices
+        .getWorkerGateway()
+        ?.getConnectionManager();
+      if (connectionManager) {
+        const {
+          createAgentHistoryRoutes,
+        } = require("../routes/public/agent-history");
+        const agentHistoryRouter = createAgentHistoryRoutes({
+          connectionManager,
+        });
+        app.route("/api/v1/agents/:agentId/history", agentHistoryRouter);
+        logger.info(
+          "Agent history routes enabled at :8080/api/v1/agents/{agentId}/history/*"
+        );
+
+        // History HTML page
+        const { renderHistoryPage } = require("../routes/public/history-page");
+        const {
+          verifySettingsSession,
+        } = require("../routes/public/settings-auth");
+        app.get("/agent/:agentId/history", (c: any) => {
+          const session = verifySettingsSession(c);
+          if (!session) {
+            return c.redirect("/settings");
+          }
+          const agentId = c.req.param("agentId");
+          return c.html(renderHistoryPage(agentId));
+        });
+        logger.info("History page enabled at :8080/agent/{agentId}/history");
+      }
     }
 
     // Agent config routes (/api/v1/agents/{id}/config)
@@ -410,20 +519,27 @@ function setupServer(
       logger.info("Integrations routes enabled at :8080/api/v1/integrations/*");
     }
 
-    // OAuth routes (/api/v1/oauth)
+    // OAuth routes (mounted under unified auth router)
     if (agentSettingsStore) {
       const { createOAuthRoutes } = require("../routes/public/oauth");
       const { ClaudeOAuthClient } = require("../auth/oauth/claude-client");
       const claudeOAuthClient = new ClaudeOAuthClient();
       const oauthRouter = createOAuthRoutes({
-        agentSettingsStore,
         providerStores:
           Object.keys(providerStores).length > 0 ? providerStores : undefined,
         oauthClients: { claude: claudeOAuthClient },
         oauthStateStore: claudeOAuthStateStore,
       });
-      app.route("/api/v1/oauth", oauthRouter);
-      logger.info("OAuth routes enabled at :8080/api/v1/oauth/*");
+      authRouter.route("", oauthRouter);
+      registeredProviders.push("oauth");
+    }
+
+    // Mount unified auth router (includes provider modules + OAuth)
+    if (registeredProviders.length > 0) {
+      app.route("/api/v1/auth", authRouter);
+      logger.info(
+        `Auth routes enabled at :8080/api/v1/auth/* for: ${registeredProviders.join(", ")}`
+      );
     }
 
     // Channel binding routes (mount under agent API)
@@ -455,9 +571,9 @@ function setupServer(
         agentSettingsStore,
         channelBindingService,
       });
-      app.route("/api/v1/agent-management/agents", agentManagementRouter);
+      app.route("/api/v1/manage/agents", agentManagementRouter);
       logger.info(
-        "Agent management routes enabled at :8080/api/v1/agent-management/agents/*"
+        "Agent management routes enabled at :8080/api/v1/manage/agents/*"
       );
     }
 
@@ -524,10 +640,6 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
           "Send messages to agents and handle pending tool interactions.",
       },
       {
-        name: "Agent Exec",
-        description: "Direct code/command execution endpoints for agents.",
-      },
-      {
         name: "Channels",
         description:
           "Bind agents to platform channels (Slack, Telegram). Messages from bound channels are routed to the agent.",
@@ -538,27 +650,22 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
           "Send messages through platform adapters (Slack, Telegram, API).",
       },
       {
-        name: "GitHub",
-        description:
-          "GitHub repo and branch discovery utilities (used by settings UI).",
-      },
-      {
-        name: "Skills",
-        description:
-          "Browse and fetch agent skills from the skills.sh registry.",
-      },
-      {
-        name: "MCPs",
-        description:
-          "Browse MCP (Model Context Protocol) servers from the registry.",
-      },
-      {
-        name: "OAuth",
-        description: "OAuth code exchange for Claude and other providers.",
-      },
-      {
         name: "Auth",
-        description: "OAuth authentication flows for Claude and MCP servers.",
+        description:
+          "Authentication flows — API key, OAuth code exchange, device code for Claude and other providers.",
+      },
+      {
+        name: "Webhooks",
+        description: "Platform webhook endpoints (Telegram, Slack OAuth).",
+      },
+      {
+        name: "Integrations",
+        description:
+          "Browse and manage skills, MCP servers, and other integrations.",
+      },
+      {
+        name: "Settings",
+        description: "Settings page session management.",
       },
       {
         name: "System",
@@ -580,22 +687,6 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
     })
   );
   logger.info("API docs enabled at :8080/api/docs");
-
-  // Debug endpoint to view all routes (including internal)
-  app.get("/api/docs/routes", (c) => {
-    const routes = getAllRoutes(app);
-    const publicRoutes = routes.filter((r) => !r.internal);
-    const internalRoutes = routes.filter((r) => r.internal);
-    return c.json({
-      total: routes.length,
-      public: publicRoutes.length,
-      internal: internalRoutes.length,
-      routes: {
-        public: publicRoutes,
-        internal: internalRoutes,
-      },
-    });
-  });
 
   // Start the server — single port for everything
   const port = 8080;
@@ -685,7 +776,7 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
 
     json(data: any) {
       responseHeaders.set("Content-Type", "application/json");
-      resolveResponse!(
+      resolveResponse?.(
         new Response(JSON.stringify(data), {
           status: statusCode,
           headers: responseHeaders,
@@ -694,7 +785,7 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
     },
 
     send(data: any) {
-      resolveResponse!(
+      resolveResponse?.(
         new Response(data, {
           status: statusCode,
           headers: responseHeaders,
@@ -703,7 +794,7 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
     },
 
     text(data: string) {
-      resolveResponse!(
+      resolveResponse?.(
         new Response(data, {
           status: statusCode,
           headers: responseHeaders,
@@ -721,7 +812,7 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
         }
         streamController.close();
       } else {
-        resolveResponse!(
+        resolveResponse?.(
           new Response(data || null, {
             status: statusCode,
             headers: responseHeaders,
@@ -745,7 +836,7 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
             }
           },
         });
-        resolveResponse!(
+        resolveResponse?.(
           new Response(stream, {
             status: statusCode,
             headers: responseHeaders,

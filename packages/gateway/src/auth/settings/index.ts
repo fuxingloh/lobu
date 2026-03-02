@@ -6,6 +6,7 @@ export {
 } from "./auth-profiles-manager";
 export {
   buildSettingsUrl,
+  buildTelegramSettingsUrl,
   formatSettingsTokenTtl,
   generateChannelSettingsToken,
   generateSettingsToken,

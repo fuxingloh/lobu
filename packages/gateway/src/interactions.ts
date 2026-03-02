@@ -20,6 +20,35 @@ export interface PostedQuestion {
 }
 
 /**
+ * Payload emitted on "link-button:created" — platform renderers listen for this.
+ */
+export interface PostedLinkButton {
+  id: string;
+  userId: string;
+  conversationId: string;
+  channelId: string;
+  teamId?: string;
+  platform: string;
+  url: string;
+  label: string;
+  linkType: "settings" | "install" | "oauth";
+}
+
+/**
+ * Payload emitted on "grant:requested" — platform renderers listen for this.
+ */
+export interface PostedGrantRequest {
+  id: string;
+  userId: string;
+  agentId: string;
+  conversationId: string;
+  channelId: string;
+  teamId?: string;
+  domains: string[];
+  reason: string;
+}
+
+/**
  * Platform-agnostic interaction service (fire-and-forget).
  * Posts questions with buttons; no Redis, no blocking, no state machine.
  * User clicks → platform converts to regular message → normal queue.
@@ -71,6 +100,80 @@ export class InteractionService extends EventEmitter {
     );
 
     this.emit("question:created", posted);
+    return posted;
+  }
+
+  /**
+   * Post a grant request with approve/deny buttons (non-blocking, fire-and-forget).
+   * Emits "grant:requested" for platform renderers.
+   */
+  async postGrantRequest(
+    userId: string,
+    agentId: string,
+    conversationId: string,
+    channelId: string,
+    teamId: string | undefined,
+    domains: string[],
+    reason: string
+  ): Promise<PostedGrantRequest> {
+    if (this.beforeCreateHook) {
+      await this.beforeCreateHook(userId, conversationId);
+    }
+
+    const posted: PostedGrantRequest = {
+      id: `gr_${randomUUID()}`,
+      userId,
+      agentId,
+      conversationId,
+      channelId,
+      teamId,
+      domains,
+      reason,
+    };
+
+    logger.info(
+      `Posted grant request ${posted.id} for agent ${agentId} domains=${domains.join(",")}`
+    );
+
+    this.emit("grant:requested", posted);
+    return posted;
+  }
+
+  /**
+   * Post a link button (non-blocking, fire-and-forget).
+   * Emits "link-button:created" for platform renderers.
+   */
+  async postLinkButton(
+    userId: string,
+    conversationId: string,
+    channelId: string,
+    teamId: string | undefined,
+    platform: string,
+    url: string,
+    label: string,
+    linkType: "settings" | "install" | "oauth"
+  ): Promise<PostedLinkButton> {
+    if (this.beforeCreateHook) {
+      await this.beforeCreateHook(userId, conversationId);
+    }
+
+    const posted: PostedLinkButton = {
+      id: `lb_${randomUUID()}`,
+      userId,
+      conversationId,
+      channelId,
+      teamId,
+      platform,
+      url,
+      label,
+      linkType,
+    };
+
+    logger.info(
+      `Posted link button ${posted.id} for conversation ${conversationId} (${linkType})`
+    );
+
+    this.emit("link-button:created", posted);
     return posted;
   }
 

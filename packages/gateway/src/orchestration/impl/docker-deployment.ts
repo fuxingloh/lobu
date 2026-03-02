@@ -277,7 +277,7 @@ export class DockerDeploymentManager extends BaseDeploymentManager {
       // Check if volume already exists (idempotent for concurrent creation)
       await this.docker.getVolume(volumeName).inspect();
       logger.info(`✅ Volume ${volumeName} already exists`);
-    } catch (error) {
+    } catch (_error) {
       // Volume doesn't exist, create it
       try {
         await this.docker.createVolume({

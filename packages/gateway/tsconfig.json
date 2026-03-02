@@ -20,6 +20,13 @@
     "composite": true
   },
   "include": ["src/**/*", "../core/src/deployment/base-deployment-manager.ts"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/__tests__/**"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/*.test.ts",
+    "**/__tests__/**",
+    "src/routes/public/history-page/**/*.tsx",
+    "src/routes/public/settings-page/**/*.tsx"
+  ],
   "references": [{ "path": "../core" }]
 }

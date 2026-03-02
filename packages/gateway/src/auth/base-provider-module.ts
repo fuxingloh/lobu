@@ -5,11 +5,7 @@ import {
   type ModelProviderModule,
   type ProviderUpstreamConfig,
 } from "../modules/module-system";
-import {
-  type AuthProfilesManager,
-  createAuthProfileLabel,
-} from "./settings/auth-profiles-manager";
-import { verifySettingsToken } from "./settings/token-service";
+import type { AuthProfilesManager } from "./settings/auth-profiles-manager";
 
 const logger = createLogger("base-provider-module");
 
@@ -40,7 +36,8 @@ export interface BaseProviderConfig {
 /**
  * Base class for model provider modules.
  * Implements shared logic: credential lookup, proxy mappings, env var injection,
- * /save-key and /logout routes, and Hono app management.
+ * and Hono app management. Save-key and logout routes are handled by the
+ * parameterized auth router in gateway.ts.
  *
  * Subclasses provide a config object and optionally override:
  * - `setupRoutes(app)` to add provider-specific routes
@@ -87,7 +84,6 @@ export abstract class BaseProviderModule
     this.catalogVisible = config.catalogVisible;
 
     this.app = new Hono();
-    this.setupBaseRoutes();
     this.setupRoutes();
   }
 
@@ -191,98 +187,5 @@ export abstract class BaseProviderModule
   /** Override in subclasses to add provider-specific routes. */
   protected setupRoutes(): void {
     // Default: no extra routes
-  }
-
-  private isAuthorized(token: string | undefined, agentId: string): boolean {
-    if (!token) return false;
-
-    const payload = verifySettingsToken(token);
-    if (!payload) return false;
-
-    // Only allow agent-bound tokens for credential mutation endpoints.
-    // Channel-scoped tokens do not identify a specific agent and must not be
-    // accepted here to avoid cross-agent credential writes/deletes.
-    if (!payload.agentId || payload.agentId !== agentId) {
-      return false;
-    }
-
-    return true;
-  }
-
-  private setupBaseRoutes(): void {
-    // Save API key
-    this.app.post("/save-key", async (c) => {
-      try {
-        const body = await c.req.json();
-        const { agentId, apiKey, token } = body;
-
-        if (!agentId || !apiKey) {
-          return c.json({ error: "Missing agentId or apiKey" }, 400);
-        }
-
-        const queryToken = c.req.query("token");
-        const authToken = typeof token === "string" ? token : queryToken;
-        if (!this.isAuthorized(authToken, agentId)) {
-          return c.json({ error: "Unauthorized" }, 401);
-        }
-
-        await this.authProfilesManager.upsertProfile({
-          agentId,
-          provider: this.providerId,
-          credential: apiKey,
-          authType: "api-key",
-          label: createAuthProfileLabel(this.providerDisplayName, apiKey),
-          makePrimary: true,
-        });
-
-        logger.info(
-          `${this.providerDisplayName} API key saved for agent ${agentId}`
-        );
-        return c.json({ success: true });
-      } catch (error) {
-        logger.error(`Failed to save ${this.providerDisplayName} API key`, {
-          error,
-        });
-        return c.json({ error: "Failed to save API key" }, 500);
-      }
-    });
-
-    // Remove credentials (logout)
-    this.app.post("/logout", async (c) => {
-      try {
-        const body = await c.req.json().catch(() => ({}));
-        const agentId = body.agentId || c.req.query("agentId");
-        const queryToken = c.req.query("token");
-        const authToken =
-          typeof body.token === "string" ? body.token : queryToken;
-
-        if (!agentId) {
-          return c.json({ error: "Missing agentId" }, 400);
-        }
-
-        if (!this.isAuthorized(authToken, agentId)) {
-          return c.json({ error: "Unauthorized" }, 401);
-        }
-
-        await this.authProfilesManager.deleteProviderProfiles(
-          agentId,
-          this.providerId,
-          body.profileId
-        );
-        logger.info(
-          `${this.providerDisplayName} credentials removed for agent ${agentId}`
-        );
-
-        return c.json({ success: true });
-      } catch (error) {
-        logger.error(
-          `Failed to remove ${this.providerDisplayName} credentials`,
-          { error }
-        );
-        return c.json({ error: "Failed to logout" }, 500);
-      }
-    });
-
-    logger.info(`${this.providerDisplayName} base routes configured`);
   }
 }

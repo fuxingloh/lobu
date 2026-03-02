@@ -1,6 +1,4 @@
 import crypto, { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import {
   createLogger,
@@ -24,29 +22,11 @@ const logger = createLogger("agent-api");
 // =============================================================================
 
 const TOKEN_EXPIRATION_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_EXEC_TIMEOUT = 300000;
-const MAX_EXEC_TIMEOUT = 600000;
 const MAX_CONNECTIONS_PER_AGENT = 5;
 const MAX_TOTAL_CONNECTIONS = 1000;
 
-const RESERVED_EXEC_ENV_KEYS = new Set([
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "NO_PROXY",
-  "ALL_PROXY",
-  "WORKSPACE_DIR",
-  "LOBU_WORKSPACES_DIR",
-  "WORKER_TOKEN",
-  "LOBU_API_KEY",
-  "ENCRYPTION_KEY",
-  "TRACE_ID",
-  "TRACEPARENT",
-  "NODE_OPTIONS",
-]);
-
 // SSE connection tracking
 const sseConnections = new Map<string, Set<any>>();
-const execConnections = new Map<string, Set<any>>();
 
 // =============================================================================
 // Zod Schemas
@@ -88,7 +68,6 @@ const CreateAgentResponseSchema = z.object({
   expiresAt: z.number(),
   sseUrl: z.string(),
   messagesUrl: z.string(),
-  execUrl: z.string(),
 });
 
 const SendMessageRequestSchema = z.object({
@@ -102,20 +81,6 @@ const SendMessageResponseSchema = z.object({
   jobId: z.string(),
   queued: z.boolean(),
   traceparent: z.string().optional(),
-});
-
-const ExecRequestSchema = z.object({
-  command: z.string(),
-  cwd: z.string().optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  timeout: z.number().optional(),
-});
-
-const ExecResponseSchema = z.object({
-  success: z.boolean(),
-  execId: z.string(),
-  jobId: z.string(),
-  eventsUrl: z.string(),
 });
 
 const AgentStatusResponseSchema = z.object({
@@ -145,11 +110,6 @@ const SuccessResponseSchema = z.object({
 // Path parameters
 const AgentIdParamSchema = z.object({
   agentId: z.string(),
-});
-
-const ExecIdParamSchema = z.object({
-  agentId: z.string(),
-  execId: z.string(),
 });
 
 // =============================================================================
@@ -240,42 +200,6 @@ function validateMcpConfig(
   return null;
 }
 
-function sanitizeExecEnv(
-  env?: Record<string, string>
-): Record<string, string> | undefined {
-  if (!env) return undefined;
-  const sanitized: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (!key || RESERVED_EXEC_ENV_KEYS.has(key)) continue;
-    if (!/^[A-Z0-9_]+$/.test(key)) continue;
-    if (typeof value !== "string") continue;
-    sanitized[key] = value;
-  }
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-}
-
-function resolveExecCwd(baseDir: string, requested?: string): string | null {
-  try {
-    // Resolve symlinks to prevent escape via symlink attacks
-    const resolvedBase = fs.realpathSync(path.resolve(baseDir));
-    const resolvedRequested = requested
-      ? fs.realpathSync(path.resolve(resolvedBase, requested))
-      : resolvedBase;
-
-    // Check path containment using resolved (symlink-resolved) paths
-    if (
-      resolvedRequested !== resolvedBase &&
-      !resolvedRequested.startsWith(`${resolvedBase}${path.sep}`)
-    ) {
-      return null;
-    }
-    return resolvedRequested;
-  } catch {
-    // Path doesn't exist or permission denied
-    return null;
-  }
-}
-
 // =============================================================================
 // Broadcast Functions (exported for use by other modules)
 // =============================================================================
@@ -312,41 +236,6 @@ export function broadcastToAgent(
   }
   if (connections.size === 0) {
     sseConnections.delete(agentId);
-  }
-}
-
-export function broadcastToExec(
-  execId: string,
-  event: string,
-  data: unknown
-): void {
-  const connections = execConnections.get(execId);
-  if (!connections || connections.size === 0) return;
-
-  const deadConnections = new Set<any>();
-
-  for (const res of connections) {
-    try {
-      if (res.closed || res.destroyed || res.writableEnded) {
-        deadConnections.add(res);
-        continue;
-      }
-      if (typeof res.writeSSE === "function") {
-        res.writeSSE({ event, data: JSON.stringify(data) });
-      } else if (typeof res.write === "function") {
-        const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        res.write(message);
-      }
-    } catch {
-      deadConnections.add(res);
-    }
-  }
-
-  for (const deadRes of deadConnections) {
-    connections.delete(deadRes);
-  }
-  if (connections.size === 0) {
-    execConnections.delete(execId);
   }
 }
 
@@ -484,55 +373,6 @@ const sendMessageRoute = createRoute({
   },
 });
 
-const execRoute = createRoute({
-  method: "post",
-  path: "/api/v1/agents/{agentId}/exec",
-  tags: ["Agent Exec"],
-  summary: "Execute a command in the agent sandbox",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: AgentIdParamSchema,
-    body: { content: { "application/json": { schema: ExecRequestSchema } } },
-  },
-  responses: {
-    202: {
-      description: "Exec queued",
-      content: { "application/json": { schema: ExecResponseSchema } },
-    },
-    400: {
-      description: "Invalid request",
-      content: { "application/json": { schema: ErrorResponseSchema } },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorResponseSchema } },
-    },
-    404: {
-      description: "Agent not found",
-      content: { "application/json": { schema: ErrorResponseSchema } },
-    },
-  },
-});
-
-const execEventsRoute = createRoute({
-  method: "get",
-  path: "/api/v1/agents/{agentId}/exec/{execId}/events",
-  tags: ["Agent Exec"],
-  summary: "Subscribe to exec output (SSE)",
-  security: [{ bearerAuth: [] }],
-  request: { params: ExecIdParamSchema },
-  responses: {
-    200: {
-      description: "SSE stream",
-      content: { "text/event-stream": { schema: z.string() } },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorResponseSchema } },
-    },
-  },
-});
-
 // =============================================================================
 // Create OpenAPI Hono App
 // =============================================================================
@@ -662,7 +502,6 @@ export function createAgentApi(
         expiresAt,
         sseUrl: `${baseUrl}/api/v1/agents/${agentId}/events`,
         messagesUrl: `${baseUrl}/api/v1/agents/${agentId}/messages`,
-        execUrl: `${baseUrl}/api/v1/agents/${agentId}/exec`,
       },
       201
     );
@@ -682,7 +521,8 @@ export function createAgentApi(
     }
 
     const hasActiveConnection =
-      sseConnections.has(agentId) && sseConnections.get(agentId)!.size > 0;
+      sseConnections.has(agentId) &&
+      (sseConnections.get(agentId)?.size ?? 0) > 0;
 
     return c.json({
       success: true,
@@ -872,126 +712,6 @@ export function createAgentApi(
       rootSpan?.end();
       throw error;
     }
-  });
-
-  // POST /api/v1/agents/:agentId/exec - Execute command
-  app.openapi(execRoute, async (c): Promise<any> => {
-    const { agentId } = c.req.valid("param");
-    const tokenData = await authenticateAgent(c, agentId);
-    if (!tokenData) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
-
-    const body = c.req.valid("json");
-    const { command, cwd, env, timeout = DEFAULT_EXEC_TIMEOUT } = body;
-
-    if (!command || typeof command !== "string") {
-      return c.json({ success: false, error: "command is required" }, 400);
-    }
-
-    const session = await sessionManager.getSession(agentId);
-    if (!session) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
-    }
-
-    const validTimeout = Math.min(
-      Math.max(timeout || DEFAULT_EXEC_TIMEOUT, 1000),
-      MAX_EXEC_TIMEOUT
-    );
-    const execId = randomUUID();
-    const baseDir =
-      session.workingDirectory || process.env.WORKSPACE_DIR || "/workspace";
-    const workingDir = resolveExecCwd(baseDir, cwd);
-
-    if (!workingDir) {
-      return c.json(
-        { success: false, error: "cwd must be within agent workspace" },
-        400
-      );
-    }
-
-    const { span: rootSpan, traceparent } = createRootSpan("exec_received", {
-      "lobu.agent_id": agentId,
-      "lobu.exec_id": execId,
-    });
-
-    try {
-      const jobId = await queueProducer.enqueueMessage({
-        userId: tokenData.userId,
-        conversationId: tokenData.conversationId || agentId,
-        messageId: execId,
-        channelId: tokenData.channelId,
-        teamId: tokenData.teamId || "api",
-        agentId: tokenData.agentId || `api-${tokenData.userId}`,
-        botId: "lobu-api",
-        platform: "api",
-        messageText: "",
-        platformMetadata: {
-          agentId,
-          source: "direct-api",
-          traceparent: traceparent || undefined,
-        },
-        agentOptions: { workingDirectory: workingDir },
-        networkConfig: session.networkConfig,
-        mcpConfig: session.mcpConfig,
-        jobType: "exec",
-        execId,
-        execCommand: command,
-        execCwd: workingDir,
-        execEnv: sanitizeExecEnv(env),
-        execTimeout: validTimeout,
-      });
-
-      rootSpan?.end();
-
-      const baseUrl = publicGatewayUrl || "http://localhost:8080";
-      return c.json(
-        {
-          success: true,
-          execId,
-          jobId,
-          eventsUrl: `${baseUrl}/api/v1/agents/${agentId}/exec/${execId}/events`,
-        },
-        202
-      );
-    } catch (error) {
-      rootSpan?.end();
-      throw error;
-    }
-  });
-
-  // GET /api/v1/agents/:agentId/exec/:execId/events - Exec SSE
-  app.openapi(execEventsRoute, async (c): Promise<any> => {
-    const { agentId, execId } = c.req.valid("param");
-    const tokenData = await authenticateAgent(c, agentId);
-    if (!tokenData) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
-
-    if (!execConnections.has(execId)) {
-      execConnections.set(execId, new Set());
-    }
-    const execConns = execConnections.get(execId)!;
-
-    return streamSSE(c, async (stream) => {
-      execConns.add(stream);
-
-      await stream.writeSSE({
-        event: "connected",
-        data: JSON.stringify({ execId, timestamp: Date.now() }),
-      });
-
-      stream.onAbort(() => {
-        execConns.delete(stream);
-        if (execConns.size === 0) {
-          execConnections.delete(execId);
-        }
-      });
-
-      while (true) {
-        await stream.sleep(1000);
-      }
-    });
   });
 
   logger.info("Hono Agent API routes registered");

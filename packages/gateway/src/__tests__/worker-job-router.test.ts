@@ -97,7 +97,13 @@ describe("WorkerJobRouter", () => {
   describe("Job Routing", () => {
     test("routes job to connected worker via SSE", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
 
@@ -126,7 +132,13 @@ describe("WorkerJobRouter", () => {
 
     test("includes jobId in job payload", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -153,7 +165,13 @@ describe("WorkerJobRouter", () => {
 
     test("merges job data with jobId", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -199,7 +217,13 @@ describe("WorkerJobRouter", () => {
 
     test("touches connection activity when routing job", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -229,7 +253,13 @@ describe("WorkerJobRouter", () => {
   describe("Job Acknowledgment", () => {
     test("acknowledges job and resolves promise", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -259,7 +289,13 @@ describe("WorkerJobRouter", () => {
 
     test("clears timeout when job is acknowledged", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -284,7 +320,13 @@ describe("WorkerJobRouter", () => {
 
     test("handles multiple job acknowledgments", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
 
@@ -317,7 +359,13 @@ describe("WorkerJobRouter", () => {
   describe("Job Timeout", () => {
     test("times out job after 5 minutes without acknowledgment", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -342,7 +390,13 @@ describe("WorkerJobRouter", () => {
 
     test("tracks pending job count correctly", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
 
@@ -371,52 +425,73 @@ describe("WorkerJobRouter", () => {
   describe("Shutdown", () => {
     test("rejects all pending jobs on shutdown", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
 
       const job = TestHelpers.createMockJob();
 
-      // Start job but don't acknowledge (fire-and-forget)
-      await queue.addJob("thread_message_worker-1", job);
+      // addJob now blocks waiting for delivery receipt, so we need to
+      // acknowledge the job asynchronously while addJob is in progress.
+      const addPromise = queue.addJob("thread_message_worker-1", job);
 
-      // Wait for job to be processed and tracked
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Acknowledge after a short delay (simulates worker receipt)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const events = TestHelpers.parseSSE(res.getAllWrites());
+      const jobEvent = events.find((e) => e.event === "job");
+      if (jobEvent?.data?.jobId) {
+        router.acknowledgeJob(jobEvent.data.jobId);
+      }
 
-      expect(router.getPendingJobCount()).toBe(1);
+      await addPromise;
+
+      // The acknowledged job should be cleared
+      expect(router.getPendingJobCount()).toBe(0);
 
       // Shutdown router
       router.shutdown();
-
-      // Pending jobs should be cleared
       expect(router.getPendingJobCount()).toBe(0);
     });
 
     test("clears all pending timeouts on shutdown", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
 
-      // Start multiple jobs (fire-and-forget)
+      // Send multiple jobs, acknowledging each
       for (let i = 0; i < 3; i++) {
         res.clearWrites();
-        await queue.addJob(
+        const addPromise = queue.addJob(
           "thread_message_worker-1",
           TestHelpers.createMockJob()
         );
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const events = TestHelpers.parseSSE(res.getAllWrites());
+        const jobEvent = events.find((e) => e.event === "job");
+        if (jobEvent?.data?.jobId) {
+          router.acknowledgeJob(jobEvent.data.jobId);
+        }
+        await addPromise;
       }
 
-      // Wait for jobs to be processed and tracked
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(router.getPendingJobCount()).toBe(3);
+      expect(router.getPendingJobCount()).toBe(0);
 
       // Shutdown
       router.shutdown();
-
-      // All pending jobs should be cleared
       expect(router.getPendingJobCount()).toBe(0);
     });
 
@@ -431,7 +506,13 @@ describe("WorkerJobRouter", () => {
   describe("Edge Cases", () => {
     test("handles job with null data", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -455,7 +536,13 @@ describe("WorkerJobRouter", () => {
 
     test("handles job with undefined data", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -478,7 +565,13 @@ describe("WorkerJobRouter", () => {
 
     test("generates unique jobIds for concurrent jobs", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
 
@@ -509,7 +602,13 @@ describe("WorkerJobRouter", () => {
 
     test("handles very large job data", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
       res.clearWrites();
@@ -536,7 +635,13 @@ describe("WorkerJobRouter", () => {
   describe("Concurrent Job Handling", () => {
     test("handles multiple jobs to same worker sequentially", async () => {
       const res = new MockResponse() as any;
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res
+      );
 
       await router.registerWorker("worker-1");
 
@@ -567,9 +672,27 @@ describe("WorkerJobRouter", () => {
       const res2 = new MockResponse() as any;
       const res3 = new MockResponse() as any;
 
-      connectionManager.addConnection("worker-1", "U123", "thread-1", res1);
-      connectionManager.addConnection("worker-2", "U456", "thread-2", res2);
-      connectionManager.addConnection("worker-3", "U789", "thread-3", res3);
+      connectionManager.addConnection(
+        "worker-1",
+        "U123",
+        "thread-1",
+        "agent-1",
+        res1
+      );
+      connectionManager.addConnection(
+        "worker-2",
+        "U456",
+        "thread-2",
+        "agent-2",
+        res2
+      );
+      connectionManager.addConnection(
+        "worker-3",
+        "U789",
+        "thread-3",
+        "agent-3",
+        res3
+      );
 
       await router.registerWorker("worker-1");
       await router.registerWorker("worker-2");

@@ -7,7 +7,29 @@ export function createSlackThreadReply(
   channelId: string,
   threadTs: string
 ): CommandContext["reply"] {
-  return async (text: string) => {
+  return async (text, options) => {
+    if (options?.url) {
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text,
+        blocks: [
+          { type: "section", text: { type: "mrkdwn", text } },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: options.urlLabel || "Open" },
+                url: options.url,
+                action_id: "cmd_link",
+              },
+            ],
+          },
+        ],
+      });
+      return;
+    }
     await client.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
@@ -21,7 +43,29 @@ export function createSlackEphemeralReply(
   channelId: string,
   userId: string
 ): CommandContext["reply"] {
-  return async (text: string) => {
+  return async (text, options) => {
+    if (options?.url) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text,
+        blocks: [
+          { type: "section", text: { type: "mrkdwn", text } },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: options.urlLabel || "Open" },
+                url: options.url,
+                action_id: "cmd_link",
+              },
+            ],
+          },
+        ],
+      });
+      return;
+    }
     await client.chat.postEphemeral({
       channel: channelId,
       user: userId,
@@ -34,18 +78,19 @@ export function createTelegramReply(
   bot: Bot,
   chatId: number
 ): CommandContext["reply"] {
-  return async (text: string) => {
-    // Extract URL from text for inline button (settings links)
-    const urlMatch = text.match(/https?:\/\/\S+/);
-    if (urlMatch) {
-      const url = urlMatch[0];
-      const buttonText = url.includes("/settings")
-        ? "Open Settings"
-        : "Configure Agent";
+  return async (text, options) => {
+    if (options?.url) {
       try {
         await bot.api.sendMessage(chatId, text, {
           reply_markup: {
-            inline_keyboard: [[{ text: buttonText, url }]],
+            inline_keyboard: [
+              [
+                {
+                  text: options.urlLabel || "Open",
+                  web_app: { url: options.url },
+                },
+              ],
+            ],
           },
         });
         return;

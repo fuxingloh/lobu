@@ -8,6 +8,7 @@
 export class MockResponse {
   private _ended = false;
   private _written: string[] = [];
+  private _closeCallbacks: (() => void)[] = [];
 
   write(chunk: string): boolean {
     if (this._ended) {
@@ -19,6 +20,14 @@ export class MockResponse {
 
   end(): void {
     this._ended = true;
+  }
+
+  onClose(callback: () => void): void {
+    this._closeCallbacks.push(callback);
+  }
+
+  simulateClose(): void {
+    for (const cb of this._closeCallbacks) cb();
   }
 
   isEnded(): boolean {
@@ -175,7 +184,8 @@ export class MockMessageQueue {
 
   async work(
     queueName: string,
-    handler: (job: any) => Promise<void>
+    handler: (job: any) => Promise<void>,
+    _options?: { startPaused?: boolean }
   ): Promise<void> {
     this.workers.set(queueName, handler);
   }

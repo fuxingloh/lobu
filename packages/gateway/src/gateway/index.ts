@@ -112,6 +112,10 @@ export class WorkerGateway {
       return c.json({ error: "Invalid token (missing conversationId)" }, 401);
     }
 
+    // Extract httpPort from query params (worker HTTP server registration)
+    const httpPortParam = c.req.query("httpPort");
+    const httpPort = httpPortParam ? parseInt(httpPortParam, 10) : undefined;
+
     // Create an SSE stream
     return stream(c, async (streamWriter) => {
       // Create an SSE writer adapter
@@ -143,16 +147,31 @@ export class WorkerGateway {
       c.header("Connection", "keep-alive");
       c.header("X-Accel-Buffering", "no");
 
-      // Register connection with connection manager
+      // Clean up stale state before registering new connection.
+      // When a container dies without cleanly closing its TCP socket,
+      // the old SSE connection may still appear valid. Pause the BullMQ
+      // worker first to prevent it from sending jobs to the dead connection,
+      // then remove the stale connection so any in-flight handleJob will
+      // fail and trigger a retry against the new connection.
+      await this.jobRouter.pauseWorker(deploymentName);
+      if (this.connectionManager.isConnected(deploymentName)) {
+        logger.info(
+          `Cleaning up stale connection for ${deploymentName} before new SSE`
+        );
+        this.connectionManager.removeConnection(deploymentName);
+      }
+
+      // Register new (live) connection
       this.connectionManager.addConnection(
         deploymentName,
         userId,
         conversationId,
         agentId || "",
-        sseWriter
+        sseWriter,
+        httpPort
       );
 
-      // Register BullMQ worker for this deployment
+      // Register BullMQ worker (idempotent) and resume job processing
       await this.jobRouter.registerWorker(deploymentName);
       await this.jobRouter.resumeWorker(deploymentName);
 
@@ -274,7 +293,7 @@ export class WorkerGateway {
 
         const toolResults = await Promise.allSettled(
           authenticatedMcps.map(async (mcp) => {
-            const tools = await this.mcpProxy!.fetchToolsForMcp(
+            const tools = await this.mcpProxy?.fetchToolsForMcp(
               mcp.id,
               agentId || userId,
               auth.tokenData
@@ -284,7 +303,11 @@ export class WorkerGateway {
         );
 
         for (const result of toolResults) {
-          if (result.status === "fulfilled" && result.value.tools.length > 0) {
+          if (
+            result.status === "fulfilled" &&
+            result.value.tools &&
+            result.value.tools.length > 0
+          ) {
             mcpTools[result.value.mcpId] = result.value.tools;
           }
         }

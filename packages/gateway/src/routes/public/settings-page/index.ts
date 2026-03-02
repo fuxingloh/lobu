@@ -1,5 +1,5 @@
 /**
- * Settings Page HTML Templates (Alpine.js + Pre-compiled Tailwind CSS)
+ * Settings Page HTML Templates (Preact + Pre-compiled Tailwind CSS)
  */
 
 import type { AgentMetadata } from "../../../auth/agent-metadata-store";
@@ -10,24 +10,16 @@ import {
 } from "../../../auth/settings/token-service";
 import type { ModelOption } from "../../../modules/module-system";
 import { settingsPageCSS } from "../settings-page-styles";
-import { renderAlpineApp } from "./alpine-app";
-import {
-  escapeHtml,
-  formatUserId,
-  getPlatformDisplay,
-  renderHeaderSection,
-  renderInstructionsSection,
-  renderIntegrationsSection,
-  renderMessageBanner,
-  renderNixPackagesSection,
-  renderPermissionsSection,
-  renderPrefillBanner,
-  renderProviderSection,
-  renderRemindersSection,
-  renderSecretsSection,
-  renderSubmitButton,
-  renderVerboseLoggingSection,
-} from "./sections";
+import { escapeHtml, formatUserId, getPlatformDisplay } from "./utils";
+
+let settingsPageJS = "";
+try {
+  const bundle = require("../settings-page-bundle");
+  settingsPageJS = bundle.settingsPageJS;
+} catch {
+  settingsPageJS =
+    'document.getElementById("app").textContent = "Bundle not built. Run: bun run scripts/build-settings.ts";';
+}
 
 export interface ProviderMeta {
   id: string;
@@ -44,15 +36,10 @@ export interface SettingsPageOptions {
   providers?: ProviderMeta[];
   catalogProviders?: ProviderMeta[];
   providerModelOptions?: Record<string, ModelOption[]>;
-  /** Show agent switcher in settings page (channel-based tokens) */
   showSwitcher?: boolean;
-  /** User's agents for the switcher */
   agents?: (AgentMetadata & { channelCount: number })[];
-  /** Agent name from metadata */
   agentName?: string;
-  /** Agent description from metadata */
   agentDescription?: string;
-  /** Whether the token has a channelId (for post-delete behavior) */
   hasChannelId?: boolean;
 }
 
@@ -62,15 +49,10 @@ export function renderSettingsPage(
   options?: SettingsPageOptions
 ): string {
   const s: Partial<AgentSettings> = settings || {};
-  // Installed providers (already resolved in order by settings.ts)
   const providers: ProviderMeta[] = options?.providers ?? [];
-
-  // Catalog providers (available but not installed)
   const catalogProviders: ProviderMeta[] = options?.catalogProviders ?? [];
-
   const providerModelOptions: Record<string, ModelOption[]> =
     options?.providerModelOptions || {};
-
   const providerOrder = providers.map((p) => p.id);
 
   const initialSecrets = (() => {
@@ -162,6 +144,24 @@ export function renderSettingsPage(
     identityMd: s.identityMd || "",
     soulMd: s.soulMd || "",
     userMd: s.userMd || "",
+    // Additional fields for Preact client
+    platform: payload.platform,
+    userId: payload.userId,
+    channelId: payload.channelId,
+    teamId: payload.teamId,
+    message: payload.message,
+    showSwitcher,
+    agents: agents.map((a) => ({
+      agentId: a.agentId,
+      name: a.name,
+      isWorkspaceAgent: a.isWorkspaceAgent,
+      channelCount: a.channelCount,
+      description: a.description,
+    })),
+    hasNoProviders: providers.length === 0,
+    providerIconUrls: Object.fromEntries(
+      providers.map((p) => [p.id, p.iconUrl])
+    ),
   };
 
   return `<!DOCTYPE html>
@@ -172,48 +172,20 @@ export function renderSettingsPage(
   <meta name="referrer" content="no-referrer">
   <title>Agent Settings - Lobu</title>
   <style>${settingsPageCSS}</style>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+  ${payload.platform === "telegram" ? '<script src="https://telegram.org/js/telegram-web-app.js"></script>' : ""}
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-700 to-slate-900 p-4" x-data="settingsApp()" x-cloak>
+<body class="min-h-screen bg-gradient-to-br from-slate-700 to-slate-900 p-4">
   <div class="max-w-xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
-${renderHeaderSection(payload, showSwitcher, agents)}
-
-    <div x-show="successMsg" x-transition class="bg-green-100 text-green-800 px-3 py-2 rounded-lg mb-4 text-center text-sm" x-text="successMsg"></div>
-    <div x-show="errorMsg" x-transition class="bg-red-100 text-red-800 px-3 py-2 rounded-lg mb-4 text-center text-sm" x-text="errorMsg"></div>
-    ${renderMessageBanner(payload)}
-${renderPrefillBanner()}
-
-    <form @submit.prevent="saveSettings()" @keydown.enter="if ($event.target.tagName !== 'TEXTAREA' && $event.target.type !== 'submit') $event.preventDefault()" class="space-y-3">
-${renderProviderSection(providers)}
-
-${renderInstructionsSection()}
-
-${renderIntegrationsSection()}
-
-${renderRemindersSection()}
-
-${renderPermissionsSection()}
-
-${renderNixPackagesSection()}
-
-${renderSecretsSection()}
-
-${renderVerboseLoggingSection()}
-
-${renderSubmitButton()}
-    </form>
+    <div id="app"></div>
   </div>
-${renderAlpineApp(JSON.stringify(initialState), providers.length === 0)}
+  <script>window.__SETTINGS_STATE__ = ${JSON.stringify(initialState)};</script>
+  <script type="module">${settingsPageJS}</script>
 </body>
 </html>`;
 }
 
 // ─── Picker Page ────────────────────────────────────────────────────────────
 
-/**
- * Render the agent picker / creation page.
- * Shown when a channel-based token has no agent bound.
- */
 export function renderPickerPage(
   payload: SettingsTokenPayload,
   agents: (AgentMetadata & { channelCount: number })[]
@@ -226,6 +198,7 @@ export function renderPickerPage(
   <meta name="referrer" content="no-referrer">
   <title>Configure Agent - Lobu</title>
   <style>${settingsPageCSS}</style>
+  ${payload.platform === "telegram" ? '<script src="https://telegram.org/js/telegram-web-app.js"></script>' : ""}
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-700 to-slate-900 p-4">
   <div class="max-w-xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
@@ -306,13 +279,19 @@ ${agents
       document.getElementById('agentId').value = slug;
     }
 
+    var __platform = ${JSON.stringify(payload.platform)};
+    var __channelId = ${JSON.stringify(payload.channelId || "")};
+    var __teamId = ${JSON.stringify(payload.teamId || "")};
+
     async function selectAgent(agentId) {
       hideMessages();
       try {
-        var resp = await fetch('/settings/switch-agent', {
+        var body = { platform: __platform, channelId: __channelId };
+        if (__teamId) body.teamId = __teamId;
+        var resp = await fetch('/api/v1/agents/' + encodeURIComponent(agentId) + '/channels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId: agentId })
+          body: JSON.stringify(body)
         });
         var result = await resp.json();
         if (resp.ok) {
@@ -345,10 +324,12 @@ ${agents
       hideMessages();
 
       try {
-        var resp = await fetch('/settings/create-agent', {
+        var createBody = { agentId: agentId, name: name };
+        if (__channelId) createBody.channelId = __channelId;
+        var resp = await fetch('/api/v1/manage/agents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId: agentId, name: name })
+          body: JSON.stringify(createBody)
         });
         var result = await resp.json();
         if (resp.ok) {
@@ -412,9 +393,6 @@ export function renderSessionBootstrapPage(): string {
   </div>
   <script>
     (async function () {
-      var hash = window.location.hash ? window.location.hash.slice(1) : '';
-      var params = new URLSearchParams(hash);
-      var token = params.get('${SETTINGS_TOKEN_HASH_PARAM}') || params.get('token');
       var errorEl = document.getElementById('error');
       var statusEl = document.getElementById('status');
       var spinnerEl = document.getElementById('spinner');
@@ -425,6 +403,54 @@ export function renderSessionBootstrapPage(): string {
         errorEl.style.display = 'block';
         spinnerEl.style.display = 'none';
       }
+
+      function redirectToSettings() {
+        var url = new URL(window.location.href);
+        url.hash = '';
+        url.search = '';
+        window.history.replaceState({}, '', url.pathname);
+        window.location.replace('/settings');
+      }
+
+      // Path A: Telegram WebApp initData (stable URLs, no token needed)
+      var qp = new URLSearchParams(window.location.search);
+      var chatId = qp.get('chat');
+      var isTelegramUrl = qp.get('platform') === 'telegram' && chatId;
+
+      if (isTelegramUrl) {
+        // Telegram injects initData as #tgWebAppData=<url-encoded-initData>&...
+        var hashStr = window.location.hash ? window.location.hash.slice(1) : '';
+        var hashParams = new URLSearchParams(hashStr);
+        var initData = hashParams.get('tgWebAppData') || '';
+
+        if (!initData) {
+          showError('Could not authenticate with Telegram. Please open this link using the button in Telegram, not as a regular URL.');
+          return;
+        }
+
+        try {
+          var resp = await fetch('/settings/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initData: initData, chatId: chatId })
+          });
+          if (resp.ok) {
+            redirectToSettings();
+            return;
+          }
+          var result = await resp.json().catch(function () { return {}; });
+          showError(result.error || 'Telegram authentication failed.');
+          return;
+        } catch (e) {
+          showError('Network error while authenticating.');
+          return;
+        }
+      }
+
+      // Path B: Token-based authentication (existing flow)
+      var hash = window.location.hash ? window.location.hash.slice(1) : '';
+      var params = new URLSearchParams(hash);
+      var token = params.get('${SETTINGS_TOKEN_HASH_PARAM}') || params.get('token');
 
       if (!token) {
         showError('Missing settings link token. Request a new link with /configure.');
@@ -444,11 +470,7 @@ export function renderSessionBootstrapPage(): string {
           return;
         }
 
-        var url = new URL(window.location.href);
-        url.hash = '';
-        url.search = '';
-        window.history.replaceState({}, '', url.pathname);
-        window.location.replace('/settings');
+        redirectToSettings();
       } catch (error) {
         showError('Network error while securing session.');
       }

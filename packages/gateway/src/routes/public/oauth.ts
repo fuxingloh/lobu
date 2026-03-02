@@ -6,13 +6,12 @@
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ClaudeOAuthStateStore } from "../../auth/oauth/state-store";
-import type { AgentSettingsStore } from "../../auth/settings";
 import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 import { verifySettingsSession } from "./settings-auth";
 
-const TAG = "OAuth";
-const ErrorResponse = z.object({ error: z.string() });
+const TAG = "Auth";
 const SuccessResponse = z.object({ success: z.boolean() });
+const ErrorResponse = z.object({ error: z.string() });
 
 export interface ProviderCredentialStore {
   hasCredentials(agentId: string): Promise<boolean>;
@@ -33,7 +32,7 @@ export interface ProviderOAuthClient {
 
 const codeExchangeRoute = createRoute({
   method: "post",
-  path: "/providers/{provider}/code",
+  path: "/{provider}/code",
   tags: [TAG],
   summary: "Exchange OAuth code for token",
   request: {
@@ -63,36 +62,10 @@ const codeExchangeRoute = createRoute({
   },
 });
 
-const providerLogoutRoute = createRoute({
-  method: "post",
-  path: "/providers/{provider}/logout",
-  tags: [TAG],
-  summary: "Disconnect OAuth provider",
-  request: {
-    query: z.object({ token: z.string().optional() }),
-    params: z.object({ provider: z.string() }),
-  },
-  responses: {
-    200: {
-      description: "Disconnected",
-      content: { "application/json": { schema: SuccessResponse } },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorResponse } },
-    },
-    404: {
-      description: "Not found",
-      content: { "application/json": { schema: ErrorResponse } },
-    },
-  },
-});
-
 export interface OAuthRoutesConfig {
   providerStores?: Record<string, ProviderCredentialStore>;
   oauthClients?: Record<string, ProviderOAuthClient>;
   oauthStateStore?: ClaudeOAuthStateStore;
-  agentSettingsStore: AgentSettingsStore;
 }
 
 export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
@@ -106,7 +79,7 @@ export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
   };
 
   // --- Provider login redirect (excluded from docs) ---
-  app.get("/providers/:provider/login", async (c) => {
+  app.get("/:provider/login", async (c) => {
     const payload = verifyToken(verifySettingsSession(c));
     if (!payload) return c.json({ error: "Unauthorized" }, 401);
 
@@ -166,19 +139,6 @@ export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
         400
       );
     }
-  });
-
-  // --- Provider logout ---
-  app.openapi(providerLogoutRoute, async (c): Promise<any> => {
-    const payload = verifyToken(verifySettingsSession(c));
-    if (!payload) return c.json({ error: "Unauthorized" }, 401);
-
-    const { provider } = c.req.valid("param");
-    const store = config.providerStores?.[provider];
-    if (!store) return c.json({ error: "Unknown provider" }, 404);
-
-    await store.deleteCredentials(payload.agentId);
-    return c.json({ success: true });
   });
 
   return app;

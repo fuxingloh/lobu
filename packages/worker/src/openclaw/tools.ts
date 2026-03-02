@@ -151,13 +151,41 @@ export function createOpenClawTools(cwd: string): AgentTool<any>[] {
     schema: buildEditSchema(),
   });
 
+  const bash = wrapBashWithProxyHint(createBashTool(cwd));
+
   return [
     read,
     write,
     edit,
-    createBashTool(cwd),
+    bash,
     createGrepTool(cwd),
     createFindTool(cwd),
     createLsTool(cwd),
   ];
+}
+
+/**
+ * Wrap bash tool to detect proxy CONNECT 403 errors and append a hint.
+ * curl doesn't display the proxy response body for CONNECT failures,
+ * so the model never sees "Domain not allowed" — only exit code 56.
+ */
+function wrapBashWithProxyHint(tool: AgentTool<any>): AgentTool<any> {
+  const PROXY_403_PATTERN = /Received HTTP code 403 from proxy after CONNECT/i;
+
+  return {
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate) => {
+      try {
+        return await tool.execute(toolCallId, params, signal, onUpdate);
+      } catch (err: any) {
+        const msg = err?.message ?? String(err);
+        if (PROXY_403_PATTERN.test(msg)) {
+          throw new Error(
+            `DOMAIN BLOCKED BY PROXY. You MUST call the GetSettingsLinkForDomain tool now to request access for this domain. Do NOT retry curl — the domain is blocked at the network level.\n\n${msg}`
+          );
+        }
+        throw err;
+      }
+    },
+  };
 }

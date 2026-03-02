@@ -10,17 +10,21 @@
  */
 
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { createLogger } from "@lobu/core";
+import { encrypt } from "@lobu/core";
 import type {
   AgentMetadata,
   AgentMetadataStore,
 } from "../../auth/agent-metadata-store";
 import { collectProviderModelOptions } from "../../auth/provider-model-options";
 import type { AgentSettingsStore } from "../../auth/settings";
-import { verifySettingsToken } from "../../auth/settings/token-service";
+import {
+  type SettingsTokenPayload,
+  verifySettingsToken,
+} from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
 import { getModelProviderModules } from "../../modules/module-system";
+import { verifyTelegramWebAppData } from "../../telegram/webapp-auth";
 import {
   clearSettingsSessionCookie,
   setSettingsSessionCookie,
@@ -33,8 +37,6 @@ import {
   renderSessionBootstrapPage,
   renderSettingsPage,
 } from "./settings-page";
-
-const logger = createLogger("settings-routes");
 
 export interface SettingsPageConfig {
   agentSettingsStore: AgentSettingsStore;
@@ -68,8 +70,59 @@ export function createSettingsPageRoutes(
 
   app.post("/settings/session", async (c) => {
     const body = await c.req
-      .json<{ token?: string }>()
-      .catch((): { token?: string } => ({}));
+      .json<{ token?: string; initData?: string; chatId?: string }>()
+      .catch(
+        (): { token?: string; initData?: string; chatId?: string } => ({})
+      );
+
+    // Path A: Telegram WebApp initData authentication
+    if (body.initData) {
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      if (!botToken) {
+        return c.json({ error: "Telegram not configured" }, 500);
+      }
+
+      const chatId = (body.chatId ?? "").trim();
+      if (!chatId) {
+        return c.json({ error: "Missing chatId" }, 400);
+      }
+
+      const webAppData = verifyTelegramWebAppData(body.initData, botToken);
+      if (!webAppData) {
+        clearSettingsSessionCookie(c);
+        return c.json({ error: "Invalid or expired Telegram data" }, 401);
+      }
+
+      const userId = String(webAppData.user.id);
+
+      // DM validation: chatId must equal userId
+      const chatIdNum = Number(chatId);
+      if (chatIdNum > 0 && chatId !== userId) {
+        return c.json({ error: "Chat ID mismatch" }, 403);
+      }
+
+      // Build a synthetic payload (1-hour session, matching token-based flow)
+      const sessionTtlMs = 60 * 60 * 1000;
+      const payload: SettingsTokenPayload = {
+        userId,
+        platform: "telegram",
+        channelId: chatId,
+        exp: Date.now() + sessionTtlMs,
+      };
+
+      // Encrypt payload into a token for the session cookie
+      const syntheticToken = encrypt(JSON.stringify(payload));
+
+      const sessionSet = setSettingsSessionCookie(c, syntheticToken, payload);
+      if (!sessionSet) {
+        clearSettingsSessionCookie(c);
+        return c.json({ error: "Failed to create session" }, 500);
+      }
+
+      return c.json({ success: true });
+    }
+
+    // Path B: Existing token-based authentication
     const token = (body.token ?? "").trim();
     if (!token) return c.json({ error: "Missing token" }, 400);
 
@@ -227,222 +280,6 @@ export function createSettingsPageRoutes(
         hasChannelId: !!payload.channelId,
       })
     );
-  });
-
-  // PATCH /settings/update-agent - Update agent name/description
-  app.patch("/settings/update-agent", async (c) => {
-    const payload = verifySettingsSession(c);
-    if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
-
-    let agentId = payload.agentId;
-    if (!agentId && payload.channelId) {
-      const binding = await config.channelBindingService.getBinding(
-        payload.platform,
-        payload.channelId,
-        payload.teamId
-      );
-      if (binding) agentId = binding.agentId;
-    }
-    if (!agentId) return c.json({ error: "No agent resolved" }, 400);
-
-    try {
-      const body = await c.req.json<{ name?: string; description?: string }>();
-      const updates: { name?: string; description?: string } = {};
-
-      if (body.name !== undefined) {
-        const name = body.name.trim();
-        if (!name || name.length > 100) {
-          return c.json({ error: "Name must be 1-100 characters" }, 400);
-        }
-        updates.name = name;
-      }
-
-      if (body.description !== undefined) {
-        const desc = body.description.trim();
-        if (desc.length > 200) {
-          return c.json(
-            { error: "Description must be at most 200 characters" },
-            400
-          );
-        }
-        updates.description = desc;
-      }
-
-      if (Object.keys(updates).length === 0) {
-        return c.json({ error: "No fields to update" }, 400);
-      }
-
-      await config.agentMetadataStore.updateMetadata(agentId, updates);
-      logger.info(`Updated agent identity for ${agentId}`);
-      return c.json({ success: true });
-    } catch (error) {
-      logger.error("Failed to update agent identity", { error });
-      return c.json({ error: "Failed to update agent identity" }, 500);
-    }
-  });
-
-  // POST /settings/switch-agent - Switch channel binding to a different agent
-  app.post("/settings/switch-agent", async (c) => {
-    const payload = verifySettingsSession(c);
-    if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
-
-    if (!payload.channelId) {
-      return c.json({ error: "Token has no channel context" }, 400);
-    }
-
-    try {
-      const body = await c.req.json<{ agentId: string }>();
-      if (!body.agentId) return c.json({ error: "Missing agentId" }, 400);
-
-      // Verify user owns the agent
-      const owns = await config.userAgentsStore.ownsAgent(
-        payload.platform,
-        payload.userId,
-        body.agentId
-      );
-      if (!owns) {
-        const metadata = await config.agentMetadataStore.getMetadata(
-          body.agentId
-        );
-        if (!metadata?.isWorkspaceAgent) {
-          return c.json({ error: "Agent not found or not owned by you" }, 404);
-        }
-      }
-
-      // Check channel-per-agent limit
-      const maxChannels = parseInt(
-        process.env.MAX_CHANNELS_PER_AGENT || "0",
-        10
-      );
-      if (maxChannels > 0) {
-        const bindings = await config.channelBindingService.listBindings(
-          body.agentId
-        );
-        // Don't count the current binding if it's already bound to this agent
-        const existingBinding = await config.channelBindingService.getBinding(
-          payload.platform,
-          payload.channelId,
-          payload.teamId
-        );
-        const effectiveCount =
-          existingBinding?.agentId === body.agentId
-            ? bindings.length - 1
-            : bindings.length;
-        if (
-          effectiveCount >= maxChannels &&
-          existingBinding?.agentId !== body.agentId
-        ) {
-          return c.json(
-            { error: `Channel limit reached (${maxChannels}) for this agent.` },
-            429
-          );
-        }
-      }
-
-      // Create/update binding
-      await config.channelBindingService.createBinding(
-        body.agentId,
-        payload.platform,
-        payload.channelId,
-        payload.teamId,
-        { configuredBy: payload.userId }
-      );
-
-      // Update lastUsedAt
-      await config.agentMetadataStore.updateMetadata(body.agentId, {
-        lastUsedAt: Date.now(),
-      });
-
-      logger.info(
-        `Switched ${payload.platform}/${payload.channelId} to agent ${body.agentId}`
-      );
-
-      return c.json({ success: true, agentId: body.agentId });
-    } catch (error) {
-      logger.error("Failed to switch agent", { error });
-      return c.json({ error: "Failed to switch agent" }, 500);
-    }
-  });
-
-  // POST /settings/create-agent - Create new agent and optionally bind to channel
-  app.post("/settings/create-agent", async (c) => {
-    const payload = verifySettingsSession(c);
-    if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
-
-    try {
-      const body = await c.req.json<{
-        agentId: string;
-        name: string;
-        description?: string;
-      }>();
-
-      if (!body.agentId || !body.name) {
-        return c.json({ error: "agentId and name are required" }, 400);
-      }
-
-      // Sanitize agentId
-      const agentId = body.agentId.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-      if (
-        agentId.length < 3 ||
-        agentId.length > 40 ||
-        !/^[a-z]/.test(agentId)
-      ) {
-        return c.json({ error: "Invalid agent ID format" }, 400);
-      }
-
-      // Check if exists
-      const exists = await config.agentMetadataStore.hasAgent(agentId);
-      if (exists) {
-        return c.json({ error: "Agent ID already taken" }, 409);
-      }
-
-      // Check per-user limit
-      const maxAgents = parseInt(process.env.MAX_AGENTS_PER_USER || "0", 10);
-      if (maxAgents > 0) {
-        const userAgents = await config.userAgentsStore.listAgents(
-          payload.platform,
-          payload.userId
-        );
-        if (userAgents.length >= maxAgents) {
-          return c.json({ error: `Agent limit reached (${maxAgents})` }, 429);
-        }
-      }
-
-      // Create agent
-      await config.agentMetadataStore.createAgent(
-        agentId,
-        body.name,
-        payload.platform,
-        payload.userId,
-        { description: body.description }
-      );
-      await config.agentSettingsStore.saveSettings(agentId, {});
-      await config.userAgentsStore.addAgent(
-        payload.platform,
-        payload.userId,
-        agentId
-      );
-
-      // Bind to channel if available
-      if (payload.channelId) {
-        await config.channelBindingService.createBinding(
-          agentId,
-          payload.platform,
-          payload.channelId,
-          payload.teamId,
-          { configuredBy: payload.userId }
-        );
-      }
-
-      logger.info(
-        `Created agent ${agentId}${payload.channelId ? ` and bound to ${payload.platform}/${payload.channelId}` : ""}`
-      );
-
-      return c.json({ success: true, agentId });
-    } catch (error) {
-      logger.error("Failed to create agent", { error });
-      return c.json({ error: "Failed to create agent" }, 500);
-    }
   });
 
   return app;

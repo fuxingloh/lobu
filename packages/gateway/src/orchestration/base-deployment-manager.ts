@@ -877,7 +877,7 @@ export abstract class BaseDeploymentManager {
           batch.map((name) => this.deleteWorkerDeployment(name))
         );
         for (let j = 0; j < results.length; j++) {
-          if (results[j]!.status === "fulfilled") {
+          if (results[j]?.status === "fulfilled") {
             processedCount++;
           } else {
             logger.error(
@@ -895,7 +895,7 @@ export abstract class BaseDeploymentManager {
           batch.map((name) => this.scaleDeployment(name, 0))
         );
         for (let j = 0; j < results.length; j++) {
-          if (results[j]!.status === "fulfilled") {
+          if (results[j]?.status === "fulfilled") {
             processedCount++;
           } else {
             logger.error(

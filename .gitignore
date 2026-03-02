@@ -47,5 +47,8 @@ dump.rdb
 # Auto-generated settings CSS
 packages/gateway/src/routes/public/settings-page-styles.ts
 
+# Auto-generated history page JS bundle
+packages/gateway/src/routes/public/history-page-bundle.ts
+
 # Accidental clipboard artifacts
 pbcopy

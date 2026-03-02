@@ -288,3 +288,14 @@ export function buildSettingsUrl(token: string): string {
   // Keep the token in URL hash so it never appears in server logs/referrers.
   return `${baseUrl}/settings#${SETTINGS_TOKEN_HASH_PARAM}=${encodeURIComponent(token)}`;
 }
+
+/**
+ * Build a stable (tokenless) settings URL for Telegram WebApp buttons.
+ *
+ * Authentication happens via Telegram's `initData` (HMAC-signed by bot token),
+ * so the URL never expires and can be reused across button taps.
+ */
+export function buildTelegramSettingsUrl(chatId: string): string {
+  const baseUrl = process.env.PUBLIC_GATEWAY_URL || "http://localhost:8080";
+  return `${baseUrl}/settings?platform=telegram&chat=${encodeURIComponent(chatId)}`;
+}

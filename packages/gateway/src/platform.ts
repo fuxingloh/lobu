@@ -16,6 +16,7 @@ import type { ChannelBindingService } from "./channels";
 import type { WorkerGateway } from "./gateway";
 import type { IMessageQueue, QueueProducer } from "./infrastructure/queue";
 import type { InteractionService } from "./interactions";
+import type { GrantStore } from "./permissions/grant-store";
 import type { IFileHandler } from "./platform/file-handler";
 import type { ResponseRenderer } from "./platform/response-renderer";
 import type { SecretProxy } from "./proxy/secret-proxy";
@@ -50,6 +51,7 @@ export interface CoreServices {
   getAgentMetadataStore(): AgentMetadataStore;
   getAdminStatusCache(): AdminStatusCache;
   getCommandRegistry(): CommandRegistry;
+  getGrantStore(): GrantStore | undefined;
 }
 
 // ============================================================================

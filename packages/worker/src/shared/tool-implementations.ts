@@ -522,14 +522,17 @@ export async function installExtension(
 
       const body: Record<string, unknown> = {
         reason,
+        label: `Install ${mcp.name}`,
         prefillMcpServers: [mcp.prefillMcpServer],
       };
       if (args.envVars?.length) body.prefillEnvVars = args.envVars;
       if (args.nixPackages?.length) body.prefillNixPackages = args.nixPackages;
 
       interface SettingsLinkResult {
-        url: string;
-        expiresAt: string;
+        url?: string;
+        expiresAt?: string;
+        type?: string;
+        message?: string;
       }
 
       const { data, error } = await gatewayFetch<SettingsLinkResult>(
@@ -540,9 +543,15 @@ export async function installExtension(
       );
       if (error) return error;
 
+      if (data?.type === "settings_link") {
+        return textResult(
+          `An install button for "${mcp.name}" has been sent to the user. Do not include any URL. Ask them to tap the button to complete installation.`
+        );
+      }
+
       return textResult(
         `Install link generated for MCP server "${mcp.name}" (${mcp.id}).\n\n` +
-          `URL: ${data!.url}\n\n` +
+          `URL: ${data?.url}\n\n` +
           `Ask the user to open the link and confirm installation.`
       );
     }
@@ -552,14 +561,17 @@ export async function installExtension(
 
     const body: Record<string, unknown> = {
       reason,
+      label: "Install Skill",
       prefillSkills: [{ repo: args.id }],
     };
     if (args.envVars?.length) body.prefillEnvVars = args.envVars;
     if (args.nixPackages?.length) body.prefillNixPackages = args.nixPackages;
 
     interface SettingsLinkResult {
-      url: string;
-      expiresAt: string;
+      url?: string;
+      expiresAt?: string;
+      type?: string;
+      message?: string;
     }
 
     const { data, error } = await gatewayFetch<SettingsLinkResult>(
@@ -570,9 +582,15 @@ export async function installExtension(
     );
     if (error) return error;
 
+    if (data?.type === "settings_link") {
+      return textResult(
+        `An install button for skill "${args.id}" has been sent to the user. Do not include any URL. Ask them to tap the button to complete installation.`
+      );
+    }
+
     return textResult(
       `Install link generated for skill "${args.id}".\n\n` +
-        `URL: ${data!.url}\n\n` +
+        `URL: ${data?.url}\n\n` +
         `Ask the user to open the link and confirm installation.`
     );
   });
@@ -610,8 +628,10 @@ export async function getSettingsLink(
     logger.info(`GetSettingsLink: ${args.reason}`);
 
     interface SettingsLinkResult {
-      url: string;
-      expiresAt: string;
+      url?: string;
+      expiresAt?: string;
+      type?: string;
+      message?: string;
     }
 
     const { data, error } = await gatewayFetch<SettingsLinkResult>(
@@ -633,6 +653,22 @@ export async function getSettingsLink(
     );
     if (error) return error;
     const result = data!;
+
+    // Inline grant approval — buttons sent directly in chat
+    if (result.type === "inline_grant") {
+      logger.info("Inline grant approval sent to user");
+      return textResult(
+        "Approval buttons have been sent to the user in chat. Stop working and wait for the user's response — it will arrive as the next message. Do NOT continue until you receive the approval."
+      );
+    }
+
+    // Settings link sent as native platform button
+    if (result.type === "settings_link") {
+      logger.info("Settings link button sent to user");
+      return textResult(
+        "A settings button has been sent to the user in chat. Do not include any URL in your response. Ask the user to tap the button to configure their settings."
+      );
+    }
 
     logger.info(`Generated settings link: ${result.url}`);
 

@@ -18,6 +18,26 @@ import type { MessagePayload, QueuedMessage } from "./types";
 
 const logger = createLogger("sse-client");
 
+// --- Pending config change notifications ---
+
+interface ConfigChangeEntry {
+  category: string;
+  action: string;
+  summary: string;
+  details?: string[];
+}
+
+const pendingConfigNotifications: ConfigChangeEntry[] = [];
+
+/**
+ * Returns and clears all pending config change notifications.
+ * Called by the worker before building the next prompt.
+ */
+export function consumePendingConfigNotifications(): ConfigChangeEntry[] {
+  if (pendingConfigNotifications.length === 0) return [];
+  return pendingConfigNotifications.splice(0);
+}
+
 // Zod schemas for runtime validation of SSE event data
 const ConnectedEventSchema = z.object({
   deploymentName: z.string(),
@@ -99,17 +119,20 @@ export class GatewayClient {
   private messageBatcher: MessageBatcher;
   private eventErrorCount = 0;
   private eventErrorThreshold = 10;
+  private httpPort?: number;
 
   constructor(
     dispatcherUrl: string,
     workerToken: string,
     userId: string,
-    deploymentName: string
+    deploymentName: string,
+    httpPort?: number
   ) {
     this.dispatcherUrl = dispatcherUrl;
     this.workerToken = workerToken;
     this.userId = userId;
     this.deploymentName = deploymentName;
+    this.httpPort = httpPort;
     // Get initial traceId from environment (set by deployment)
     this.currentTraceId = process.env.TRACE_ID;
 
@@ -147,7 +170,9 @@ export class GatewayClient {
 
   private async connectAndListen(): Promise<void> {
     this.abortController = new AbortController();
-    const streamUrl = `${this.dispatcherUrl}/worker/stream`;
+    const streamUrl = this.httpPort
+      ? `${this.dispatcherUrl}/worker/stream?httpPort=${this.httpPort}`
+      : `${this.dispatcherUrl}/worker/stream`;
 
     logger.info(
       `Connecting to dispatcher at ${streamUrl} (attempt ${this.reconnectAttempts + 1})`
@@ -246,6 +271,24 @@ export class GatewayClient {
     }
   }
 
+  /**
+   * Send a quick delivery receipt to the gateway confirming job was received.
+   * Fire-and-forget — don't block job processing on the receipt send.
+   */
+  private sendDeliveryReceipt(jobId: string): void {
+    const url = `${this.dispatcherUrl}/worker/response`;
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.workerToken}`,
+      },
+      body: JSON.stringify({ jobId, received: true }),
+    }).catch((err) => {
+      logger.warn(`Failed to send delivery receipt for job ${jobId}:`, err);
+    });
+  }
+
   private async handleReconnect(): Promise<void> {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       logger.error("Max reconnection attempts reached, giving up");
@@ -321,6 +364,22 @@ export class GatewayClient {
           "../openclaw/session-context"
         );
         invalidateSessionContextCache();
+
+        // Parse and queue config change notifications for the next prompt
+        try {
+          const parsed = JSON.parse(data);
+          const changes = Array.isArray(parsed?.changes)
+            ? (parsed.changes as ConfigChangeEntry[])
+            : [];
+          if (changes.length > 0) {
+            pendingConfigNotifications.push(...changes);
+            logger.info(
+              `Queued ${changes.length} config change notification(s)`
+            );
+          }
+        } catch {
+          // Backward compat: old gateway may send empty or invalid payload
+        }
         return;
       }
 
@@ -338,6 +397,15 @@ export class GatewayClient {
             throw new Error(
               `Job event validation failed: ${validationResult.error.message}`
             );
+          }
+
+          // Send delivery receipt immediately so the gateway knows
+          // the job was actually received (not lost to a stale SSE connection).
+          // jobId is at the top level of the SSE event (set by job-router),
+          // not inside the validated payload.
+          const jobId = parsedData.jobId as string | undefined;
+          if (jobId) {
+            this.sendDeliveryReceipt(jobId);
           }
 
           // Zod validates structure but passthrough allows extra fields

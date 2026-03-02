@@ -1,8 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./src/routes/public/settings-page.ts"],
+  content: [
+    "./src/routes/public/settings-page/**/*.{ts,tsx}",
+    "./src/routes/public/history-page/**/*.{ts,tsx}",
+  ],
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [require("@tailwindcss/typography")],
 };

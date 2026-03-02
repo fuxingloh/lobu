@@ -218,7 +218,7 @@ export class SecretProxy {
       const auth = headers.authorization || headers.Authorization;
       if (auth) {
         const parts = auth.split(" ");
-        if (parts.length === 2 && parts[0]!.toLowerCase() === "bearer") {
+        if (parts.length === 2 && parts[0]?.toLowerCase() === "bearer") {
           const swapped = await this.swap(parts[1]!);
           const headerName = headers.authorization
             ? "authorization"

@@ -37,5 +37,11 @@
     }
   },
   "include": ["packages/*/src/**/*", "src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "packages/*/src/__tests__/**/*"]
+  "exclude": [
+    "node_modules",
+    "packages/*/src/__tests__/**/*",
+    "packages/landing/**/*",
+    "packages/gateway/src/routes/public/settings-page/**/*",
+    "packages/gateway/src/routes/public/history-page/**/*"
+  ]
 }

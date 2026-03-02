@@ -56,6 +56,8 @@ export class TelegramPlatform implements PlatformAdapter {
   private running = false;
   private useWebhook = false;
   private webhookRoute?: Hono;
+  private statusMessages = new Map<string, number>();
+  private statusTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly config: TelegramPlatformConfig,
@@ -96,10 +98,21 @@ export class TelegramPlatform implements PlatformAdapter {
       this.messageHandler?.storeOutgoingMessage(chatKey, text);
     });
 
+    // Wire up status message callbacks for response renderer
+    this.responseRenderer.setClearStatusCallback((chatId, conversationId) =>
+      this.clearStatusMessage(chatId, conversationId)
+    );
+    this.responseRenderer.setEditStatusCallback(
+      (chatId, conversationId, text) =>
+        this.editStatusMessage(chatId, conversationId, text)
+    );
+
     // Create interaction renderer
     this.interactionRenderer = new TelegramInteractionRenderer(
       this.bot,
-      services.getInteractionService()
+      services.getInteractionService(),
+      services.getGrantStore(),
+      services.getQueueProducer()
     );
 
     // Register interaction callback handler
@@ -114,6 +127,11 @@ export class TelegramPlatform implements PlatformAdapter {
     this.useWebhook = shouldUseWebhook(publicGatewayUrl);
 
     logger.info("Telegram auth adapter registered");
+
+    // Wire up status message sending for message handler
+    this.messageHandler.setStatusCallback((channelId, conversationId, status) =>
+      this.setThreadStatus(channelId, conversationId, status)
+    );
 
     // Wire up channel binding service
     const channelBindingService = services.getChannelBindingService();
@@ -310,15 +328,188 @@ export class TelegramPlatform implements PlatformAdapter {
 
   async setThreadStatus(
     channelId: string,
-    _conversationId: string,
+    conversationId: string,
     status: string | null
   ): Promise<void> {
-    if (status && this.bot) {
+    const chatId = Number(channelId);
+    const key = `${channelId}:${conversationId}`;
+    const existingMsgId = this.statusMessages.get(key);
+
+    if (status) {
+      // Send typing action as supplementary indicator
       try {
-        await this.bot.api.sendChatAction(Number(channelId), "typing");
+        await this.bot.api.sendChatAction(chatId, "typing");
       } catch {
         // Ignore typing indicator errors
       }
+
+      if (existingMsgId) {
+        // Edit existing status message
+        try {
+          await this.bot.api.editMessageText(
+            chatId,
+            existingMsgId,
+            `⏳ ${status}`
+          );
+        } catch (err) {
+          const errStr = String(err);
+          if (!errStr.includes("message is not modified")) {
+            logger.debug(
+              { error: errStr, chatId },
+              "Failed to edit status message"
+            );
+          }
+        }
+      } else if (!this.statusTimers.has(key)) {
+        // Schedule status message after delay — skip if response arrives quickly
+        const timer = setTimeout(async () => {
+          this.statusTimers.delete(key);
+          // Double-check no response has arrived
+          if (this.statusMessages.has(key)) return;
+          try {
+            const sent = await this.bot.api.sendMessage(chatId, `⏳ ${status}`);
+            this.statusMessages.set(key, sent.message_id);
+          } catch (err) {
+            logger.debug(
+              { error: String(err), chatId },
+              "Failed to send status message"
+            );
+          }
+        }, 30_000);
+        this.statusTimers.set(key, timer);
+      }
+    } else {
+      // Clear status message
+      await this.clearStatusMessage(chatId, conversationId);
+    }
+  }
+
+  async clearStatusMessage(
+    chatId: number,
+    conversationId: string
+  ): Promise<void> {
+    const key = `${chatId}:${conversationId}`;
+
+    // Cancel pending timer if status message hasn't been sent yet
+    const timer = this.statusTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.statusTimers.delete(key);
+    }
+
+    const msgId = this.statusMessages.get(key);
+    if (!msgId) return;
+
+    this.statusMessages.delete(key);
+    try {
+      await this.bot.api.deleteMessage(chatId, msgId);
+    } catch (err) {
+      logger.debug(
+        { error: String(err), chatId },
+        "Failed to delete status message"
+      );
+    }
+  }
+
+  async editStatusMessage(
+    chatId: number,
+    conversationId: string,
+    text: string
+  ): Promise<void> {
+    const key = `${chatId}:${conversationId}`;
+    const msgId = this.statusMessages.get(key);
+    if (!msgId) return;
+
+    try {
+      await this.bot.api.editMessageText(chatId, msgId, `⏳ ${text}`);
+    } catch (err) {
+      const errStr = String(err);
+      if (!errStr.includes("message is not modified")) {
+        logger.debug(
+          { error: errStr, chatId },
+          "Failed to edit status message"
+        );
+      }
+    }
+
+    // Also send typing action
+    try {
+      await this.bot.api.sendChatAction(chatId, "typing");
+    } catch {
+      // Ignore
+    }
+  }
+
+  async renderAuthStatus(
+    userId: string,
+    providers: Array<{
+      id: string;
+      name: string;
+      isAuthenticated: boolean;
+      loginUrl?: string;
+    }>
+  ): Promise<void> {
+    const chatId = Number(userId);
+
+    const lines = ["<b>MCP Connection Status</b>", ""];
+    const buttons: Array<{ text: string; url: string }> = [];
+
+    for (const provider of providers) {
+      if (provider.isAuthenticated) {
+        lines.push(`🟢 <b>${provider.name}</b> — Connected`);
+      } else {
+        lines.push(`🔴 <b>${provider.name}</b> — Not Connected`);
+        if (provider.loginUrl) {
+          buttons.push({
+            text: `Login to ${provider.name}`,
+            url: provider.loginUrl,
+          });
+        }
+      }
+    }
+
+    const message = lines.join("\n");
+
+    // Build inline keyboard with login buttons for unauthenticated providers
+    const inlineKeyboard = buttons.map((btn) => {
+      // Telegram rejects inline keyboard URLs for localhost
+      let useWebApp = true;
+      try {
+        const u = new URL(btn.url);
+        if (
+          u.hostname === "localhost" ||
+          u.hostname === "127.0.0.1" ||
+          u.hostname === "::1"
+        ) {
+          useWebApp = false;
+        }
+      } catch {
+        useWebApp = false;
+      }
+
+      return [
+        useWebApp
+          ? { text: btn.text, web_app: { url: btn.url } }
+          : { text: btn.text, url: btn.url },
+      ];
+    });
+
+    try {
+      await this.bot.api.sendMessage(chatId, message, {
+        parse_mode: "HTML",
+        ...(inlineKeyboard.length > 0 && {
+          reply_markup: { inline_keyboard: inlineKeyboard },
+        }),
+      });
+      logger.info(
+        { chatId, providerCount: providers.length },
+        "Rendered auth status"
+      );
+    } catch (err) {
+      logger.error(
+        { error: String(err), chatId },
+        "Failed to render auth status"
+      );
     }
   }
 

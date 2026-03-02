@@ -223,7 +223,9 @@ export class SlackPlatform implements PlatformAdapter {
     // Create interaction renderer (needs messageHandler from event handlers)
     this.interactionRenderer = new SlackInteractionRenderer(
       this.app.client,
-      interactionService
+      interactionService,
+      services.getGrantStore(),
+      services.getQueueProducer()
     );
     logger.info("✅ Slack interaction renderer initialized");
 
@@ -242,9 +244,23 @@ export class SlackPlatform implements PlatformAdapter {
     logger.info("✅ Stream stop hook registered for interactions");
 
     // Register interaction button handlers
-    const { registerInteractionHandlers } = await import("./interactions");
+    const { registerInteractionHandlers, registerGrantHandlers } = await import(
+      "./interactions"
+    );
     registerInteractionHandlers(this.app, this.eventHandlers.messageHandler);
     logger.info("✅ Interaction button handlers registered");
+
+    // Register grant approval button handlers
+    const grantStore = services.getGrantStore();
+    if (grantStore && this.interactionRenderer) {
+      registerGrantHandlers(
+        this.app,
+        this.interactionRenderer,
+        grantStore,
+        services.getQueueProducer()
+      );
+      logger.info("✅ Grant button handlers registered");
+    }
 
     // Wire up channel binding service for agent routing
     const channelBindingService = services.getChannelBindingService();

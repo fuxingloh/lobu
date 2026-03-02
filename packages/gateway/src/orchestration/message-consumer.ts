@@ -468,7 +468,7 @@ export class MessageConsumer {
       const jobId = await this.queue.send(threadQueueName, data, {
         expireInSeconds: this.config.queues.expireInSeconds,
         retryLimit: this.config.queues.retryLimit,
-        retryDelay: this.config.queues.retryDelay,
+        retryDelay: 2, // 2 seconds — fast retry for stale connection recovery
         priority: 10, // Thread messages have high priority
       });
 

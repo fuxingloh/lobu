@@ -12,7 +12,10 @@ export interface CommandContext {
   conversationId?: string;
   agentId?: string;
   args: string;
-  reply: (text: string) => Promise<void>;
+  reply: (
+    text: string,
+    options?: { url?: string; urlLabel?: string }
+  ) => Promise<void>;
   platform: string;
 }
 

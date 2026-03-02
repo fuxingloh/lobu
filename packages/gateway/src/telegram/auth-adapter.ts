@@ -6,11 +6,7 @@
 import { createLogger } from "@lobu/core";
 import type { Bot } from "grammy";
 import type { AuthProvider, PlatformAuthAdapter } from "../auth/platform-auth";
-import {
-  buildSettingsUrl,
-  formatSettingsTokenTtl,
-  generateSettingsToken,
-} from "../auth/settings/token-service";
+import { buildTelegramSettingsUrl } from "../auth/settings/token-service";
 
 const logger = createLogger("telegram-auth-adapter");
 
@@ -34,11 +30,8 @@ export class TelegramAuthAdapter implements PlatformAuthAdapter {
     const chatId = Number(
       (platformMetadata?.chatId as string | number) || channelId
     );
-    const agentId = (platformMetadata?.agentId as string) || channelId;
 
-    const token = generateSettingsToken(agentId, userId, "telegram");
-    const settingsUrl = buildSettingsUrl(token);
-    const ttlLabel = formatSettingsTokenTtl();
+    const settingsUrl = buildTelegramSettingsUrl(String(chatId));
 
     // Telegram rejects inline keyboard URLs for localhost; fall back to plain text
     let includeButton = true;
@@ -61,8 +54,6 @@ export class TelegramAuthAdapter implements PlatformAuthAdapter {
           "",
           "You need to add a model provider to use this bot.",
           "Tap the button below to configure.",
-          "",
-          `<i>Link expires in ${ttlLabel}.</i>`,
         ].join("\n")
       : [
           "<b>Setup Required</b>",
@@ -71,8 +62,6 @@ export class TelegramAuthAdapter implements PlatformAuthAdapter {
           "Configure it using this link:",
           "",
           settingsUrl,
-          "",
-          `<i>Link expires in ${ttlLabel}.</i>`,
         ].join("\n");
 
     try {
@@ -80,11 +69,13 @@ export class TelegramAuthAdapter implements PlatformAuthAdapter {
         parse_mode: "HTML",
         ...(includeButton && {
           reply_markup: {
-            inline_keyboard: [[{ text: "Open Settings", url: settingsUrl }]],
+            inline_keyboard: [
+              [{ text: "Open Settings", web_app: { url: settingsUrl } }],
+            ],
           },
         }),
       });
-      logger.info({ chatId, userId, agentId }, "Sent settings link");
+      logger.info({ chatId, userId }, "Sent settings link");
     } catch (error) {
       logger.error({ error, chatId }, "Failed to send settings link");
       throw error;

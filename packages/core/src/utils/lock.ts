@@ -38,7 +38,7 @@ export class AsyncLock {
     timeoutMs: number = 30000
   ): Promise<T> {
     const currentLock = this.lock;
-    let releaseLock: () => void;
+    let releaseLock: (() => void) | undefined;
 
     // Create new lock that will be released when fn completes
     this.lock = new Promise<void>((resolve) => {
@@ -63,7 +63,7 @@ export class AsyncLock {
       return await fn();
     } finally {
       // Always release lock, even on error
-      releaseLock!();
+      releaseLock?.();
     }
   }
 }

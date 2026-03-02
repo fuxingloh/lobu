@@ -79,7 +79,7 @@ export const SlackPanel: React.FC<SlackPanelProps> = ({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamedText]);
+  }, []);
 
   return (
     <div

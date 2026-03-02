@@ -9,6 +9,7 @@
 - Gateway: Slack → `src/slack/`, Telegram → `src/telegram/`, orchestration → `src/orchestration/`, future platforms → `src/dispatcher/{platform}/`
 - Worker: Platform-agnostic, agent logic isolated to `src/openclaw/`
 - Core: Shared interfaces, utils, types for gateway+worker
+- **Platform isolation**: InteractionService events (e.g. `link-button:created`) carry an explicit `platform` field. Each platform renderer MUST filter on its own platform identity (`platform === "telegram"`, `platform === "slack"`). Never reference another platform's identifier — a Slack renderer must not check `teamId === "telegram"` or vice versa.
 
 ### Repository Layout
 - Monorepo managed by Bun workspaces: `packages/gateway`, `packages/worker`, `packages/core`.

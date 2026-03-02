@@ -9,11 +9,14 @@ import { createLogger, verifyWorkerToken } from "@lobu/core";
 import { Hono } from "hono";
 import {
   buildSettingsUrl,
+  buildTelegramSettingsUrl,
   generateSettingsToken,
   getSettingsTokenTtlMs,
   type PrefillMcpServer,
   type PrefillSkill,
 } from "../../auth/settings/token-service";
+import type { InteractionService } from "../../interactions";
+import type { GrantStore } from "../../permissions/grant-store";
 
 const logger = createLogger("internal-settings-link-routes");
 
@@ -34,7 +37,10 @@ type WorkerContext = {
 /**
  * Create internal settings link routes (Hono)
  */
-export function createSettingsLinkRoutes(): Hono<WorkerContext> {
+export function createSettingsLinkRoutes(
+  interactionService?: InteractionService,
+  grantStore?: GrantStore
+): Hono<WorkerContext> {
   const router = new Hono<WorkerContext>();
 
   // Worker authentication middleware
@@ -76,6 +82,7 @@ export function createSettingsLinkRoutes(): Hono<WorkerContext> {
       const {
         reason,
         message,
+        label,
         prefillEnvVars,
         prefillSkills,
         prefillMcpServers,
@@ -84,6 +91,7 @@ export function createSettingsLinkRoutes(): Hono<WorkerContext> {
       } = body as {
         reason?: string;
         message?: string;
+        label?: string;
         prefillEnvVars?: string[];
         prefillSkills?: PrefillSkill[];
         prefillMcpServers?: PrefillMcpServer[];
@@ -113,6 +121,68 @@ export function createSettingsLinkRoutes(): Hono<WorkerContext> {
         prefillGrantsCount: prefillGrants?.length || 0,
       });
 
+      // Domain-only requests can use inline approval buttons
+      const isDomainOnly =
+        prefillGrants &&
+        prefillGrants.length > 0 &&
+        !prefillSkills?.length &&
+        !prefillMcpServers?.length &&
+        !prefillEnvVars?.length &&
+        !prefillNixPackages?.length;
+
+      if (isDomainOnly && interactionService && grantStore) {
+        logger.info("Using inline grant approval", {
+          agentId,
+          domains: prefillGrants,
+        });
+
+        await interactionService.postGrantRequest(
+          userId,
+          agentId,
+          worker.conversationId,
+          worker.channelId,
+          worker.teamId,
+          prefillGrants,
+          reason || "Domain access requested"
+        );
+
+        return c.json({
+          type: "inline_grant",
+          message:
+            "Approval buttons sent to user in chat. The user will approve or deny the request.",
+        });
+      }
+
+      // Telegram plain "Open Settings" links use stable URLs (no token needed)
+      const hasPrefillData =
+        prefillSkills?.length ||
+        prefillMcpServers?.length ||
+        prefillEnvVars?.length ||
+        prefillNixPackages?.length ||
+        prefillGrants?.length ||
+        message;
+
+      if (platform === "telegram" && !hasPrefillData && interactionService) {
+        const stableUrl = buildTelegramSettingsUrl(worker.channelId);
+        const buttonLabel = label || "Open Settings";
+
+        await interactionService.postLinkButton(
+          userId,
+          worker.conversationId,
+          worker.channelId,
+          worker.teamId,
+          platform,
+          stableUrl,
+          buttonLabel,
+          "settings"
+        );
+
+        return c.json({
+          type: "settings_link",
+          message: "Settings link sent as a button to the user.",
+        });
+      }
+
       // Generate token with configured TTL (defaults to 1 hour)
       const ttlMs = getSettingsTokenTtlMs();
       const token = generateSettingsToken(agentId, userId, platform, {
@@ -137,6 +207,36 @@ export function createSettingsLinkRoutes(): Hono<WorkerContext> {
 
       logger.info("Settings link generated", { agentId, userId, expiresAt });
 
+      // Fire link button event so platforms render natively
+      if (interactionService) {
+        const buttonLabel =
+          label ||
+          (prefillMcpServers?.length
+            ? `Install ${prefillMcpServers[0]?.name || "MCP Server"}`
+            : prefillSkills?.length
+              ? "Install Skill"
+              : "Open Settings");
+
+        await interactionService.postLinkButton(
+          userId,
+          worker.conversationId,
+          worker.channelId,
+          worker.teamId,
+          platform,
+          url,
+          buttonLabel,
+          prefillSkills?.length || prefillMcpServers?.length
+            ? "install"
+            : "settings"
+        );
+
+        return c.json({
+          type: "settings_link",
+          message: "Settings link sent as a button to the user.",
+        });
+      }
+
+      // Fallback: no interaction service (shouldn't happen in practice)
       return c.json({
         url,
         expiresAt,

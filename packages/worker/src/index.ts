@@ -6,6 +6,7 @@ const logger = createLogger("worker");
 
 import { setupWorkspaceEnv } from "./core/workspace";
 import { GatewayClient } from "./gateway/sse-client";
+import { startWorkerHttpServer, stopWorkerHttpServer } from "./server";
 
 /**
  * Main entry point for gateway-based persistent worker
@@ -65,6 +66,10 @@ async function main() {
 
     setupWorkspaceEnv(deploymentName);
 
+    // Start HTTP server before connecting to gateway
+    const httpPort = await startWorkerHttpServer();
+    logger.info(`Worker HTTP server started on port ${httpPort}`);
+
     // Initialize gateway client directly
     logger.info(`🚀 Starting Gateway-based Persistent Worker`);
     logger.info(`- User ID: ${userId}`);
@@ -75,7 +80,8 @@ async function main() {
       dispatcherUrl,
       workerToken,
       userId,
-      deploymentName
+      deploymentName,
+      httpPort
     );
 
     logger.info("🔌 Connecting to dispatcher...");
@@ -86,12 +92,14 @@ async function main() {
     process.on("SIGTERM", async () => {
       logger.info("Received SIGTERM, shutting down gateway worker...");
       await gatewayClient.stop();
+      await stopWorkerHttpServer();
       process.exit(0);
     });
 
     process.on("SIGINT", async () => {
       logger.info("Received SIGINT, shutting down gateway worker...");
       await gatewayClient.stop();
+      await stopWorkerHttpServer();
       process.exit(0);
     });
 
