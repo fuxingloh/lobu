@@ -172,8 +172,8 @@ export function HeroSection() {
           class="text-lg max-w-xl mx-auto mb-8 leading-relaxed"
           style={{ color: "var(--color-page-text-muted)" }}
         >
-          Multi-user agent infrastructure with BYO keys, per-agent context, and
-          sandboxed execution. Deploy to Telegram, Slack, or your own API.
+          Deploy Lobu, and it spins up sandboxed OpenClaw agents on demand for
+          every user and channel — with your own keys.
         </p>
 
         {/* CTA buttons */}
