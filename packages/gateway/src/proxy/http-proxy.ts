@@ -405,9 +405,8 @@ export function isHostnameAllowed(
  * Extract hostname from CONNECT request
  */
 function extractConnectHostname(url: string): string | null {
-  // CONNECT requests: "host:port", sometimes with leading "/" on some runtimes
-  const cleaned = url.startsWith("/") ? url.slice(1) : url;
-  const match = cleaned.match(/^([^:]+):\d+$/);
+  // CONNECT requests are in format: "host:port"
+  const match = url.match(/^([^:]+):\d+$/);
   return match?.[1] ? match[1] : null;
 }
 
@@ -560,13 +559,6 @@ async function handleProxyRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  // Some runtimes (Bun on Linux) route CONNECT through the request handler
-  // instead of the 'connect' event. Delegate to handleConnect.
-  if (req.method === "CONNECT") {
-    await handleConnect(req, req.socket, Buffer.alloc(0));
-    return;
-  }
-
   const targetUrl = req.url;
 
   if (!targetUrl) {
