@@ -381,7 +381,9 @@ export class McpProxy {
         });
 
         // Clear stale credentials on auth-related upstream errors
-        if (/invalid.token|expired|unauthorized|unauthenticated/i.test(errorMsg)) {
+        if (
+          /invalid.token|expired|unauthorized|unauthenticated/i.test(errorMsg)
+        ) {
           await this.credentialStore.deleteCredentials(resolved.agentId, mcpId);
           logger.info(
             `Cleared stale credentials for ${mcpId} after upstream auth error`

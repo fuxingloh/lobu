@@ -71,7 +71,8 @@ export async function loadPlugins(
         if (loaded.providers.length > 0)
           parts.push(`${loaded.providers.length} provider(s)`);
         const hookCount =
-          loaded.hooks.before_agent_start.length + loaded.hooks.agent_end.length;
+          loaded.hooks.before_agent_start.length +
+          loaded.hooks.agent_end.length;
         if (hookCount > 0) parts.push(`${hookCount} hook(s)`);
         if (loaded.services.length > 0)
           parts.push(`${loaded.services.length} service(s)`);
@@ -155,14 +156,10 @@ async function loadSinglePlugin(
  * - default export object with register(api)
  * - named register/init functions
  */
-function resolvePluginEntrypoint(
-  mod: Record<string, unknown>
-):
-  | {
-      register: (api: unknown) => void | Promise<void>;
-      metadata?: Record<string, unknown>;
-    }
-  | null {
+function resolvePluginEntrypoint(mod: Record<string, unknown>): {
+  register: (api: unknown) => void | Promise<void>;
+  metadata?: Record<string, unknown>;
+} | null {
   const defaultExport = mod.default;
   if (typeof defaultExport === "function") {
     return {
@@ -172,7 +169,9 @@ function resolvePluginEntrypoint(
 
   if (isRecord(defaultExport) && typeof defaultExport.register === "function") {
     return {
-      register: defaultExport.register as (api: unknown) => void | Promise<void>,
+      register: defaultExport.register as (
+        api: unknown
+      ) => void | Promise<void>,
       metadata: defaultExport,
     };
   }

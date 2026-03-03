@@ -156,9 +156,7 @@ function App() {
   // Scroll to focused message
   useEffect(() => {
     if (focusedId.value && messages.value.length > 0) {
-      const idx = messages.value.findIndex(
-        (m) => m.id === focusedId.value
-      );
+      const idx = messages.value.findIndex((m) => m.id === focusedId.value);
       if (idx >= 0) {
         virtualizer.scrollToIndex(idx, { align: "center" });
       }
@@ -186,11 +184,7 @@ function App() {
   if (!status.value?.connected) {
     return (
       <>
-        <StatusBar
-          connected={false}
-          stats={stats.value}
-
-        />
+        <StatusBar connected={false} stats={stats.value} />
         <WakePrompt agentId={agentId} onWake={onWake} />
       </>
     );
@@ -198,10 +192,7 @@ function App() {
 
   return (
     <>
-      <StatusBar
-        connected={true}
-        stats={stats.value}
-      />
+      <StatusBar connected={true} stats={stats.value} />
 
       {error.value && (
         <div class="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

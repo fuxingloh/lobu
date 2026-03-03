@@ -39,7 +39,7 @@ services:
       NODE_ENV: development
       DEPLOYMENT_MODE: docker
       QUEUE_URL: redis://redis:6379
-      LOBU_MCP_SERVERS_URL: ${LOBU_MCP_SERVERS_URL:-examples/mcp/oauth.json}
+      LOBU_MCP_SERVERS_URL: ${LOBU_MCP_SERVERS_URL:-}
       LOBU_SYSTEM_SKILLS_URL: ${LOBU_SYSTEM_SKILLS_URL:-config/system-skills.json}
       # Host project path for worker bind mounts (Docker-in-Docker)
       LOBU_DEV_PROJECT_PATH: ${PWD}

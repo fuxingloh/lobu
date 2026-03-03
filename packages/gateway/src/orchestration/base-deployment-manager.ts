@@ -422,7 +422,6 @@ export abstract class BaseDeploymentManager {
         await this.grantStore.grant(agentId, domain, null);
       }
     }
-
   }
 
   /**

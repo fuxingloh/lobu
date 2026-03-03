@@ -1114,7 +1114,9 @@ async function validateSettings(
           slot: p.slot,
           enabled: p.enabled ?? true,
           config:
-            p.config && typeof p.config === "object" ? { ...p.config } : undefined,
+            p.config && typeof p.config === "object"
+              ? { ...p.config }
+              : undefined,
         })),
     };
   }

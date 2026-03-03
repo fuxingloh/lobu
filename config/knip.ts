@@ -9,7 +9,6 @@ const config: KnipConfig = {
     "**/dist/**",
     "charts/**",
     "integration-tests/**",
-    "examples/**",
     "config/dependency-cruiser.config.cjs",
     "workspaces/**",
     "my-app/**",

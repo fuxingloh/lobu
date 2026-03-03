@@ -22,7 +22,7 @@
     "test": "bun test packages/",
     "test:coverage": "bun test packages/ --coverage",
     "typecheck": "tsc --noEmit",
-    "jscpd": "bunx jscpd --pattern \"packages/**/*.ts\" --reporters \"console\" --ignore \"**/node_modules/**,**/dist/**,**/coverage/**,**/.bun/**,**/.turbo/**,workspaces/**,charts/**,integration-tests/**,examples/**,bin/**,**/__tests__/**,**/__mocks__/**,**/*.d.ts\"",
+    "jscpd": "bunx jscpd --pattern \"packages/**/*.ts\" --reporters \"console\" --ignore \"**/node_modules/**,**/dist/**,**/coverage/**,**/.bun/**,**/.turbo/**,workspaces/**,charts/**,integration-tests/**,bin/**,**/__tests__/**,**/__mocks__/**,**/*.d.ts\"",
     "depcruise": "bunx --bun depcruise --config config/dependency-cruiser.config.cjs packages",
     "dev": "docker compose -f docker/docker-compose.yml watch",
     "dev:slack": "bun run src/entrypoints/slack-main.ts",
