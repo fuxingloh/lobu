@@ -21,6 +21,7 @@ import type { ProviderCatalogService } from "../auth/provider-catalog";
 import type { AgentSettingsStore } from "../auth/settings/agent-settings-store";
 import type { IMessageQueue } from "../infrastructure/queue";
 import type { InstructionService } from "../services/instruction-service";
+import type { SystemSkillsService } from "../services/system-skills-service";
 import type { ISessionManager } from "../session";
 import { type SSEWriter, WorkerConnectionManager } from "./connection-manager";
 import { WorkerJobRouter } from "./job-router";
@@ -43,6 +44,7 @@ export class WorkerGateway {
   private mcpProxy?: McpProxy;
   private providerCatalogService?: ProviderCatalogService;
   private agentSettingsStore?: AgentSettingsStore;
+  private systemSkillsService?: SystemSkillsService;
   private integrationConfigService?: IntegrationConfigService;
   private integrationCredentialStore?: IntegrationCredentialStore;
 
@@ -54,7 +56,8 @@ export class WorkerGateway {
     instructionService: InstructionService,
     mcpProxy?: McpProxy,
     providerCatalogService?: ProviderCatalogService,
-    agentSettingsStore?: AgentSettingsStore
+    agentSettingsStore?: AgentSettingsStore,
+    systemSkillsService?: SystemSkillsService
   ) {
     this.queue = queue;
     this.publicGatewayUrl = publicGatewayUrl;
@@ -69,6 +72,7 @@ export class WorkerGateway {
     this.mcpProxy = mcpProxy;
     this.providerCatalogService = providerCatalogService;
     this.agentSettingsStore = agentSettingsStore;
+    this.systemSkillsService = systemSkillsService;
 
     // Setup Hono app
     this.app = new Hono();
@@ -388,8 +392,71 @@ export class WorkerGateway {
         }
       }
 
+      // Fetch enabled skills with content for worker filesystem sync
+      let skillsConfig: Array<{ name: string; content: string }> = [];
+      if (this.agentSettingsStore && agentId) {
+        try {
+          const settings = await this.agentSettingsStore.getSettings(agentId);
+          const skills = settings?.skillsConfig?.skills || [];
+          skillsConfig = skills
+            .filter((s) => s.enabled && s.content)
+            .map((s) => ({ name: s.name, content: s.content! }));
+        } catch (error) {
+          logger.error("Failed to fetch skills config for worker sync", {
+            error,
+          });
+        }
+      }
+
+      let systemSkillsInstructions = "";
+      if (this.systemSkillsService) {
+        try {
+          const runtimeSystemSkills =
+            await this.systemSkillsService.getRuntimeSystemSkills();
+
+          if (runtimeSystemSkills.length > 0) {
+            const existingSkillNames = new Set(skillsConfig.map((s) => s.name));
+            for (const skill of runtimeSystemSkills) {
+              const workspaceSkillName = `system-${skill.id}`;
+              if (!existingSkillNames.has(workspaceSkillName)) {
+                skillsConfig.push({
+                  name: workspaceSkillName,
+                  content: skill.content,
+                });
+              }
+            }
+
+            const summaryLines = runtimeSystemSkills.map((skill, index) => {
+              const description = skill.description
+                ? ` - ${skill.description}`
+                : "";
+              return `${index + 1}. ${skill.name} (\`${skill.repo}\`)${description}`;
+            });
+
+            systemSkillsInstructions = [
+              "## Built-in System Skills",
+              "",
+              "These system skills are always available in this workspace:",
+              "",
+              ...summaryLines,
+              "",
+              "Read full instructions using `cat .skills/system-*/SKILL.md` when needed.",
+            ].join("\n");
+          }
+        } catch (error) {
+          logger.error("Failed to fetch runtime system skills", { error });
+        }
+      }
+
+      const mergedSkillsInstructions = [
+        contextData.skillsInstructions,
+        systemSkillsInstructions,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
       logger.info(
-        `Session context for ${userId}: ${Object.keys(mcpConfig.mcpServers || {}).length} MCPs, ${contextData.agentInstructions.length} chars agent instructions, ${contextData.platformInstructions.length} chars platform instructions, ${contextData.networkInstructions.length} chars network instructions, ${contextData.skillsInstructions.length} chars skills instructions, ${contextData.mcpStatus.length} MCP status entries, ${Object.keys(mcpTools).length} MCP tool lists, ${Object.keys(mcpInstructions).length} MCP instructions, ${integrationStatus.length} integrations, provider: ${providerConfig.defaultProvider || "none"}`
+        `Session context for ${userId}: ${Object.keys(mcpConfig.mcpServers || {}).length} MCPs, ${contextData.agentInstructions.length} chars agent instructions, ${contextData.platformInstructions.length} chars platform instructions, ${contextData.networkInstructions.length} chars network instructions, ${mergedSkillsInstructions.length} chars skills instructions, ${contextData.mcpStatus.length} MCP status entries, ${Object.keys(mcpTools).length} MCP tool lists, ${Object.keys(mcpInstructions).length} MCP instructions, ${integrationStatus.length} integrations, ${skillsConfig.length} skills, provider: ${providerConfig.defaultProvider || "none"}`
       );
 
       return c.json({
@@ -397,12 +464,13 @@ export class WorkerGateway {
         agentInstructions: contextData.agentInstructions,
         platformInstructions: contextData.platformInstructions,
         networkInstructions: contextData.networkInstructions,
-        skillsInstructions: contextData.skillsInstructions,
+        skillsInstructions: mergedSkillsInstructions,
         mcpStatus: contextData.mcpStatus,
         mcpTools,
         mcpInstructions,
         providerConfig,
         integrationStatus,
+        skillsConfig,
       });
     } catch (error) {
       logger.error("Failed to generate session context", { error });

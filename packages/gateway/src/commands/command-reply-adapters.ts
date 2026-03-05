@@ -78,19 +78,18 @@ export function createTelegramReply(
   bot: Bot,
   chatId: number
 ): CommandContext["reply"] {
+  const isGroup = chatId < 0;
   return async (text, options) => {
     if (options?.url) {
+      // Groups: use `url` button (web_app is only allowed in private chats)
+      // DMs: use `web_app` button for native Telegram mini-app experience
+      const button = isGroup
+        ? { text: options.urlLabel || "Open", url: options.url }
+        : { text: options.urlLabel || "Open", web_app: { url: options.url } };
       try {
         await bot.api.sendMessage(chatId, text, {
           reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: options.urlLabel || "Open",
-                  web_app: { url: options.url },
-                },
-              ],
-            ],
+            inline_keyboard: [[button]],
           },
         });
         return;

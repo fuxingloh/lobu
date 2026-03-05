@@ -13,6 +13,27 @@ Lobu exposes HTTP APIs so you can trigger agents and integrate with external sys
 - **OpenAPI-documented routes** for schema-driven integrations.
 - **Platform-aware routing fields** (for example Slack channel/thread metadata).
 
+## Interactive API Reference
+
+Browse all endpoints, try requests, and see response schemas in the [full API reference](/reference/api-reference/).
+
+The reference is auto-generated from the gateway's OpenAPI spec and always reflects the latest routes.
+
+## Quick Start
+
+```bash
+# 1. Create an agent
+curl -X POST https://lobu.ai/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "claude"}'
+
+# 2. Send a message (use token from step 1)
+curl -X POST https://lobu.ai/api/v1/agents/{agentId}/messages \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Hello!"}'
+```
+
 ## Typical Use Cases
 
 - Connect backend workflows to an agent programmatically.

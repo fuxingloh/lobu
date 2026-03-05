@@ -4,17 +4,17 @@ import {
   createLogger,
 } from "@lobu/core";
 import type { AgentSettingsStore } from "../auth/settings";
+import { buildTelegramSettingsUrl } from "../auth/settings";
 import {
-  buildSettingsUrl,
-  buildTelegramSettingsUrl,
-  formatSettingsTokenTtl,
-  generateSettingsToken,
-} from "../auth/settings";
+  type ClaimService,
+  buildClaimSettingsUrl,
+} from "../auth/settings/claim-service";
 
 const logger = createLogger("built-in-commands");
 
 export interface BuiltInCommandDeps {
   agentSettingsStore: AgentSettingsStore;
+  claimService: ClaimService;
 }
 
 /**
@@ -38,6 +38,24 @@ export function registerBuiltInCommands(
       }
 
       if (ctx.platform === "telegram") {
+        // Groups: use claim-based OAuth flow
+        const isGroup = ctx.channelId.startsWith("-");
+        if (isGroup) {
+          const claimCode = await deps.claimService.createClaim(
+            "telegram",
+            ctx.channelId,
+            ctx.userId
+          );
+          const settingsUrl = buildClaimSettingsUrl(claimCode, {
+            agentId: ctx.agentId,
+          });
+          await ctx.reply(
+            "Here's your settings link.\n\nUse this page to configure your agent's model, network access, and more.",
+            { url: settingsUrl, urlLabel: "Open Settings" }
+          );
+          return;
+        }
+        // DMs: stable Telegram web_app URL
         const settingsUrl = buildTelegramSettingsUrl(ctx.channelId);
         await ctx.reply(
           "Here's your settings link.\n\nUse this page to configure your agent's model, network access, and more.",
@@ -46,16 +64,16 @@ export function registerBuiltInCommands(
         return;
       }
 
-      const token = generateSettingsToken(
-        ctx.agentId,
-        ctx.userId,
+      const claimCode = await deps.claimService.createClaim(
         ctx.platform,
-        { channelId: ctx.channelId }
+        ctx.channelId,
+        ctx.userId
       );
-      const settingsUrl = buildSettingsUrl(token);
-      const ttlLabel = formatSettingsTokenTtl();
+      const settingsUrl = buildClaimSettingsUrl(claimCode, {
+        agentId: ctx.agentId,
+      });
       await ctx.reply(
-        `Here's your settings link (valid for ${ttlLabel}).\n\nUse this page to configure your agent's model, network access, and more.`,
+        "Here's your settings link.\n\nUse this page to configure your agent's model, network access, and more.",
         { url: settingsUrl, urlLabel: "Open Settings" }
       );
     },

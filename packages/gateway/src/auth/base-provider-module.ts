@@ -184,6 +184,11 @@ export abstract class BaseProviderModule
     return process.env[sysVar] || null;
   }
 
+  /** Build a structured placeholder for proxy mode (default: "lobu-proxy"). */
+  buildCredentialPlaceholder(_agentId: string): Promise<string> | string {
+    return "lobu-proxy";
+  }
+
   /** Override in subclasses to add provider-specific routes. */
   protected setupRoutes(): void {
     // Default: no extra routes

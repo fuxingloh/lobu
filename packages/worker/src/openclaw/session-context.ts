@@ -2,6 +2,7 @@ import {
   buildMcpToolInstructions,
   type ConfigProviderMeta,
   createLogger,
+  type IntegrationInfo,
   type McpToolDef,
 } from "@lobu/core";
 import { ensureBaseUrl } from "../core/url-utils";
@@ -35,18 +36,9 @@ export interface ProviderConfig {
   configProviders?: Record<string, ConfigProviderMeta>;
 }
 
-interface IntegrationAccountStatus {
-  accountId: string;
-  grantedScopes: string[];
-}
-
-interface IntegrationStatus {
-  id: string;
-  label: string;
-  authType: string;
-  connected: boolean;
-  accounts: IntegrationAccountStatus[];
-  availableScopes: string[];
+interface SkillContent {
+  name: string;
+  content: string;
 }
 
 interface SessionContextResponse {
@@ -58,13 +50,15 @@ interface SessionContextResponse {
   mcpTools?: Record<string, McpToolDef[]>;
   mcpInstructions?: Record<string, string>;
   providerConfig?: ProviderConfig;
-  integrationStatus?: IntegrationStatus[];
+  integrationStatus?: IntegrationInfo[];
+  skillsConfig?: SkillContent[];
 }
 
 // Module-level cache for session context
 let cachedResult: {
   gatewayInstructions: string;
   providerConfig: ProviderConfig;
+  skillsConfig: SkillContent[];
 } | null = null;
 
 /**
@@ -139,9 +133,7 @@ function buildMcpServerInstructions(
   return lines.join("\n");
 }
 
-function buildIntegrationInstructions(
-  integrations: IntegrationStatus[]
-): string {
+function buildIntegrationInstructions(integrations: IntegrationInfo[]): string {
   if (!integrations || integrations.length === 0) {
     return "";
   }
@@ -150,34 +142,30 @@ function buildIntegrationInstructions(
     "## Integrations\n\nConfigured third-party integrations. Use CallService to make authenticated API calls.",
   ];
 
-  for (const integration of integrations) {
-    const authTag = `[${integration.authType || "oauth"}]`;
-    if (integration.connected && integration.accounts.length > 0) {
-      if (integration.authType === "api-key") {
-        lines.push(
-          `- ${authTag} **${integration.label}** (\`${integration.id}\`) — connected`
-        );
-      } else {
-        const accountDetails = integration.accounts
-          .map((a) => {
-            const scopes =
-              a.grantedScopes.length > 0
-                ? a.grantedScopes.join(", ")
-                : "default";
-            return `  - **${a.accountId}**: ${scopes}`;
-          })
-          .join("\n");
-        lines.push(
-          `- ${authTag} **${integration.label}** (\`${integration.id}\`) — ${integration.accounts.length} account(s) connected\n${accountDetails}`
-        );
-      }
-    } else {
-      const scopeInfo =
-        integration.availableScopes.length > 0
-          ? ` (available scopes: ${integration.availableScopes.join(", ")})`
+  for (const ig of integrations) {
+    const tag = `[${ig.authType || "oauth"}]`;
+    const header = `- ${tag} **${ig.label}** (\`${ig.id}\`)`;
+    const api = ig.apiBase
+      ? `\n  API: \`${ig.apiBase}\`${ig.apiHints ? ` — ${ig.apiHints}` : ""}`
+      : "";
+
+    if (!ig.connected || ig.accounts.length === 0) {
+      const scopes =
+        ig.availableScopes.length > 0
+          ? ` (available scopes: ${ig.availableScopes.join(", ")})`
           : "";
+      lines.push(`${header} — not connected${scopes}${api}`);
+    } else if (ig.authType === "api-key" || ig.accounts.length === 1) {
+      lines.push(`${header} — connected${api}`);
+    } else {
+      const details = ig.accounts
+        .map(
+          (a) =>
+            `  - **${a.accountId}**: ${a.grantedScopes.join(", ") || "default"}`
+        )
+        .join("\n");
       lines.push(
-        `- ${authTag} **${integration.label}** (\`${integration.id}\`) — not connected${scopeInfo}`
+        `${header} — ${ig.accounts.length} accounts\n${details}${api}`
       );
     }
   }
@@ -194,6 +182,7 @@ function buildIntegrationInstructions(
 export async function getOpenClawSessionContext(): Promise<{
   gatewayInstructions: string;
   providerConfig: ProviderConfig;
+  skillsConfig: SkillContent[];
 }> {
   if (cachedResult) {
     logger.debug("Returning cached session context");
@@ -205,7 +194,7 @@ export async function getOpenClawSessionContext(): Promise<{
 
   if (!dispatcherUrl || !workerToken) {
     logger.warn("Missing dispatcher URL or worker token for session context");
-    return { gatewayInstructions: "", providerConfig: {} };
+    return { gatewayInstructions: "", providerConfig: {}, skillsConfig: [] };
   }
 
   try {
@@ -223,7 +212,7 @@ export async function getOpenClawSessionContext(): Promise<{
       logger.warn("Gateway returned non-success status for session context", {
         status: response.status,
       });
-      return { gatewayInstructions: "", providerConfig: {} };
+      return { gatewayInstructions: "", providerConfig: {}, skillsConfig: [] };
     }
 
     const data = (await response.json()) as SessionContextResponse;
@@ -279,11 +268,12 @@ export async function getOpenClawSessionContext(): Promise<{
     const result = {
       gatewayInstructions,
       providerConfig: data.providerConfig || {},
+      skillsConfig: data.skillsConfig || [],
     };
     cachedResult = result;
     return result;
   } catch (error) {
     logger.error("Failed to fetch session context from gateway", { error });
-    return { gatewayInstructions: "", providerConfig: {} };
+    return { gatewayInstructions: "", providerConfig: {}, skillsConfig: [] };
   }
 }

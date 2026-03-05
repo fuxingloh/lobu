@@ -2,11 +2,7 @@ const modes = [
   {
     id: "docker",
     label: "Docker Compose",
-    pathLabel: "Single node",
-    complexityLabel: "Low ops",
-    scaleLabel: "Vertical scale",
-    description:
-      "One-command deployment on a single machine. Best for getting started or small teams.",
+    badges: ["Single node", "Low ops", "Vertical scale"],
     chooseIf: [
       "You want the fastest setup on one machine.",
       "You prefer minimal operational overhead.",
@@ -20,11 +16,7 @@ const modes = [
   {
     id: "kubernetes",
     label: "Kubernetes",
-    pathLabel: "Multi-node",
-    complexityLabel: "Higher ops",
-    scaleLabel: "Horizontal scale",
-    description:
-      "Install via OCI Helm chart — no repo clone needed. Scales horizontally with your team.",
+    badges: ["Multi-node", "Higher ops", "Horizontal scale"],
     chooseIf: [
       "You need cluster scheduling and autoscaling.",
       "You need production-grade isolation controls.",
@@ -41,76 +33,48 @@ const modes = [
   },
 ];
 
-function ModeColumn({ mode }: { mode: (typeof modes)[0] }) {
+function ModeCard({ mode }: { mode: (typeof modes)[0] }) {
   return (
-    <div>
-      <h3
-        class="text-lg font-semibold mb-2"
-        style={{ color: "var(--color-page-text)" }}
-      >
-        {mode.label}
-      </h3>
-      <div class="flex flex-wrap gap-1.5 mb-2.5">
-        <span
-          class="text-[11px] font-medium px-2 py-1 rounded-full"
-          style={{
-            color: "var(--color-page-text-muted)",
-            backgroundColor: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.09)",
-          }}
+    <div
+      class="rounded-xl p-6"
+      style={{
+        backgroundColor: "var(--color-page-bg-elevated)",
+        border: "1px solid var(--color-page-border)",
+      }}
+    >
+      <div class="flex items-center justify-between mb-4">
+        <h3
+          class="text-lg font-semibold"
+          style={{ color: "var(--color-page-text)" }}
         >
-          {mode.pathLabel}
-        </span>
-        <span
-          class="text-[11px] font-medium px-2 py-1 rounded-full"
-          style={{
-            color: "var(--color-page-text-muted)",
-            backgroundColor: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.09)",
-          }}
+          {mode.label}
+        </h3>
+        <a
+          href={mode.docsHref}
+          class="text-xs font-medium hover:opacity-80 transition-opacity"
+          style={{ color: "var(--color-tg-accent)" }}
         >
-          {mode.complexityLabel}
-        </span>
-        <span
-          class="text-[11px] font-medium px-2 py-1 rounded-full"
-          style={{
-            color: "var(--color-page-text-muted)",
-            backgroundColor: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.09)",
-          }}
-        >
-          {mode.scaleLabel}
-        </span>
+          Docs →
+        </a>
       </div>
-      <p
-        class="text-sm leading-relaxed mb-2.5"
-        style={{ color: "var(--color-page-text-muted)" }}
-      >
-        {mode.description}
-      </p>
-      <div class="mb-3.5">
-        <div
-          class="text-[11px] font-medium mb-1.5"
-          style={{ color: "var(--color-page-text-muted)" }}
-        >
-          Choose this if
-        </div>
-        <ul class="m-0 pl-4 space-y-1 text-[12px] leading-relaxed">
-          {mode.chooseIf.map((item) => (
-            <li key={item} style={{ color: "var(--color-page-text-muted)" }}>
-              {item}
-            </li>
-          ))}
-        </ul>
+
+      <div class="flex flex-wrap gap-1.5 mb-5">
+        {mode.badges.map((badge) => (
+          <span
+            key={badge}
+            class="text-[11px] font-medium px-2 py-1 rounded-full"
+            style={{
+              color: "var(--color-page-text-muted)",
+              backgroundColor: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.09)",
+            }}
+          >
+            {badge}
+          </span>
+        ))}
       </div>
-      <a
-        href={mode.docsHref}
-        class="inline-block text-xs font-medium mb-4 hover:opacity-80 transition-opacity"
-        style={{ color: "var(--color-tg-accent)" }}
-      >
-        View full deployment guide
-      </a>
-      <div class="space-y-3">
+
+      <div class="space-y-3 mb-5">
         {mode.steps.map((step, i) => (
           <div key={`${mode.id}-${i}`}>
             <div
@@ -122,8 +86,8 @@ function ModeColumn({ mode }: { mode: (typeof modes)[0] }) {
             <div
               class="rounded-lg overflow-hidden font-mono text-[12.5px] leading-[1.6]"
               style={{
-                backgroundColor: "var(--color-page-bg-elevated)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                backgroundColor: "rgba(0,0,0,0.3)",
+                border: "1px solid rgba(255,255,255,0.06)",
               }}
             >
               <pre
@@ -137,6 +101,20 @@ function ModeColumn({ mode }: { mode: (typeof modes)[0] }) {
           </div>
         ))}
       </div>
+
+      <div
+        class="text-[11px] font-medium mb-2"
+        style={{ color: "var(--color-page-text-muted)" }}
+      >
+        Choose this if
+      </div>
+      <ul class="m-0 pl-4 space-y-1 text-[12px] leading-relaxed">
+        {mode.chooseIf.map((item) => (
+          <li key={item} style={{ color: "var(--color-page-text-muted)" }}>
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -146,22 +124,15 @@ export function InstallSection() {
     <section id="installation" class="py-12 px-8">
       <div class="max-w-3xl mx-auto">
         <h2
-          class="text-2xl sm:text-3xl font-bold text-center mb-3 tracking-tight"
+          class="text-2xl sm:text-3xl font-bold text-center mb-10 tracking-tight"
           style={{ color: "var(--color-page-text)" }}
         >
           Installation
         </h2>
-        <p
-          class="text-center text-sm mb-10 max-w-lg mx-auto"
-          style={{ color: "var(--color-page-text-muted)" }}
-        >
-          Deploy with Docker Compose or Kubernetes. From zero to running in
-          under a minute.
-        </p>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           {modes.map((mode) => (
-            <ModeColumn key={mode.id} mode={mode} />
+            <ModeCard key={mode.id} mode={mode} />
           ))}
         </div>
       </div>

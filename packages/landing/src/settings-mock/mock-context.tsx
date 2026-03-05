@@ -73,7 +73,7 @@ export interface SettingsContextValue {
   prefillMcpServers: Signal<PrefillMcp[]>;
   prefillGrants: Signal<string[]>;
   prefillNixPackages: Signal<string[]>;
-  prefillEnvVars: Signal<string[]>;
+  prefillProviders: Signal<string[]>;
   prefillBannerDismissed: Signal<boolean>;
   approvingPrefills: Signal<boolean>;
 
@@ -270,7 +270,7 @@ export function MockSettingsProvider({
   const prefillMcpServers = useSignal<PrefillMcp[]>([]);
   const prefillGrants = useSignal<string[]>([]);
   const prefillNixPackages = useSignal<string[]>([]);
-  const prefillEnvVars = useSignal<string[]>([]);
+  const prefillProviders = useSignal<string[]>([]);
   const prefillBannerDismissed = useSignal(true);
   const approvingPrefills = useSignal(false);
 
@@ -326,7 +326,7 @@ export function MockSettingsProvider({
     prefillMcpServers,
     prefillGrants,
     prefillNixPackages,
-    prefillEnvVars,
+    prefillProviders,
     prefillBannerDismissed,
     approvingPrefills,
 

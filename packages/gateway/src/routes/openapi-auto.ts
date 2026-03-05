@@ -8,12 +8,26 @@ type OpenApiDefinition =
 // Internal route prefixes - worker-facing, excluded from public docs
 const INTERNAL_PREFIXES = ["/api/proxy", "/internal", "/worker", "/mcp"];
 
-// Routes that render HTML pages, browser redirects, or plain-Hono routers
-// whose endpoints are already covered by other OpenAPI-defined routers
+// Routes excluded from docs entirely: HTML pages, OAuth redirects/callbacks,
+// platform webhooks, system probes, and infra endpoints
 const EXCLUDED_ROUTES = [
   "/", // Landing page
   "/settings", // HTML settings page
-  "/api/v1/auth/{provider}/login", // OAuth redirect
+  "/api/v1/auth/{provider}/login", // OAuth redirect (browser-only)
+  "/api/v1/auth/mcp/callback", // MCP OAuth callback
+  "/api/v1/auth/integration/callback", // Integration OAuth callback
+  "/agent/{agentId}/history", // HTML history page
+  "/slack/install", // Slack app install
+  "/slack/oauth_callback", // Slack OAuth callback
+];
+
+const EXCLUDED_PREFIXES = [
+  "/health", // K8s liveness probe
+  "/ready", // K8s readiness probe
+  "/metrics", // Prometheus scraping
+  "/api/telegram", // Telegram webhook
+  "/slack/", // Slack events
+  "/settings/oauth", // Settings OAuth flow
 ];
 
 function isInternalRoute(path: string): boolean {
@@ -21,7 +35,8 @@ function isInternalRoute(path: string): boolean {
 }
 
 function isExcludedRoute(path: string): boolean {
-  return EXCLUDED_ROUTES.includes(path);
+  if (EXCLUDED_ROUTES.includes(path)) return true;
+  return EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 function normalizePath(path: string): string {
@@ -44,69 +59,68 @@ function extractPathParams(path: string): string[] {
 }
 
 /**
- * Derive an appropriate tag for routes not already defined via app.openapi.
- * Maps route paths to API documentation categories.
+ * Derive an API documentation tag from the route path.
  */
 function deriveTag(path: string): string {
-  // System routes
+  // Messages — sending and streaming
   if (
-    path.startsWith("/health") ||
-    path.startsWith("/ready") ||
-    path.startsWith("/metrics")
+    path === "/api/v1/messaging/send" ||
+    path.includes("/messages") ||
+    path.includes("/events") ||
+    path.includes("/interactions")
   ) {
-    return "System";
+    return "Messages";
   }
 
-  // Auth routes
-  if (path.startsWith("/api/v1/auth/")) {
-    return "Auth";
+  // Agents — CRUD and status
+  if (
+    path.startsWith("/api/v1/agents") &&
+    !path.includes("/config") &&
+    !path.includes("/channels") &&
+    !path.includes("/history") &&
+    !path.includes("/schedules")
+  ) {
+    return "Agents";
   }
 
-  // Agent management routes (settings UI CRUD)
+  // Agents — management CRUD
   if (path.startsWith("/api/v1/manage/")) {
     return "Agents";
   }
 
-  // Agent routes
-  if (path.startsWith("/api/v1/agents")) {
-    if (path.includes("/channels")) return "Channels";
-    if (path.includes("/history")) return "Agents";
-    if (path.includes("/messages") || path.includes("/interactions"))
-      return "Agent Messages";
-    return "Agents";
+  // Configuration — providers, packages, domain grants
+  if (path.includes("/config")) {
+    return "Configuration";
   }
 
-  // Skills utility routes
-  if (path.startsWith("/api/v1/skills")) {
-    return "Skills";
+  // Channels — platform bindings
+  if (path.includes("/channels")) {
+    return "Channels";
   }
 
-  // Settings routes (session bootstrap + HTML pages)
-  if (path.startsWith("/settings") || path.startsWith("/agent/")) {
-    return "Settings";
+  // Schedules — wakeups and reminders
+  if (path.includes("/schedules")) {
+    return "Schedules";
   }
 
-  // Integrations routes
+  // History — session messages and stats
+  if (path.includes("/history")) {
+    return "History";
+  }
+
+  // Auth — API keys, OAuth, device code
+  if (path.startsWith("/api/v1/auth/")) {
+    return "Auth";
+  }
+
+  // Integrations — skills and MCP servers
   if (path.startsWith("/api/v1/integrations")) {
     return "Integrations";
   }
 
-  // Messaging routes
-  if (
-    path.startsWith("/api/messaging/") ||
-    path.startsWith("/api/v1/messaging/")
-  ) {
-    return "Messaging";
-  }
-
-  // Webhook routes (Telegram, Slack)
-  if (path.startsWith("/api/telegram") || path.startsWith("/slack/")) {
-    return "Webhooks";
-  }
-
-  // MCP routes
-  if (path.startsWith("/mcp/")) {
-    return "MCP Servers";
+  // Session — settings page bootstrap
+  if (path.startsWith("/settings")) {
+    return "Session";
   }
 
   return "Other";
@@ -117,22 +131,16 @@ function deriveTag(path: string): string {
  * Key format: "method /path" (lowercase method, normalized path).
  */
 const ROUTE_SUMMARIES: Record<string, string> = {
-  // System
-  "get /health": "Health check",
-  "get /ready": "Readiness probe",
-  "get /metrics": "Prometheus metrics",
-
-  // Settings
+  // Session
   "post /settings/session": "Establish settings session",
-  "get /agent/{agentId}/history": "Agent history page",
 
-  // Agent management
-  "post /api/v1/manage/agents": "Create agent (settings)",
+  // Agents
+  "post /api/v1/manage/agents": "Create agent",
   "get /api/v1/manage/agents": "List user agents",
   "patch /api/v1/manage/agents/{agentId}": "Update agent metadata",
   "delete /api/v1/manage/agents/{agentId}": "Delete agent",
 
-  // Agent config
+  // Configuration
   "get /api/v1/agents/{agentId}/config/packages/search": "Search Nix packages",
   "get /api/v1/agents/{agentId}/config/providers/catalog":
     "List provider catalog",
@@ -145,7 +153,7 @@ const ROUTE_SUMMARIES: Record<string, string> = {
   "delete /api/v1/agents/{agentId}/config/grants/{pattern}":
     "Revoke domain grant",
 
-  // Agent history
+  // History
   "get /api/v1/agents/{agentId}/history/status": "Get agent connection status",
   "get /api/v1/agents/{agentId}/history/session/messages":
     "Get session messages",
@@ -157,30 +165,19 @@ const ROUTE_SUMMARIES: Record<string, string> = {
   "delete /api/v1/agents/{agentId}/channels/{platform}/{channelId}":
     "Unbind agent from channel",
 
-  // Auth — parameterized
+  // Auth
   "post /api/v1/auth/{provider}/save-key": "Save API key",
+  "post /api/v1/auth/{provider}/start": "Start device code flow",
+  "post /api/v1/auth/{provider}/poll": "Poll device code status",
   "post /api/v1/auth/{provider}/logout": "Disconnect provider",
-
-  // Auth — Claude OAuth
-  "get /api/v1/auth/claude/init": "Start Claude OAuth flow",
-  "get /api/v1/auth/claude/callback": "Claude OAuth callback",
-
-  // Auth — ChatGPT device code
-  "post /api/v1/auth/chatgpt/start": "Start ChatGPT device code flow",
-  "post /api/v1/auth/chatgpt/poll": "Poll ChatGPT device code status",
-
-  // Auth — MCP OAuth
   "get /api/v1/auth/mcp/init/{mcpId}": "Start MCP OAuth flow",
-  "get /api/v1/auth/mcp/callback": "MCP OAuth callback",
   "post /api/v1/auth/mcp/logout/{mcpId}": "Disconnect MCP server",
-
-  // Webhooks
-  "post /api/telegram/webhook": "Telegram bot webhook",
 };
 
 /**
  * Register OpenAPI paths for routes not already defined via app.openapi.
- * Internal routes (worker-facing) are excluded from public docs.
+ * Internal routes (worker-facing), webhooks, system probes, and OAuth callbacks
+ * are excluded from the public docs.
  */
 export function registerAutoOpenApiRoutes(app: OpenAPIHono): void {
   const registered = new Set<string>();
@@ -233,7 +230,7 @@ export function registerAutoOpenApiRoutes(app: OpenAPIHono): void {
       continue;
     }
 
-    // Skip excluded routes (HTML pages, OAuth redirects)
+    // Skip excluded routes (HTML pages, OAuth callbacks, webhooks, probes)
     if (isExcludedRoute(path)) {
       continue;
     }

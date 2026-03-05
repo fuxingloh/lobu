@@ -55,7 +55,7 @@ const ErrorResponseSchema = z.object({
 const sendMessageRoute = createRoute({
   method: "post",
   path: "/api/v1/messaging/send",
-  tags: ["Messaging"],
+  tags: ["Messages"],
   summary: "Send a message via platform API",
   description:
     "Send a message to an agent. Supports JSON body or multipart form data for file uploads.",

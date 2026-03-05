@@ -29,27 +29,6 @@ export function renderHistoryPage(agentId: string): string {
     <div id="app" class="flex-1 flex flex-col overflow-hidden"></div>
   </div>
   <script>window.__AGENT_ID__ = ${JSON.stringify(agentId)};</script>
-  <script>
-    // Bootstrap session cookie from ?token= query param before app loads
-    window.__sessionReady__ = (async function() {
-      var params = new URLSearchParams(window.location.search);
-      var token = params.get('token');
-      if (token) {
-        try {
-          await fetch('/settings/session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: token })
-          });
-        } catch(e) { /* ignore */ }
-        // Remove token from URL but keep other params (e.g. msg)
-        params.delete('token');
-        var remaining = params.toString();
-        var newUrl = window.location.pathname + (remaining ? '?' + remaining : '');
-        window.history.replaceState({}, '', newUrl);
-      }
-    })();
-  </script>
   <script type="module">${historyPageJS}</script>
 </body>
 </html>`;

@@ -1,9 +1,4 @@
-import type {
-  AgentIntegrationConfig,
-  IntegrationAccountInfo,
-  IntegrationCredentialRecord,
-  IntegrationInfo,
-} from "@lobu/core";
+import type { IntegrationAccountInfo, IntegrationInfo } from "@lobu/core";
 import { createLogger, verifyWorkerToken } from "@lobu/core";
 import { Hono } from "hono";
 import type { InteractionService } from "../../interactions";
@@ -135,7 +130,7 @@ export function createIntegrationRoutes(
         if ((config.authType || "oauth") === "api-key") {
           return c.json(
             {
-              error: `Integration "${integration}" uses API key auth. Use GetSettingsLink to configure it.`,
+              error: `Integration "${integration}" uses API key auth. Use Configure to set it up.`,
             },
             400
           );
@@ -284,86 +279,6 @@ export function createIntegrationRoutes(
       } catch (error) {
         logger.error("Failed to disconnect integration", { error });
         return c.json({ error: "Failed to disconnect" }, 500);
-      }
-    }
-  );
-
-  /**
-   * POST /internal/integrations/create
-   * Body: { id, label, apiKey: { headerName, headerTemplate }, apiDomains, key? }
-   * Creates an agent-scoped API key integration. Key is optional — if omitted,
-   * the integration is saved but not connected (user enters key on settings page).
-   */
-  router.post(
-    "/internal/integrations/create",
-    authenticateWorker,
-    async (c) => {
-      const worker = c.get("worker");
-      const agentId = worker.agentId;
-
-      if (!agentId) {
-        return c.json({ error: "Missing agentId in worker token" }, 400);
-      }
-
-      if (!agentSettingsStore) {
-        return c.json({ error: "Agent settings store not configured" }, 500);
-      }
-
-      try {
-        const body = await c.req.json();
-        const { id, label, apiKey, apiDomains, key } = body;
-
-        if (!id || !label || !apiDomains?.length) {
-          return c.json(
-            { error: "Missing required fields: id, label, apiDomains" },
-            400
-          );
-        }
-
-        const headerName = apiKey?.headerName || "Authorization";
-        const headerTemplate = apiKey?.headerTemplate || "Bearer {{key}}";
-
-        // Save config to agent settings
-        const agentIntegration: AgentIntegrationConfig = {
-          label,
-          authType: "api-key",
-          apiKey: { headerName, headerTemplate },
-          apiDomains,
-        };
-
-        const settings = await agentSettingsStore.getSettings(agentId);
-        const existingIntegrations = settings?.agentIntegrations || {};
-        await agentSettingsStore.updateSettings(agentId, {
-          agentIntegrations: {
-            ...existingIntegrations,
-            [id]: agentIntegration,
-          },
-        });
-
-        // Store the API key as a credential (only if key provided)
-        if (key) {
-          const credential: IntegrationCredentialRecord = {
-            accessToken: key,
-            tokenType: "api-key",
-            grantedScopes: [],
-          };
-          await credentialStore.setCredentials(agentId, id, credential);
-        }
-
-        const connected = !!key;
-        logger.info(
-          `Created API key integration "${id}" for agent ${agentId} (connected: ${connected})`
-        );
-        return c.json({
-          success: true,
-          connected,
-          message: connected
-            ? `Integration "${label}" created and connected. You can now use CallService with integration="${id}".`
-            : `Integration "${label}" configured. User needs to enter their API key on the settings page to activate it.`,
-        });
-      } catch (error) {
-        logger.error("Failed to create integration", { error });
-        return c.json({ error: "Failed to create integration" }, 500);
       }
     }
   );

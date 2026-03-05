@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
 import { CommandRegistry, createLogger, moduleRegistry } from "@lobu/core";
+import { OAuthStateStore } from "../auth/oauth/state-store";
 import { AdminStatusCache } from "../auth/admin-status-cache";
 import { AgentMetadataStore } from "../auth/agent-metadata-store";
 import { ApiKeyProviderModule } from "../auth/api-key-provider-module";
 import { ChatGPTOAuthModule } from "../auth/chatgpt";
-import { ClaudeModelPreferenceStore } from "../auth/claude/model-preference-store";
 import { ClaudeOAuthModule } from "../auth/claude/oauth-module";
 import { IntegrationConfigService } from "../auth/integration/config-service";
 import { IntegrationCredentialStore } from "../auth/integration/credential-store";
@@ -13,19 +13,23 @@ import { IntegrationOAuthModule } from "../auth/integration/oauth-module";
 import { McpConfigService } from "../auth/mcp/config-service";
 import { McpCredentialStore } from "../auth/mcp/credential-store";
 import { McpInputStore } from "../auth/mcp/input-store";
-import { mcpConfigStore } from "../auth/mcp/mcp-config-store";
 import { McpOAuthModule } from "../auth/mcp/oauth-module";
 import { McpProxy } from "../auth/mcp/proxy";
 import { McpToolCache } from "../auth/mcp/tool-cache";
+import { OAuthClient } from "../auth/oauth/client";
 import { OAuthDiscoveryService } from "../auth/oauth/discovery";
+import { CLAUDE_PROVIDER } from "../auth/oauth/providers";
 import {
-  type ClaudeOAuthStateStore,
-  createClaudeOAuthStateStore,
   createMcpOAuthStateStore,
+  createOAuthStateStore,
+  type ProviderOAuthStateStore,
 } from "../auth/oauth/state-store";
 import { ProviderCatalogService } from "../auth/provider-catalog";
 import { AgentSettingsStore, AuthProfilesManager } from "../auth/settings";
+import { ModelPreferenceStore } from "../auth/settings/model-preference-store";
 import { UserAgentsStore } from "../auth/user-agents-store";
+import { ClaimService } from "../auth/settings/claim-service";
+import { SettingsOAuthClient } from "../auth/settings/oauth-client";
 import { ChannelBindingService } from "../channels";
 import { registerBuiltInCommands } from "../commands/built-in-commands";
 import type { GatewayConfig } from "../config";
@@ -81,11 +85,11 @@ export class CoreServices {
   private interactionService?: InteractionService;
 
   // ============================================================================
-  // Claude Services
+  // Auth & Provider Services
   // ============================================================================
   private authProfilesManager?: AuthProfilesManager;
-  private claudeModelPreferenceStore?: ClaudeModelPreferenceStore;
-  private claudeOAuthStateStore?: ClaudeOAuthStateStore;
+  private modelPreferenceStore?: ModelPreferenceStore;
+  private oauthStateStore?: ProviderOAuthStateStore;
   private secretProxy?: SecretProxy;
   private tokenRefreshJob?: TokenRefreshJob;
 
@@ -133,6 +137,17 @@ export class CoreServices {
   private adminStatusCache?: AdminStatusCache;
 
   // ============================================================================
+  // Settings OAuth
+  // ============================================================================
+  private claimService?: ClaimService;
+  private settingsOAuthClient?: SettingsOAuthClient;
+  private settingsOAuthStateStore?: OAuthStateStore<{
+    userId: string;
+    codeVerifier: string;
+    returnUrl: string;
+  }>;
+
+  // ============================================================================
   // Provider Catalog
   // ============================================================================
   private providerCatalogService?: ProviderCatalogService;
@@ -163,9 +178,9 @@ export class CoreServices {
     await this.initializeSessionServices();
     logger.debug("Session services initialized");
 
-    // 3. Claude authentication & API
+    // 3. Auth & provider services
     await this.initializeClaudeServices();
-    logger.debug("Claude services initialized");
+    logger.debug("Auth & provider services initialized");
 
     // 4. MCP ecosystem (depends on queue and Claude services)
     await this.initializeMcpServices();
@@ -284,10 +299,6 @@ export class CoreServices {
     this.interactionService = new InteractionService();
     logger.info("✅ Interaction service initialized");
 
-    // Initialize per-deployment config stores (Redis-backed)
-    await mcpConfigStore.initialize(redisClient);
-    logger.info("✅ MCP config store initialized");
-
     // Initialize grant store for unified permissions
     this.grantStore = new GrantStore(redisClient);
     logger.info("✅ Grant store initialized");
@@ -301,22 +312,39 @@ export class CoreServices {
     logger.info(
       "✅ Agent settings, channel binding, user agents & metadata stores initialized"
     );
+
+    // Initialize claim service (always available, used by OAuth settings flow)
+    this.claimService = new ClaimService(redisClient);
+    logger.info("✅ Claim service initialized");
+
+    // Initialize settings OAuth client if configured
+    this.settingsOAuthClient =
+      SettingsOAuthClient.fromEnv(this.config.mcp.publicGatewayUrl) ??
+      undefined;
+    if (this.settingsOAuthClient) {
+      this.settingsOAuthStateStore = new OAuthStateStore(
+        redisClient,
+        "settings:oauth:state",
+        "settings-oauth-state"
+      );
+      logger.info("✅ Settings OAuth client initialized");
+    }
   }
 
   // ============================================================================
-  // 3. Claude Services Initialization
+  // 3. Auth & Provider Services Initialization
   // ============================================================================
 
   private async initializeClaudeServices(): Promise<void> {
     if (!this.queue) {
-      throw new Error("Queue must be initialized before Claude services");
+      throw new Error("Queue must be initialized before auth services");
     }
 
     const redisClient = this.queue.getRedisClient();
 
     if (!this.agentSettingsStore) {
       throw new Error(
-        "Agent settings store must be initialized before Claude services"
+        "Agent settings store must be initialized before auth services"
       );
     }
 
@@ -325,10 +353,8 @@ export class CoreServices {
     this.transcriptionService = new TranscriptionService(
       this.authProfilesManager
     );
-    this.claudeModelPreferenceStore = new ClaudeModelPreferenceStore(
-      redisClient
-    );
-    logger.info("✅ Auth profile & Claude preference stores initialized");
+    this.modelPreferenceStore = new ModelPreferenceStore(redisClient, "claude");
+    logger.info("✅ Auth profile & model preference stores initialized");
 
     // Initialize secret injection proxy (will be finalized after provider modules are registered)
     this.secretProxy = new SecretProxy({
@@ -344,12 +370,13 @@ export class CoreServices {
     // Start background token refresh job
     if (!this.authProfilesManager) {
       throw new Error(
-        "Auth profiles manager must be initialized before Claude services"
+        "Auth profiles manager must be initialized before token refresh job"
       );
     }
     this.tokenRefreshJob = new TokenRefreshJob(
       this.authProfilesManager,
-      redisClient
+      redisClient,
+      [{ providerId: "claude", oauthClient: new OAuthClient(CLAUDE_PROVIDER) }]
     );
     this.tokenRefreshJob.start();
     logger.info("✅ Token refresh job started");
@@ -375,13 +402,10 @@ export class CoreServices {
     );
 
     // Register Claude OAuth module
-    this.claudeOAuthStateStore = createClaudeOAuthStateStore(redisClient);
+    this.oauthStateStore = createOAuthStateStore("claude", redisClient);
     const claudeOAuthModule = new ClaudeOAuthModule(
       this.authProfilesManager,
-      this.claudeOAuthStateStore,
-      this.claudeModelPreferenceStore,
-      this.queue,
-      this.config.mcp.publicGatewayUrl
+      this.modelPreferenceStore
     );
     moduleRegistry.register(claudeOAuthModule);
     logger.info(
@@ -389,10 +413,7 @@ export class CoreServices {
     );
 
     // Register ChatGPT OAuth module
-    const chatgptOAuthModule = new ChatGPTOAuthModule(this.agentSettingsStore, {
-      userAgentsStore: this.userAgentsStore,
-      agentMetadataStore: this.agentMetadataStore,
-    });
+    const chatgptOAuthModule = new ChatGPTOAuthModule(this.agentSettingsStore);
     moduleRegistry.register(chatgptOAuthModule);
     logger.info(
       `✅ ChatGPT OAuth module registered (system token: ${chatgptOAuthModule.hasSystemKey() ? "available" : "not available"})`
@@ -454,11 +475,7 @@ export class CoreServices {
       `✅ ElevenLabs module registered (system token: ${elevenlabsModule.hasSystemKey() ? "available" : "not available"})`
     );
 
-    // Initialize SystemSkillsService from LOBU_SYSTEM_SKILLS_URL (or legacy env vars)
-    const systemSkillsUrl =
-      process.env.LOBU_SYSTEM_SKILLS_URL ||
-      process.env.LOBU_INTEGRATIONS_CONFIG_URL ||
-      process.env.LOBU_INTEGRATIONS_URL;
+    const systemSkillsUrl = process.env.LOBU_SYSTEM_SKILLS_URL;
     this.systemSkillsService = new SystemSkillsService(systemSkillsUrl);
 
     // Register config-driven providers from system skills
@@ -574,12 +591,26 @@ export class CoreServices {
 
     // Initialize MCP config service
     this.mcpConfigService = new McpConfigService({
-      configUrl: this.config.mcp.serversUrl,
       discoveryService: mcpDiscoveryService,
       credentialStore: mcpCredentialStore,
       inputStore: mcpInputStore,
       agentSettingsStore: this.agentSettingsStore,
     });
+
+    // Register MCP servers from system skills as global MCPs
+    if (this.systemSkillsService) {
+      const systemSkills = await this.systemSkillsService.getSystemSkills();
+      const mcpServers: Record<string, any> = {};
+      for (const skill of systemSkills) {
+        if (!skill.mcpServers) continue;
+        for (const mcp of skill.mcpServers) {
+          mcpServers[mcp.id] = { url: mcp.url, type: mcp.type || "sse" };
+        }
+      }
+      if (Object.keys(mcpServers).length > 0) {
+        this.mcpConfigService.registerGlobalServers(mcpServers);
+      }
+    }
 
     // Initialize instruction service (needed by WorkerGateway)
     // Pass agentSettingsStore so skills instructions can be fetched per-agent
@@ -615,7 +646,8 @@ export class CoreServices {
       this.instructionService,
       this.mcpProxy,
       this.providerCatalogService,
-      this.agentSettingsStore
+      this.agentSettingsStore,
+      this.systemSkillsService
     );
     logger.info("Worker gateway initialized");
 
@@ -709,10 +741,16 @@ export class CoreServices {
         "Agent settings store must be initialized before command registry"
       );
     }
+    if (!this.claimService) {
+      throw new Error(
+        "Claim service must be initialized before command registry"
+      );
+    }
 
     this.commandRegistry = new CommandRegistry();
     registerBuiltInCommands(this.commandRegistry, {
       agentSettingsStore: this.agentSettingsStore,
+      claimService: this.claimService,
     });
     logger.info("✅ Command registry initialized with built-in commands");
   }
@@ -774,12 +812,12 @@ export class CoreServices {
     return this.mcpConfigService;
   }
 
-  getClaudeModelPreferenceStore(): ClaudeModelPreferenceStore | undefined {
-    return this.claudeModelPreferenceStore;
+  getModelPreferenceStore(): ModelPreferenceStore | undefined {
+    return this.modelPreferenceStore;
   }
 
-  getClaudeOAuthStateStore(): ClaudeOAuthStateStore | undefined {
-    return this.claudeOAuthStateStore;
+  getOAuthStateStore(): ProviderOAuthStateStore | undefined {
+    return this.oauthStateStore;
   }
 
   getPublicGatewayUrl(): string {
@@ -878,5 +916,23 @@ export class CoreServices {
 
   getIntegrationOAuthModule(): IntegrationOAuthModule | undefined {
     return this.integrationOAuthModule;
+  }
+
+  getClaimService(): ClaimService | undefined {
+    return this.claimService;
+  }
+
+  getSettingsOAuthClient(): SettingsOAuthClient | undefined {
+    return this.settingsOAuthClient;
+  }
+
+  getSettingsOAuthStateStore():
+    | OAuthStateStore<{
+        userId: string;
+        codeVerifier: string;
+        returnUrl: string;
+      }>
+    | undefined {
+    return this.settingsOAuthStateStore;
   }
 }

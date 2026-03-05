@@ -224,7 +224,8 @@ function setupServer(
     } = require("../routes/internal/settings-link");
     const settingsLinkRouter = createSettingsLinkRoutes(
       interactionService,
-      coreServices?.getGrantStore()
+      coreServices?.getGrantStore(),
+      coreServices?.getClaimService()
     );
     app.route("", settingsLinkRouter);
     logger.info("Settings link routes enabled at :8080/internal/settings-link");
@@ -315,10 +316,9 @@ function setupServer(
     // Dynamically mount model provider auth routes
     const providerModules = getModelProviderModules();
 
-    // Shared save-key + logout handlers (parameterized by :provider)
+    // Shared save-key, device-code, and logout handlers (parameterized by :provider)
     const authProfilesManager = coreServices.getAuthProfilesManager();
     if (authProfilesManager) {
-      const { verifySettingsToken } = require("../auth/settings/token-service");
       const {
         verifySettingsSession,
       } = require("../routes/public/settings-auth");
@@ -328,19 +328,12 @@ function setupServer(
       const agentMetadataStore = coreServices.getAgentMetadataStore();
       const userAgentsStore = coreServices.getUserAgentsStore();
 
-      /** Verify token or session cookie authorizes access to the given agentId */
+      /** Verify session cookie authorizes access to the given agentId */
       const verifyProviderAuth = async (
         c: any,
         agentId: string
       ): Promise<boolean> => {
-        // Try explicit token first (query param or body)
-        const body = c.__parsedBody;
-        const queryToken = c.req.query("token");
-        const authToken =
-          typeof body?.token === "string" ? body.token : queryToken;
-        const payload = authToken
-          ? verifySettingsToken(authToken)
-          : verifySettingsSession(c);
+        const payload = verifySettingsSession(c);
         if (!payload) return false;
 
         // Agent-based token: must match exactly
@@ -369,7 +362,6 @@ function setupServer(
               });
             return true;
           }
-          if (metadata?.isWorkspaceAgent) return true;
         }
         return false;
       };
@@ -383,7 +375,6 @@ function setupServer(
           if (!mod) return c.json({ error: "Unknown provider" }, 404);
 
           const body = await c.req.json();
-          c.__parsedBody = body;
           const { agentId, apiKey } = body;
           if (!agentId || !apiKey) {
             return c.json({ error: "Missing agentId or apiKey" }, 400);
@@ -409,6 +400,98 @@ function setupServer(
         }
       });
 
+      authRouter.post("/:provider/start", async (c: any) => {
+        try {
+          const providerId = c.req.param("provider");
+          const mod = getModelProviderModules().find(
+            (m) => m.providerId === providerId
+          );
+          if (!mod) return c.json({ error: "Unknown provider" }, 404);
+
+          const supportsDeviceCode =
+            mod.authType === "device-code" ||
+            mod.supportedAuthTypes?.includes("device-code");
+          if (!supportsDeviceCode) {
+            return c.json(
+              { error: "Provider does not support device code" },
+              400
+            );
+          }
+
+          if (typeof mod.startDeviceCode !== "function") {
+            return c.json({ error: "Device code start not implemented" }, 501);
+          }
+
+          const body = (await c.req.json().catch(() => ({}))) as {
+            agentId?: string;
+          };
+          const agentId = body.agentId?.trim();
+          if (!agentId) return c.json({ error: "Missing agentId" }, 400);
+
+          if (!(await verifyProviderAuth(c, agentId))) {
+            return c.json({ error: "Unauthorized" }, 401);
+          }
+
+          const result = await mod.startDeviceCode(agentId);
+          return c.json(result);
+        } catch (error) {
+          logger.error("Failed to start device code flow", { error });
+          return c.json({ error: "Failed to start device code flow" }, 500);
+        }
+      });
+
+      authRouter.post("/:provider/poll", async (c: any) => {
+        try {
+          const providerId = c.req.param("provider");
+          const mod = getModelProviderModules().find(
+            (m) => m.providerId === providerId
+          );
+          if (!mod) return c.json({ error: "Unknown provider" }, 404);
+
+          const supportsDeviceCode =
+            mod.authType === "device-code" ||
+            mod.supportedAuthTypes?.includes("device-code");
+          if (!supportsDeviceCode) {
+            return c.json(
+              { error: "Provider does not support device code" },
+              400
+            );
+          }
+
+          if (typeof mod.pollDeviceCode !== "function") {
+            return c.json({ error: "Device code poll not implemented" }, 501);
+          }
+
+          const body = (await c.req.json().catch(() => ({}))) as {
+            agentId?: string;
+            deviceAuthId?: string;
+            userCode?: string;
+          };
+          const agentId = body.agentId?.trim();
+          const deviceAuthId = body.deviceAuthId?.trim();
+          const userCode = body.userCode?.trim();
+          if (!agentId || !deviceAuthId || !userCode) {
+            return c.json(
+              { error: "Missing agentId, deviceAuthId, or userCode" },
+              400
+            );
+          }
+
+          if (!(await verifyProviderAuth(c, agentId))) {
+            return c.json({ error: "Unauthorized" }, 401);
+          }
+
+          const result = await mod.pollDeviceCode(agentId, {
+            deviceAuthId,
+            userCode,
+          });
+          return c.json(result);
+        } catch (error) {
+          logger.error("Failed to poll device code flow", { error });
+          return c.json({ error: "Failed to poll device code flow" }, 500);
+        }
+      });
+
       authRouter.post("/:provider/logout", async (c: any) => {
         try {
           const providerId = c.req.param("provider");
@@ -418,7 +501,6 @@ function setupServer(
           if (!mod) return c.json({ error: "Unknown provider" }, 404);
 
           const body = await c.req.json().catch(() => ({}));
-          c.__parsedBody = body;
           const agentId = body.agentId || c.req.query("agentId");
 
           if (!agentId) {
@@ -501,7 +583,7 @@ function setupServer(
 
     // Get shared dependencies (needed before mounting auth router)
     const agentSettingsStore = coreServices.getAgentSettingsStore();
-    const claudeOAuthStateStore = coreServices.getClaudeOAuthStateStore();
+    const claudeOAuthStateStore = coreServices.getOAuthStateStore();
     const scheduledWakeupService = coreServices.getScheduledWakeupService();
 
     // Build provider stores and overrides dynamically from registered modules
@@ -515,8 +597,16 @@ function setupServer(
       providerConnectedOverrides[mod.providerId] = mod.hasSystemKey();
     }
 
-    // Settings HTML page
-    if (agentSettingsStore) {
+    // Settings HTML page (requires OAuth client + claim service)
+    const settingsOAuthClient = coreServices.getSettingsOAuthClient();
+    const settingsOAuthStateStore = coreServices.getSettingsOAuthStateStore();
+    const claimServiceForSettings = coreServices.getClaimService();
+    if (
+      agentSettingsStore &&
+      settingsOAuthClient &&
+      settingsOAuthStateStore &&
+      claimServiceForSettings
+    ) {
       const { createSettingsPageRoutes } = require("../routes/public/settings");
       const settingsPageRouter = createSettingsPageRoutes({
         agentSettingsStore,
@@ -529,10 +619,25 @@ function setupServer(
         connectionManager: coreServices
           .getWorkerGateway()
           ?.getConnectionManager(),
-        systemSkillsService: coreServices.getSystemSkillsService(),
+        settingsOAuthClient,
+        settingsOAuthStateStore,
+        claimService: claimServiceForSettings,
       });
       app.route("", settingsPageRouter);
       logger.info("Settings HTML page enabled at :8080/settings");
+
+      // Admin page (system skills registry)
+      const systemSkillsService = coreServices.getSystemSkillsService();
+      if (systemSkillsService) {
+        const { createAdminPageRoutes } = require("../routes/public/admin");
+        const adminRouter = createAdminPageRoutes({ systemSkillsService });
+        app.route("", adminRouter);
+        logger.info("Admin page enabled at :8080/admin");
+      }
+    } else if (agentSettingsStore) {
+      logger.warn(
+        "Settings page disabled: missing OAuth client or claim service configuration"
+      );
     }
 
     // Landing page (docs + integrations)
@@ -636,8 +741,9 @@ function setupServer(
     // OAuth routes (mounted under unified auth router)
     if (agentSettingsStore) {
       const { createOAuthRoutes } = require("../routes/public/oauth");
-      const { ClaudeOAuthClient } = require("../auth/oauth/claude-client");
-      const claudeOAuthClient = new ClaudeOAuthClient();
+      const { OAuthClient } = require("../auth/oauth/client");
+      const { CLAUDE_PROVIDER } = require("../auth/oauth/providers");
+      const claudeOAuthClient = new OAuthClient(CLAUDE_PROVIDER);
       const oauthRouter = createOAuthRoutes({
         providerStores:
           Object.keys(providerStores).length > 0 ? providerStores : undefined,
@@ -745,45 +851,39 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
     tags: [
       {
         name: "Agents",
-        description:
-          "Create, manage, and configure AI agents. Includes config (model, network, env vars) and schedules (wakeups, reminders).",
+        description: "Create, list, update, and delete agents.",
       },
       {
-        name: "Agent Messages",
+        name: "Messages",
         description:
-          "Send messages to agents and handle pending tool interactions.",
+          "Send messages to agents and subscribe to real-time events (SSE).",
+      },
+      {
+        name: "Configuration",
+        description:
+          "Agent configuration — LLM providers, Nix packages, domain grants.",
       },
       {
         name: "Channels",
         description:
-          "Bind agents to platform channels (Slack, Telegram). Messages from bound channels are routed to the agent.",
+          "Bind agents to messaging platform channels (Slack, Telegram, WhatsApp).",
       },
       {
-        name: "Messaging",
-        description:
-          "Send messages through platform adapters (Slack, Telegram, API).",
+        name: "Schedules",
+        description: "Scheduled wakeups and recurring reminders.",
+      },
+      {
+        name: "History",
+        description: "Session messages, stats, and connection status.",
       },
       {
         name: "Auth",
         description:
-          "Authentication flows — API key, OAuth code exchange, device code for Claude and other providers.",
-      },
-      {
-        name: "Webhooks",
-        description: "Platform webhook endpoints (Telegram, Slack OAuth).",
+          "Provider authentication — API keys, OAuth, device code flows.",
       },
       {
         name: "Integrations",
-        description:
-          "Browse and manage skills, MCP servers, and other integrations.",
-      },
-      {
-        name: "Settings",
-        description: "Settings page session management.",
-      },
-      {
-        name: "System",
-        description: "Health checks, metrics, and system status.",
+        description: "Browse and install skills and MCP servers.",
       },
     ],
     servers: [

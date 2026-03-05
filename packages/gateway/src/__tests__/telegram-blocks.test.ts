@@ -17,7 +17,7 @@ describe("TelegramBlockBuilder", () => {
 
   test("extracts settings link into inline keyboard", () => {
     const result = builder.build(
-      "Click [Settings](https://app.example.com/settings#st=abc123) to configure"
+      "Click [Settings](https://app.example.com/settings?claim=abc123) to configure"
     );
     expect(result.replyMarkup).toBeDefined();
     expect(result.replyMarkup!.inline_keyboard).toHaveLength(1);
@@ -31,7 +31,7 @@ describe("TelegramBlockBuilder", () => {
 
   test("strips settings link from HTML content", () => {
     const result = builder.build(
-      "Click [Settings](https://app.example.com/settings#st=abc123) to continue"
+      "Click [Settings](https://app.example.com/settings?claim=abc123) to continue"
     );
     // The markdown link should be replaced with just the label
     expect(result.html).toContain("Settings");
@@ -40,7 +40,7 @@ describe("TelegramBlockBuilder", () => {
 
   test("handles multiple settings links", () => {
     const result = builder.build(
-      "[A](https://a.com/settings#st=1) and [B](https://b.com/settings#st=2)"
+      "[A](https://a.com/settings?claim=1) and [B](https://b.com/settings?claim=2)"
     );
     expect(result.replyMarkup!.inline_keyboard).toHaveLength(2);
   });

@@ -141,6 +141,18 @@ export class WhatsAppPlatform implements PlatformAdapter {
       logger.info("✅ User agents stores wired to WhatsApp message handler");
     }
 
+    // Wire up claim service for settings link generation
+    const claimService = services.getClaimService();
+    if (claimService) {
+      if (this.messageHandler) {
+        this.messageHandler.setClaimService(claimService);
+      }
+      if (this.authAdapter) {
+        this.authAdapter.setClaimService(claimService);
+      }
+      logger.info("✅ Claim service wired to WhatsApp handlers");
+    }
+
     logger.info("WhatsApp platform initialized");
   }
 

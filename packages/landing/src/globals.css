@@ -85,3 +85,15 @@ body {
   right: 0;
   transform: translate(50%, -50%);
 }
+
+/* Chat action button hover */
+.chat-action-btn {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.chat-action-btn:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
+}

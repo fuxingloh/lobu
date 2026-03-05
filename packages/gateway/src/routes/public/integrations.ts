@@ -132,44 +132,6 @@ const skillFetchRoute = createRoute({
   },
 });
 
-const mcpByIdRoute = createRoute({
-  method: "get",
-  path: "/mcps/{id}",
-  tags: [TAG],
-  summary: "Get MCP server by ID",
-  description:
-    "Returns full MCP server configuration including setup instructions",
-  request: {
-    query: z.object({ token: z.string().optional() }),
-    params: z.object({ id: z.string() }),
-  },
-  responses: {
-    200: {
-      description: "MCP server details",
-      content: {
-        "application/json": {
-          schema: z.object({
-            id: z.string(),
-            name: z.string(),
-            description: z.string(),
-            type: z.enum(["oauth", "command", "api-key", "none"]),
-            config: z.record(z.string(), z.unknown()),
-            setupInstructions: z.string().optional(),
-          }),
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: { "application/json": { schema: ErrorResponse } },
-    },
-    404: {
-      description: "Not found",
-      content: { "application/json": { schema: ErrorResponse } },
-    },
-  },
-});
-
 export function createIntegrationsRoutes(): OpenAPIHono {
   const app = new OpenAPIHono();
   const coordinator = new SkillRegistryCoordinator();
@@ -231,24 +193,6 @@ export function createIntegrationsRoutes(): OpenAPIHono {
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : "Failed" }, 400);
     }
-  });
-
-  app.openapi(mcpByIdRoute, async (c): Promise<any> => {
-    if (!verifySettingsSession(c))
-      return c.json({ error: "Unauthorized" }, 401);
-
-    const { id } = c.req.valid("param");
-    const mcp = mcpRegistry.getById(id);
-    if (!mcp) return c.json({ error: "MCP not found" }, 404);
-
-    return c.json({
-      id: mcp.id,
-      name: mcp.name,
-      description: mcp.description,
-      type: mcp.type,
-      config: mcp.config,
-      setupInstructions: mcp.setupInstructions,
-    });
   });
 
   return app;

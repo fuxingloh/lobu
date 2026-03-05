@@ -17,13 +17,11 @@ import {
   type WAMessage,
 } from "@whiskeysockets/baileys";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
+import type { AgentSettingsStore } from "../../auth/settings";
 import {
-  type AgentSettingsStore,
-  buildSettingsUrl,
-  formatSettingsTokenTtl,
-  generateChannelSettingsToken,
-  generateSettingsToken,
-} from "../../auth/settings";
+  type ClaimService,
+  buildClaimSettingsUrl,
+} from "../../auth/settings/claim-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
 import type { QueueProducer } from "../../infrastructure/queue/queue-producer";
@@ -85,6 +83,7 @@ export class WhatsAppMessageHandler {
   private transcriptionService?: TranscriptionService;
   private userAgentsStore?: UserAgentsStore;
   private agentMetadataStore?: AgentMetadataStore;
+  private claimService?: ClaimService;
 
   constructor(
     private client: BaileysClient,
@@ -123,6 +122,10 @@ export class WhatsAppMessageHandler {
     this.agentMetadataStore = store;
   }
 
+  setClaimService(service: ClaimService): void {
+    this.claimService = service;
+  }
+
   /**
    * Send a configuration prompt for WhatsApp.
    * WhatsApp always uses first-user fallback for groups (limited admin API).
@@ -135,14 +138,19 @@ export class WhatsAppMessageHandler {
     }
 
     try {
+      if (!this.claimService) {
+        logger.warn("ClaimService not available for config prompt");
+        return false;
+      }
+
       const userId = context.senderE164 || context.senderJid;
 
-      const token = generateChannelSettingsToken(
-        userId,
+      const claimCode = await this.claimService.createClaim(
         "whatsapp",
-        context.chatJid
+        context.chatJid,
+        userId
       );
-      const configUrl = buildSettingsUrl(token);
+      const configUrl = buildClaimSettingsUrl(claimCode);
 
       await this.client.sendMessage(context.chatJid, {
         text: `Welcome! To get started, please configure which agent should handle messages here.\n\nConfigure: ${configUrl}`,
@@ -722,12 +730,18 @@ export class WhatsAppMessageHandler {
       const userId = context.senderE164 || context.senderJid;
       logger.info(`User ${userId} requested /configure for agent ${agentId}`);
       try {
-        const token = generateSettingsToken(agentId, userId, "whatsapp");
-        const settingsUrl = buildSettingsUrl(token);
-        const ttlLabel = formatSettingsTokenTtl();
+        if (!this.claimService) {
+          throw new Error("ClaimService not configured");
+        }
+        const claimCode = await this.claimService.createClaim(
+          "whatsapp",
+          context.chatJid,
+          userId
+        );
+        const settingsUrl = buildClaimSettingsUrl(claimCode, { agentId });
 
         await this.client.sendMessage(context.chatJid, {
-          text: `Here's your settings link (valid for ${ttlLabel}):\n${settingsUrl}\n\nUse this page to configure your agent's model, network access, and more.`,
+          text: `Here's your settings link:\n${settingsUrl}\n\nUse this page to configure your agent's model, network access, and more.`,
         });
         logger.info(`Sent settings link to user ${userId}`);
       } catch (error) {
@@ -807,7 +821,7 @@ The user sent a voice message but no transcription provider is configured.
 Available providers that can be configured: ${providers.join(", ")}
 
 To enable voice transcription:
-1. Use the GetSettingsLink tool to generate a settings link for the user
+1. Use the Configure tool to generate a settings link for the user
 2. They can add their preferred provider's API key (OPENAI_API_KEY, GOOGLE_API_KEY, or ELEVENLABS_API_KEY)
 3. Optionally set TRANSCRIPTION_PROVIDER to choose a specific provider (openai, gemini, elevenlabs)
 

@@ -1,15 +1,14 @@
 /**
  * WhatsApp Auth Adapter - Platform-specific authentication handling.
- * Sends settings link for authentication and configuration.
+ * Sends claim-based settings link for authentication and configuration.
  */
 
 import { createLogger } from "@lobu/core";
 import type { AuthProvider, PlatformAuthAdapter } from "../auth/platform-auth";
 import {
-  buildSettingsUrl,
-  formatSettingsTokenTtl,
-  generateSettingsToken,
-} from "../auth/settings/token-service";
+  type ClaimService,
+  buildClaimSettingsUrl,
+} from "../auth/settings/claim-service";
 import type { BaileysClient } from "./connection/baileys-client";
 
 const logger = createLogger("whatsapp-auth-adapter");
@@ -19,10 +18,16 @@ const logger = createLogger("whatsapp-auth-adapter");
  * Sends a settings link where users can configure Claude auth, MCP, network, etc.
  */
 export class WhatsAppAuthAdapter implements PlatformAuthAdapter {
+  private claimService?: ClaimService;
+
   constructor(
     private client: BaileysClient,
     _publicGatewayUrl: string
   ) {}
+
+  setClaimService(service: ClaimService): void {
+    this.claimService = service;
+  }
 
   /**
    * Send authentication required prompt with settings link.
@@ -38,10 +43,17 @@ export class WhatsAppAuthAdapter implements PlatformAuthAdapter {
     const chatJid = (platformMetadata?.jid as string) || channelId;
     const agentId = (platformMetadata?.agentId as string) || channelId;
 
-    // Generate settings token (configured TTL, default 1 hour)
-    const token = generateSettingsToken(agentId, userId, "whatsapp");
-    const settingsUrl = buildSettingsUrl(token);
-    const ttlLabel = formatSettingsTokenTtl();
+    if (!this.claimService) {
+      logger.error("ClaimService not available for auth prompt");
+      throw new Error("ClaimService not configured");
+    }
+
+    const claimCode = await this.claimService.createClaim(
+      "whatsapp",
+      chatJid,
+      userId
+    );
+    const settingsUrl = buildClaimSettingsUrl(claimCode, { agentId });
 
     const message = [
       "*Setup Required*",
@@ -50,8 +62,6 @@ export class WhatsAppAuthAdapter implements PlatformAuthAdapter {
       "Configure it using this link:",
       "",
       settingsUrl,
-      "",
-      `_Link expires in ${ttlLabel}._`,
     ].join("\n");
 
     try {

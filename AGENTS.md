@@ -33,7 +33,7 @@ Settings page provider order is drag-sortable via handle, with per-provider mode
 - **Workers must NEVER see real credentials.** Provider credentials are resolved by the gateway proxy using agentId from the URL path (`/api/proxy/{slug}/a/{agentId}/...`). Workers only receive opaque placeholders in env vars.
 
 #### MCP
-- Users pass the LOBU_MCP_SERVERS_URL env (pointing to `.lobu/mcp.config.json`) to enable MCP proxy in the gateway.
+- MCP servers are registered via the skills registry (`config/system-skills.json`) or per-agent settings.
 - Workers get MCP settings from gateway's internal config endpoint and use their JWT token to perform MCP calls through the proxy.
 - Built-in MCPs available to workers: AskUser (request user input), UploadFile (share files with user).
 
@@ -124,7 +124,6 @@ The `.env` file is the single source of truth for all secrets and configuration.
 ### Local Development
 - Gateway reads `.env` on startup via Docker Compose
 - Restart after `.env` changes: `make dev` (or `docker compose -f docker/docker-compose.yml up`)
-- Settings link token TTL defaults to 1 hour; optional dev override: `SETTINGS_TOKEN_TTL_MS` (milliseconds, e.g. `4233600000` for 7 weeks).
 
 ### Kubernetes Deployment
 When `.env` changes, sync secrets to K8s using Sealed Secrets:

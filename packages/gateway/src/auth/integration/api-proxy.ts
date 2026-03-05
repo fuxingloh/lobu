@@ -246,7 +246,12 @@ async function refreshCredentials(
   oauth2Client: GenericOAuth2Client,
   credentialStore: IntegrationCredentialStore,
   config: {
-    oauth?: { tokenUrl: string; clientId: string; clientSecret: string };
+    oauth?: {
+      tokenUrl: string;
+      clientId: string;
+      clientSecret: string;
+      tokenEndpointAuthMethod?: string;
+    };
   },
   credentials: IntegrationCredentialRecord,
   agentId: string,
@@ -263,6 +268,7 @@ async function refreshCredentials(
         tokenUrl: config.oauth.tokenUrl,
         clientId: config.oauth.clientId,
         clientSecret: config.oauth.clientSecret,
+        tokenEndpointAuthMethod: config.oauth.tokenEndpointAuthMethod,
       }
     );
 

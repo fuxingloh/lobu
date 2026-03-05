@@ -37,9 +37,7 @@ export class SlackInteractionRenderer {
 
   constructor(
     private client: WebClient,
-    private interactionService: InteractionService,
-    _grantStore?: GrantStore,
-    _queueProducer?: QueueProducer
+    private interactionService: InteractionService
   ) {
     this.interactionService.on(
       "question:created",

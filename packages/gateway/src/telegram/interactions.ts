@@ -292,8 +292,10 @@ export class TelegramInteractionRenderer {
     );
 
     // OAuth links should open in browser; settings/install use Telegram WebApp.
+    // web_app buttons are only allowed in private chats, so use url for groups.
+    const isGroup = chatId < 0;
     const keyboard =
-      btn.linkType === "oauth"
+      btn.linkType === "oauth" || isGroup
         ? new InlineKeyboard().url(btn.label, btn.url)
         : new InlineKeyboard().webApp(btn.label, btn.url);
 

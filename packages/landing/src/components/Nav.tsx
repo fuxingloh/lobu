@@ -2,7 +2,12 @@ const GITHUB_URL = "https://github.com/lobu-ai/lobu";
 const GITHUB_STARS_BADGE =
   "https://img.shields.io/github/stars/lobu-ai/lobu?style=social";
 
-const navLinks = [
+const leftLinks = [
+  { label: "Skills as SaaS", href: "/skills-as-saas" },
+  { label: "Serverless OpenClaw", href: "/serverless-openclaw" },
+];
+
+const rightLinks = [
   { label: "Docs", href: "/getting-started" },
   { label: "Blog", href: "/blog" },
 ];
@@ -17,17 +22,29 @@ export function Nav() {
         borderBottom: "1px solid var(--color-page-border)",
       }}
     >
-      <div class="max-w-[60rem] mx-auto flex items-center justify-between">
+      <div class="max-w-[60rem] mx-auto flex items-center">
         <a
           href="/"
-          class="flex items-center gap-2 text-lg font-bold tracking-tight"
+          class="flex items-center gap-2 text-lg font-bold tracking-tight mr-8"
           style={{ color: "var(--color-page-text)" }}
         >
           <img src="/lobster-icon.png" alt="Lobu" class="w-7 h-7" />
           Lobu
         </a>
+        <div class="flex items-center gap-6 mr-auto">
+          {leftLinks.map((link) => (
+            <a
+              key={link.label}
+              href={link.href}
+              class="text-sm transition-opacity hover:opacity-80"
+              style={{ color: "var(--color-page-text-muted)" }}
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
         <div class="flex items-center gap-6">
-          {navLinks.map((link) => (
+          {rightLinks.map((link) => (
             <a
               key={link.label}
               href={link.href}

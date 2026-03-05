@@ -72,11 +72,179 @@ async function handleSubmitKey(
   const key = (ps.apiKey || "").trim();
   if (!key) return;
   try {
-    await api.submitApiKey(providerId, key, ctx.agentId, "");
+    await api.submitApiKey(providerId, key, ctx.agentId);
     updatePS({ showApiKeyInput: false, showAuthFlow: false, apiKey: "" });
     handleAuthSuccess(ctx, providerId, providerName);
   } catch (e: unknown) {
     ctx.errorMsg.value = e instanceof Error ? e.message : "Failed";
+  }
+}
+
+async function startDeviceCodeFlow(
+  ctx: SettingsContextValue,
+  providerId: string,
+  providerName: string,
+  updatePS: UpdatePS
+) {
+  updatePS({ status: "Starting..." });
+  try {
+    const data = await api.startDeviceCode(providerId, ctx.agentId);
+    updatePS({
+      userCode: data.userCode,
+      verificationUrl: data.verificationUrl || "",
+      deviceAuthId: data.deviceAuthId,
+      showDeviceCode: true,
+      status: "Waiting for authorization...",
+      pollStatus: "Waiting for authorization...",
+    });
+    const interval = Math.max((data.interval || 5) * 1000, 3000);
+    const timer = setInterval(
+      () => pollDeviceCodeStatus(ctx, providerId, providerName),
+      interval
+    );
+    ctx.deviceCodePollTimer.value = timer;
+  } catch (e: unknown) {
+    updatePS({
+      status: `Error: ${e instanceof Error ? e.message : "Unknown"}`,
+    });
+  }
+}
+
+async function pollDeviceCodeStatus(
+  ctx: SettingsContextValue,
+  providerId: string,
+  providerName: string
+) {
+  const pState = ctx.providerState.value[providerId];
+  if (!pState) return;
+  try {
+    const data = await api.pollDeviceCode(providerId, {
+      deviceAuthId: pState.deviceAuthId,
+      userCode: pState.userCode,
+      agentId: ctx.agentId,
+    });
+    if (data.status === "success") {
+      if (ctx.deviceCodePollTimer.value) {
+        clearInterval(ctx.deviceCodePollTimer.value);
+        ctx.deviceCodePollTimer.value = null;
+      }
+      ctx.providerState.value = {
+        ...ctx.providerState.value,
+        [providerId]: {
+          ...ctx.providerState.value[providerId],
+          showDeviceCode: false,
+          showAuthFlow: false,
+        },
+      };
+      handleAuthSuccess(ctx, providerId, providerName);
+    } else if (data.error) {
+      if (ctx.deviceCodePollTimer.value) {
+        clearInterval(ctx.deviceCodePollTimer.value);
+        ctx.deviceCodePollTimer.value = null;
+      }
+      ctx.providerState.value = {
+        ...ctx.providerState.value,
+        [providerId]: {
+          ...ctx.providerState.value[providerId],
+          pollStatus: `Error: ${data.error}`,
+        },
+      };
+    }
+  } catch {
+    // ignore poll errors
+  }
+}
+
+/**
+ * Auto-trigger provider auth flow for a given provider ID.
+ * Handles both catalog (uninstalled) and installed-but-not-connected cases.
+ */
+export function triggerProviderAuth(
+  ctx: SettingsContextValue,
+  providerId: string
+) {
+  // Skip if auth flow is already active for this provider
+  const existing = ctx.providerState.value[providerId];
+  if (existing?.showAuthFlow) return;
+
+  const updatePS = (u: Partial<ProviderState>) => {
+    ctx.providerState.value = {
+      ...ctx.providerState.value,
+      [providerId]: { ...ctx.providerState.value[providerId], ...u },
+    };
+  };
+
+  // Case 1: Already installed
+  if (ctx.providerOrder.value.includes(providerId)) {
+    const pInfo = ctx.PROVIDERS[providerId];
+    if (!pInfo) return;
+    const ps = ctx.providerState.value[providerId];
+    if (!ps || ps.connected) return;
+
+    const authTypes = pInfo.supportedAuthTypes || [pInfo.authType || "oauth"];
+    const primaryAuth = authTypes[0];
+
+    updatePS({ showAuthFlow: true });
+    if (primaryAuth === "api-key") {
+      updatePS({
+        activeAuthTab: "api-key",
+        showApiKeyInput: true,
+        status: "Enter your API key...",
+      });
+    } else if (primaryAuth === "device-code") {
+      updatePS({ activeAuthTab: "device-code" });
+      startDeviceCodeFlow(ctx, providerId, pInfo.name || providerId, updatePS);
+    } else {
+      updatePS({
+        activeAuthTab: "oauth",
+        showCodeInput: true,
+        status: "Click Login to start authentication.",
+      });
+    }
+    return;
+  }
+
+  // Case 2: In catalog (not yet installed)
+  const cp = ctx.catalogProviders.value.find((c) => c.id === providerId);
+  if (!cp) return;
+
+  ctx.showCatalog.value = false;
+  ctx.pendingProvider.value = cp;
+
+  const authTypes = cp.supportedAuthTypes || [cp.authType];
+  const primaryAuth = authTypes[0] || cp.authType;
+
+  ctx.providerState.value = {
+    ...ctx.providerState.value,
+    [providerId]: {
+      status:
+        primaryAuth === "api-key"
+          ? "Enter your API key..."
+          : primaryAuth === "device-code"
+            ? "Starting..."
+            : "Click Login to start authentication.",
+      connected: false,
+      userConnected: false,
+      systemConnected: false,
+      showAuthFlow: true,
+      showCodeInput: primaryAuth === "oauth",
+      showDeviceCode: false,
+      showApiKeyInput: primaryAuth === "api-key",
+      activeAuthTab: primaryAuth,
+      code: "",
+      apiKey: "",
+      userCode: "",
+      verificationUrl: "",
+      pollStatus: "",
+      deviceAuthId: "",
+      selectedModel: "",
+      modelQuery: "",
+      showModelDropdown: false,
+    },
+  };
+
+  if (primaryAuth === "device-code") {
+    startDeviceCodeFlow(ctx, providerId, cp.name, updatePS);
   }
 }
 
@@ -145,7 +313,7 @@ function ProviderCard({
       });
     } else if (activeTab === "device-code") {
       updatePS({ activeAuthTab: "device-code" });
-      startDeviceCode(providerId);
+      startDeviceCodeFlow(ctx, providerId, pInfo.name || providerId, updatePS);
     } else {
       updatePS({
         activeAuthTab: "oauth",
@@ -155,67 +323,9 @@ function ProviderCard({
     }
   }
 
-  async function startDeviceCode(pid: string) {
-    updatePS({ status: "Starting..." });
-    try {
-      const data = await api.startDeviceCode(pid, ctx.agentId, "");
-      updatePS({
-        userCode: data.userCode,
-        verificationUrl:
-          data.verificationUrl || "https://auth.openai.com/codex/device",
-        deviceAuthId: data.deviceAuthId,
-        showDeviceCode: true,
-        status: "Waiting for authorization...",
-        pollStatus: "Waiting for authorization...",
-      });
-      const interval = Math.max((data.interval || 5) * 1000, 3000);
-      const timer = setInterval(() => pollDeviceCodeToken(pid), interval);
-      ctx.deviceCodePollTimer.value = timer;
-    } catch (e: unknown) {
-      updatePS({
-        status: `Error: ${e instanceof Error ? e.message : "Unknown"}`,
-      });
-    }
-  }
-
-  async function pollDeviceCodeToken(pid: string) {
-    const pState = ctx.providerState.value[pid];
-    if (!pState) return;
-    try {
-      const data = await api.pollDeviceCode(pid, {
-        deviceAuthId: pState.deviceAuthId,
-        userCode: pState.userCode,
-        agentId: ctx.agentId,
-        token: "",
-      });
-      if (data.status === "success") {
-        if (ctx.deviceCodePollTimer.value) {
-          clearInterval(ctx.deviceCodePollTimer.value);
-          ctx.deviceCodePollTimer.value = null;
-        }
-        updatePS({ showDeviceCode: false, showAuthFlow: false });
-        handleAuthSuccess(ctx, pid, pInfo.name || pid);
-      } else if (data.error) {
-        if (ctx.deviceCodePollTimer.value) {
-          clearInterval(ctx.deviceCodePollTimer.value);
-          ctx.deviceCodePollTimer.value = null;
-        }
-        ctx.providerState.value = {
-          ...ctx.providerState.value,
-          [pid]: {
-            ...ctx.providerState.value[pid],
-            pollStatus: `Error: ${data.error}`,
-          },
-        };
-      }
-    } catch {
-      // ignore poll errors
-    }
-  }
-
   async function handleDisconnect(profileId?: string) {
     if (!confirm(`Disconnect from ${pInfo.name || providerId}?`)) return;
-    await api.disconnectProvider(providerId, ctx.agentId, "", profileId);
+    await api.disconnectProvider(providerId, ctx.agentId, profileId);
     updatePS({
       showAuthFlow: false,
       showCodeInput: false,
@@ -420,7 +530,22 @@ function ProviderCard({
                 <button
                   key={at}
                   type="button"
-                  onClick={() => updatePS({ activeAuthTab: at })}
+                  onClick={() => {
+                    const update: Partial<ProviderState> = {
+                      activeAuthTab: at,
+                      showApiKeyInput: at === "api-key",
+                      showCodeInput: at === "oauth",
+                    };
+                    updatePS(update);
+                    if (at === "device-code" && !ps.showDeviceCode) {
+                      startDeviceCodeFlow(
+                        ctx,
+                        providerId,
+                        pInfo.name || providerId,
+                        updatePS
+                      );
+                    }
+                  }}
                   class={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all border-b-2 -mb-px ${
                     ps.activeAuthTab === at
                       ? "border-slate-600 text-slate-800 bg-white"
@@ -459,7 +584,6 @@ function ProviderCard({
                 pInfo.name || providerId
               )
             }
-            openExternal={ctx.openExternal}
           />
         </div>
       )}
@@ -474,7 +598,6 @@ function AuthFlowContent({
   updatePS,
   onSubmitOAuth,
   onSubmitApiKey,
-  openExternal,
 }: {
   providerId: string;
   ps: ProviderState;
@@ -488,8 +611,8 @@ function AuthFlowContent({
   updatePS: (u: Partial<ProviderState>) => void;
   onSubmitOAuth: () => void;
   onSubmitApiKey: () => void;
-  openExternal: (url: string) => void;
 }) {
+  const ctx = useSettings();
   const authTypes = pInfo.supportedAuthTypes || [pInfo.authType];
   const hasMultiAuth = authTypes.length > 1;
 
@@ -509,10 +632,12 @@ function AuthFlowContent({
         <div>
           <div class="mb-3 text-center">
             <a
-              href={`/api/v1/auth/${providerId}/login`}
+              href={`/api/v1/auth/${providerId}/login?agentId=${ctx.agentId}`}
               onClick={(e) => {
                 e.preventDefault();
-                openExternal(`/api/v1/auth/${providerId}/login`);
+                ctx.openExternal(
+                  `/api/v1/auth/${providerId}/login?agentId=${ctx.agentId}`
+                );
               }}
               class="inline-block px-4 py-2 text-xs font-medium rounded-lg bg-slate-600 text-white hover:bg-slate-700 transition-all cursor-pointer"
             >
@@ -554,12 +679,10 @@ function AuthFlowContent({
             {ps.userCode || ""}
           </p>
           <a
-            href={ps.verificationUrl || "https://auth.openai.com/codex/device"}
+            href={ps.verificationUrl}
             onClick={(e) => {
               e.preventDefault();
-              openExternal(
-                ps.verificationUrl || "https://auth.openai.com/codex/device"
-              );
+              ctx.openExternal(ps.verificationUrl);
             }}
             class="inline-block px-4 py-2 text-xs font-medium rounded-lg bg-slate-600 text-white hover:bg-slate-700 transition-all mb-2 cursor-pointer"
           >
@@ -602,44 +725,7 @@ function ProviderCatalog() {
   if (ctx.catalogProviders.value.length === 0) return null;
 
   function handleAddProvider(cp: CatalogProvider) {
-    ctx.showCatalog.value = false;
-    ctx.pendingProvider.value = cp;
-
-    const authTypes = cp.supportedAuthTypes || [cp.authType];
-    const primaryAuth = authTypes[0] || cp.authType;
-
-    const newState: ProviderState = {
-      status: "Connecting...",
-      connected: false,
-      userConnected: false,
-      systemConnected: false,
-      showAuthFlow: true,
-      showCodeInput: false,
-      showDeviceCode: false,
-      showApiKeyInput: false,
-      activeAuthTab: primaryAuth,
-      code: "",
-      apiKey: "",
-      userCode: "",
-      verificationUrl: "",
-      pollStatus: "",
-      deviceAuthId: "",
-      selectedModel: "",
-      modelQuery: "",
-      showModelDropdown: false,
-    };
-
-    if (primaryAuth === "api-key") {
-      newState.showApiKeyInput = true;
-      newState.status = "Enter your API key...";
-    } else if (primaryAuth === "device-code") {
-      // Will be started when PendingProviderAuth renders
-    } else {
-      newState.showCodeInput = true;
-      newState.status = "Click Login to start authentication.";
-    }
-
-    ctx.providerState.value = { ...ctx.providerState.value, [cp.id]: newState };
+    triggerProviderAuth(ctx, cp.id);
   }
 
   return (
@@ -777,13 +863,19 @@ function PendingProviderAuth() {
                     key={at}
                     type="button"
                     onClick={() => {
-                      ctx.providerState.value = {
-                        ...ctx.providerState.value,
-                        [pp.id]: {
-                          ...ctx.providerState.value[pp.id],
-                          activeAuthTab: at,
-                        },
-                      };
+                      pendingUpdatePS({
+                        activeAuthTab: at,
+                        showApiKeyInput: at === "api-key",
+                        showCodeInput: at === "oauth",
+                      });
+                      if (at === "device-code" && !ps.showDeviceCode) {
+                        startDeviceCodeFlow(
+                          ctx,
+                          pp.id,
+                          pp.name,
+                          pendingUpdatePS
+                        );
+                      }
                     }}
                     class={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all border-b-2 -mb-px ${
                       ps.activeAuthTab === at
@@ -807,7 +899,6 @@ function PendingProviderAuth() {
               onSubmitApiKey={() =>
                 handleSubmitKey(ctx, pp.id, ps, pendingUpdatePS, pp.name)
               }
-              openExternal={ctx.openExternal}
             />
           </>
         )}

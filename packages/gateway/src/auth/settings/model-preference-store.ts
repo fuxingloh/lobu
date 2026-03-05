@@ -2,15 +2,15 @@ import { BaseRedisStore } from "@lobu/core";
 import type Redis from "ioredis";
 
 /**
- * Store and retrieve user's Claude model preference from Redis
- * Pattern: claude:model_preference:{userId}
+ * Store and retrieve user's model preference from Redis
+ * Pattern: {providerId}:model_preference:{userId}
  */
-export class ClaudeModelPreferenceStore extends BaseRedisStore<string> {
-  constructor(redis: Redis) {
+export class ModelPreferenceStore extends BaseRedisStore<string> {
+  constructor(redis: Redis, providerId: string) {
     super({
       redis,
-      keyPrefix: "claude:model_preference",
-      loggerName: "claude-model-preference",
+      keyPrefix: `${providerId}:model_preference`,
+      loggerName: `${providerId}-model-preference`,
     });
   }
 

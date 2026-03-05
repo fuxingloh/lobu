@@ -9,6 +9,7 @@ import {
   renderOAuthErrorPage,
   renderOAuthSuccessPage,
 } from "../oauth-templates";
+import { SETTINGS_SESSION_COOKIE_NAME } from "../../routes/public/settings-auth";
 import type { McpConfigService } from "./config-service";
 import type { McpCredentialStore } from "./credential-store";
 import type { McpInputStore } from "./input-store";
@@ -26,7 +27,7 @@ interface McpStatus {
 
 /**
  * MCP OAuth Module - Handles OAuth authentication for MCP servers
- * Provides login/logout functionality via Slack home tab
+ * Provides login/logout/status via HTTP routes and the internal mcp-login endpoint
  */
 export class McpOAuthModule extends BaseModule {
   name = "mcp-oauth";
@@ -182,174 +183,6 @@ export class McpOAuthModule extends BaseModule {
       logger.error("Failed to get MCP auth status", { error, userId, agentId });
       return [];
     }
-  }
-
-  /**
-   * Handle home tab action (login/logout/configure buttons)
-   */
-  async handleAction(
-    actionId: string,
-    userId: string,
-    context: any
-  ): Promise<boolean> {
-    const agentId = context.agentId;
-    if (!agentId) {
-      logger.error("Missing agentId in action context", { actionId, userId });
-      return false;
-    }
-
-    // Handle configure button (inputs)
-    if (actionId.startsWith("mcp_configure_")) {
-      const mcpId = actionId.replace("mcp_configure_", "");
-
-      try {
-        const httpServer = await this.configService.getHttpServer(
-          mcpId,
-          agentId
-        );
-        if (
-          !httpServer ||
-          !httpServer.inputs ||
-          httpServer.inputs.length === 0
-        ) {
-          logger.error(`MCP ${mcpId} not found or has no inputs`);
-          return false;
-        }
-
-        // Build modal with input fields (include agentId in metadata)
-        const modal = this.buildInputModal(mcpId, agentId, httpServer.inputs);
-
-        // Open modal
-        if (context.client && context.body?.trigger_id) {
-          await context.client.views.open({
-            trigger_id: context.body.trigger_id,
-            view: modal,
-          });
-        }
-
-        logger.info(
-          `Opened input modal for user ${userId}, space ${agentId}, MCP ${mcpId}`
-        );
-        return true;
-      } catch (error) {
-        logger.error("Failed to handle configure action", {
-          error,
-          mcpId,
-          userId,
-          agentId,
-        });
-        return false;
-      }
-    }
-
-    // Handle logout/clear button
-    if (actionId.startsWith("mcp_logout_")) {
-      const mcpId = actionId.replace("mcp_logout_", "");
-
-      // Delete both OAuth credentials and input values
-      await this.credentialStore.deleteCredentials(agentId, mcpId);
-      await this.inputStore.deleteInputs(agentId, mcpId);
-
-      logger.info(`Space ${agentId} logged out/cleared from ${mcpId}`);
-
-      // Update home tab
-      if (context.updateAppHome) {
-        await context.updateAppHome(userId, context.client);
-      }
-
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Handle view submission (modal submitted)
-   */
-  async handleViewSubmission(
-    _viewId: string,
-    userId: string,
-    values: any,
-    privateMetadata: string
-  ): Promise<void> {
-    try {
-      // Parse metadata to get mcpId and agentId
-      const metadata = JSON.parse(privateMetadata);
-      const { mcpId, agentId } = metadata;
-
-      if (!mcpId || !agentId) {
-        logger.error("Missing mcpId or agentId in modal metadata", {
-          metadata,
-        });
-        return;
-      }
-
-      // Extract input values from modal submission
-      const inputValues: Record<string, string> = {};
-      for (const [blockId, block] of Object.entries(values)) {
-        const actionIds = Object.keys(block as any);
-        if (actionIds.length > 0 && actionIds[0]) {
-          const actionId: string = actionIds[0];
-          const value = (block as any)[actionId]?.value;
-          if (value) {
-            inputValues[blockId] = value;
-          }
-        }
-      }
-
-      // Store input values using agentId
-      await this.inputStore.setInputs(agentId, mcpId, inputValues);
-      logger.info(`Stored input values for space ${agentId}, MCP ${mcpId}`);
-    } catch (error) {
-      logger.error("Failed to handle view submission", { error, userId });
-      throw error;
-    }
-  }
-
-  /**
-   * Build Slack modal for collecting input values
-   */
-  private buildInputModal(mcpId: string, agentId: string, inputs: any[]): any {
-    const blocks: any[] = [];
-
-    // Add input blocks for each required input
-    for (const input of inputs) {
-      blocks.push({
-        type: "input",
-        block_id: input.id,
-        label: {
-          type: "plain_text",
-          text: input.description || input.id,
-        },
-        element: {
-          type: "plain_text_input",
-          action_id: input.id,
-          placeholder: {
-            type: "plain_text",
-            text: `Enter ${input.description || input.id}`,
-          },
-        },
-      });
-    }
-
-    return {
-      type: "modal",
-      callback_id: `mcp_input_modal_${mcpId}`,
-      private_metadata: JSON.stringify({ mcpId, agentId }),
-      title: {
-        type: "plain_text",
-        text: `Configure ${formatMcpName(mcpId)}`,
-      },
-      submit: {
-        type: "plain_text",
-        text: "Save",
-      },
-      close: {
-        type: "plain_text",
-        text: "Cancel",
-      },
-      blocks,
-    };
   }
 
   /**
@@ -702,12 +535,28 @@ export class McpOAuthModule extends BaseModule {
         credentials
       );
 
+      const mcpName = formatMcpName(stateData.mcpId);
       logger.info(
         `OAuth successful for space ${stateData.agentId}, MCP ${stateData.mcpId}`
       );
 
-      // Show success page
-      return c.html(renderOAuthSuccessPage(formatMcpName(stateData.mcpId)));
+      // If user has a settings session, redirect to settings page
+      const hasSession = !!c.req.raw.headers
+        .get("cookie")
+        ?.includes(SETTINGS_SESSION_COOKIE_NAME);
+      if (hasSession) {
+        return c.redirect(
+          `/settings?agent=${encodeURIComponent(stateData.agentId)}&open=skills&message=${encodeURIComponent(`Connected to ${mcpName}`)}`
+        );
+      }
+
+      // No session — show success page with link to settings
+      return c.html(
+        renderOAuthSuccessPage(
+          mcpName,
+          `/settings?agent=${encodeURIComponent(stateData.agentId)}&open=skills`
+        )
+      );
     } catch (error) {
       logger.error("Failed to handle OAuth callback", {
         error,

@@ -25,4 +25,14 @@ describe("OAuth template escaping", () => {
     expect(html).not.toContain('"><svg onload=alert(1)>');
     expect(html).toContain("&quot;&gt;&lt;svg onload=alert(1)&gt;");
   });
+
+  test("escapes settings URL on success page", () => {
+    const html = renderOAuthSuccessPage(
+      "Google",
+      '"><script>alert(1)</script>'
+    );
+
+    expect(html).not.toContain('"><script>alert(1)</script>');
+    expect(html).toContain("Open Settings");
+  });
 });

@@ -1,0 +1,86 @@
+---
+title: Skills Registry
+description: Built-in system skills that ship with every Lobu agent — integrations, LLM providers, and MCP servers.
+---
+
+import { SkillsRegistryTable } from "../../../components/SkillsRegistryTable";
+
+Every Lobu agent ships with a set of **system skills** — pre-configured integrations, LLM providers, and MCP servers that are always available. Users authenticate through the settings page; agents use them automatically.
+
+## Registry overview
+
+The built-in registry currently includes:
+
+- **7 Integrations** — OAuth-authenticated services (Google, GitHub, Microsoft 365, Notion, Linear, Jira, Sentry)
+- **1 MCP Server** — Owletto for long-term memory across conversations
+- **13 LLM Providers** — API-key authenticated model providers (Groq, Gemini, Together AI, and more)
+
+<SkillsRegistryTable client:load />
+
+## Agent discovery flow
+
+Agents can discover and install additional skills at runtime using built-in tools:
+
+1. **`SearchSkills`** — Agent searches the registry for skills matching a task
+2. **`InstallSkill`** — Agent requests installation of a specific skill
+3. **Settings link** — The user receives a prefilled settings link to review and approve the new skill
+4. **Activation** — Once approved, the skill is active for that agent's future sessions
+
+This flow ensures users always have control over what integrations and permissions their agent uses.
+
+## SKILL.md format
+
+Custom skills are defined as `SKILL.md` files with YAML frontmatter:
+
+```yaml
+---
+name: My Skill
+description: What this skill does
+
+integrations:
+  - id: google
+    authType: oauth
+    scopesConfig:
+      default: [gmail.readonly]
+      available: [gmail.send]
+    apiDomains: [gmail.googleapis.com]
+
+mcpServers:
+  my-mcp:
+    url: https://my-mcp.example.com
+    type: sse
+
+nixConfig:
+  packages: [jq, ripgrep]
+
+networkConfig:
+  allowedDomains:
+    - api.example.com
+
+toolsConfig:
+  allowedTools:
+    - Read
+    - Bash(git:*)
+  deniedTools:
+    - DeleteFile
+  strictMode: true
+---
+
+# My Skill
+
+Instructions and behavioral rules go here as markdown.
+```
+
+### Frontmatter fields
+
+| Field | Description |
+|-------|-------------|
+| `name` | Display name for the skill |
+| `description` | Short summary shown in search results |
+| `integrations` | OAuth/API-key services the skill needs |
+| `mcpServers` | MCP server connections |
+| `nixConfig.packages` | System packages to install (Nix) |
+| `networkConfig.allowedDomains` | Domains the agent sandbox can reach |
+| `toolsConfig.allowedTools` | Tools the agent is allowed to use |
+| `toolsConfig.deniedTools` | Tools explicitly blocked |
+| `toolsConfig.strictMode` | When `true`, only `allowedTools` are available |

@@ -3,6 +3,7 @@ import { Marked } from "marked";
 import { useEffect, useMemo } from "preact/hooks";
 import * as api from "../api";
 import { useSettings } from "../app";
+import { triggerProviderAuth } from "./ProviderSection";
 
 const marked = new Marked({ async: false });
 
@@ -161,7 +162,7 @@ function PrefillBanner() {
   const hasPrefills =
     ctx.prefillGrants.value.length > 0 ||
     ctx.prefillNixPackages.value.length > 0 ||
-    ctx.prefillEnvVars.value.length > 0 ||
+    ctx.prefillProviders.value.length > 0 ||
     ctx.prefillSkills.value.length > 0 ||
     ctx.prefillMcpServers.value.length > 0;
 
@@ -267,14 +268,32 @@ function PrefillBanner() {
         ctx.mcpServers.value = { ...ctx.mcpServers.value, [mcp.id]: mcpConfig };
       }
 
-      // 5. Dismiss + show result
+      // 5. Auto-trigger provider auth flows for prefilled providers
+      if (ctx.prefillProviders.value.length > 0) {
+        ctx.openSections.value = { ...ctx.openSections.value, model: true };
+        for (const pid of ctx.prefillProviders.value) {
+          triggerProviderAuth(ctx, pid);
+        }
+      }
+
+      // 6. Dismiss + show result
       ctx.prefillBannerDismissed.value = true;
       ctx.errorMsg.value = "";
       if (failures.length > 0) {
         ctx.errorMsg.value = `Some items failed to add: ${failures.join(", ")}`;
       }
-      ctx.successMsg.value = "Changes accepted! Click Save Settings to apply.";
-      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      // Scroll to provider section if providers were requested, otherwise scroll to top
+      if (ctx.prefillProviders.value.length > 0) {
+        const providerList = document.getElementById("provider-list");
+        if (providerList) {
+          providerList.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } else {
+        ctx.successMsg.value =
+          "Changes accepted! Click Save Settings to apply.";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     } catch (e: unknown) {
       ctx.errorMsg.value =
         "Error approving changes: " +
@@ -339,23 +358,33 @@ function PrefillBanner() {
             </div>
           </div>
         )}
-        {ctx.prefillEnvVars.value.length > 0 && (
+        {ctx.prefillProviders.value.length > 0 && (
           <div>
             <p class="text-xs font-medium text-amber-800 mb-1">
-              &#128203; Secrets
+              &#128273; Providers
             </p>
             <div class="flex flex-wrap gap-1">
-              {ctx.prefillEnvVars.value.map((v) => (
-                <span
-                  key={v}
-                  class="inline-block px-1.5 py-0.5 bg-white border border-amber-200 rounded text-xs font-mono text-amber-900"
-                >
-                  {v}
-                </span>
-              ))}
+              {ctx.prefillProviders.value.map((pid) => {
+                const pInfo = ctx.PROVIDERS[pid];
+                return (
+                  <span
+                    key={pid}
+                    class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white border border-amber-200 rounded text-xs font-medium text-amber-900"
+                  >
+                    {ctx.providerIconUrls[pid] && (
+                      <img
+                        src={ctx.providerIconUrls[pid]}
+                        alt=""
+                        class="w-3 h-3"
+                      />
+                    )}
+                    {pInfo?.name || pid}
+                  </span>
+                );
+              })}
             </div>
             <p class="text-xs text-amber-700 mt-1">
-              You'll need to fill in values after approving.
+              Click Approve to open the provider setup.
             </p>
           </div>
         )}

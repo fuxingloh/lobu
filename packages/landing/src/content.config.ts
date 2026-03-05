@@ -9,12 +9,14 @@ const docs = defineCollection({
 });
 
 const blog = defineCollection({
-  loader: glob({ pattern: "**/*.md", base: "./src/content/blog" }),
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/blog" }),
   schema: z.object({
     title: z.string(),
     description: z.string(),
     date: z.coerce.date(),
     author: z.string(),
+    authorAvatar: z.string().optional(),
+    authorUrl: z.string().optional(),
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
   }),

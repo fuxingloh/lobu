@@ -7,15 +7,16 @@ import type {
 } from "@lobu/core";
 import type { AdminStatusCache } from "./auth/admin-status-cache";
 import type { AgentMetadataStore } from "./auth/agent-metadata-store";
-import type { ClaudeModelPreferenceStore } from "./auth/claude/model-preference-store";
 import type { McpProxy } from "./auth/mcp/proxy";
-import type { ClaudeOAuthStateStore } from "./auth/oauth/state-store";
+import type { ProviderOAuthStateStore } from "./auth/oauth/state-store";
 import type { AgentSettingsStore } from "./auth/settings";
+import type { ModelPreferenceStore } from "./auth/settings/model-preference-store";
 import type { UserAgentsStore } from "./auth/user-agents-store";
 import type { ChannelBindingService } from "./channels";
 import type { WorkerGateway } from "./gateway";
 import type { IMessageQueue, QueueProducer } from "./infrastructure/queue";
 import type { InteractionService } from "./interactions";
+import type { ClaimService } from "./auth/settings/claim-service";
 import type { GrantStore } from "./permissions/grant-store";
 import type { IFileHandler } from "./platform/file-handler";
 import type { ResponseRenderer } from "./platform/response-renderer";
@@ -38,8 +39,8 @@ export interface CoreServices {
   getSecretProxy(): SecretProxy | undefined;
   getWorkerGateway(): WorkerGateway | undefined;
   getMcpProxy(): McpProxy | undefined;
-  getClaudeModelPreferenceStore(): ClaudeModelPreferenceStore | undefined;
-  getClaudeOAuthStateStore(): ClaudeOAuthStateStore | undefined;
+  getModelPreferenceStore(): ModelPreferenceStore | undefined;
+  getOAuthStateStore(): ProviderOAuthStateStore | undefined;
   getPublicGatewayUrl(): string;
   getSessionManager(): ISessionManager;
   getInstructionService(): InstructionService | undefined;
@@ -52,6 +53,7 @@ export interface CoreServices {
   getAdminStatusCache(): AdminStatusCache;
   getCommandRegistry(): CommandRegistry;
   getGrantStore(): GrantStore | undefined;
+  getClaimService(): ClaimService | undefined;
 }
 
 // ============================================================================

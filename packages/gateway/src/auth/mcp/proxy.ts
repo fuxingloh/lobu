@@ -424,10 +424,7 @@ export class McpProxy {
 
     const agentId = auth.tokenData.agentId || auth.tokenData.userId;
 
-    const allHttpServers = await this.configService.getAllHttpServers(
-      agentId,
-      auth.tokenData.deploymentName
-    );
+    const allHttpServers = await this.configService.getAllHttpServers(agentId);
     const allMcpIds = Array.from(allHttpServers.keys());
 
     const mcpServers: Record<string, { tools: McpTool[] }> = {};
@@ -478,11 +475,7 @@ export class McpProxy {
     }
 
     const agentId = tokenData.agentId || tokenData.userId;
-    const httpServer = await this.configService.getHttpServer(
-      mcpId!,
-      agentId,
-      tokenData.deploymentName
-    );
+    const httpServer = await this.configService.getHttpServer(mcpId!, agentId);
 
     if (!httpServer) {
       return this.sendJsonRpcError(
@@ -565,7 +558,7 @@ export class McpProxy {
         return this.sendJsonRpcError(
           c,
           -32002,
-          `MCP '${mcpId}' requires configuration. Please configure via the Slack app home tab.`
+          `MCP '${mcpId}' requires configuration. Please configure it in the settings page.`
         );
       }
     }
@@ -620,11 +613,7 @@ export class McpProxy {
     options?: { discoveryOnly?: boolean }
   ): Promise<ResolvedMcp | null> {
     const agentId = tokenData.agentId || tokenData.userId;
-    const httpServer = await this.configService.getHttpServer(
-      mcpId,
-      agentId,
-      tokenData.deploymentName
-    );
+    const httpServer = await this.configService.getHttpServer(mcpId, agentId);
     if (!httpServer) return null;
 
     let credentials = null;

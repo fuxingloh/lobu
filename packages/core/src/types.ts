@@ -83,6 +83,12 @@ export interface ConversationMessage {
 // ============================================================================
 
 /**
+ * Per-skill thinking budget level.
+ * Controls how much reasoning the model applies when executing a skill.
+ */
+export type ThinkingLevel = "off" | "low" | "medium" | "high";
+
+/**
  * Rich integration declared by a skill.
  * Carries OAuth scopes, API domains, and auth type.
  */
@@ -150,6 +156,10 @@ export interface SkillConfig {
   permissions?: string[];
   /** AI providers the skill requires */
   providers?: string[];
+  /** Preferred model for this skill (e.g., "anthropic/claude-opus-4") */
+  modelPreference?: string;
+  /** Thinking level budget for this skill */
+  thinkingLevel?: ThinkingLevel;
 }
 
 /**

@@ -183,13 +183,12 @@ export async function submitOAuthCode(
 export async function submitApiKey(
   providerId: string,
   apiKey: string,
-  agentId: string,
-  token: string
+  agentId: string
 ): Promise<void> {
-  const resp = await jsonPost(
-    `/api/v1/auth/${providerId}/save-key?token=${encodeURIComponent(token)}`,
-    { agentId, apiKey }
-  );
+  const resp = await jsonPost(`/api/v1/auth/${providerId}/save-key`, {
+    agentId,
+    apiKey,
+  });
   if (!resp.ok) {
     const data = await parseJsonSafe(resp);
     throw new Error(data.error || "Failed to save API key");
@@ -198,8 +197,7 @@ export async function submitApiKey(
 
 export async function startDeviceCode(
   providerId: string,
-  agentId: string,
-  token: string
+  agentId: string
 ): Promise<{
   userCode: string;
   verificationUrl: string;
@@ -208,7 +206,6 @@ export async function startDeviceCode(
 }> {
   const resp = await jsonPost(`/api/v1/auth/${providerId}/start`, {
     agentId,
-    token,
   });
   const data = await parseJson(resp);
   if (!resp.ok) throw new Error(data.error || "Failed to start auth");
@@ -221,7 +218,6 @@ export async function pollDeviceCode(
     deviceAuthId: string;
     userCode: string;
     agentId: string;
-    token: string;
   }
 ): Promise<{ status: string; error?: string }> {
   const resp = await jsonPost(`/api/v1/auth/${providerId}/poll`, body);
@@ -231,16 +227,12 @@ export async function pollDeviceCode(
 export async function disconnectProvider(
   providerId: string,
   agentId: string,
-  token: string,
   profileId?: string
 ): Promise<void> {
   const body: Record<string, string> = { agentId };
   if (profileId) body.profileId = profileId;
 
-  await jsonPost(
-    `/api/v1/auth/${providerId}/logout?token=${encodeURIComponent(token)}`,
-    body
-  );
+  await jsonPost(`/api/v1/auth/${providerId}/logout`, body);
 }
 
 // ─── Integrations ──────────────────────────────────────────────────────────

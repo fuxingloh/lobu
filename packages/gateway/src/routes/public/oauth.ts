@@ -5,8 +5,7 @@
  */
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import type { ClaudeOAuthStateStore } from "../../auth/oauth/state-store";
-import type { SettingsTokenPayload } from "../../auth/settings/token-service";
+import type { ProviderOAuthStateStore } from "../../auth/oauth/state-store";
 import { verifySettingsSession } from "./settings-auth";
 
 const TAG = "Auth";
@@ -65,36 +64,38 @@ const codeExchangeRoute = createRoute({
 export interface OAuthRoutesConfig {
   providerStores?: Record<string, ProviderCredentialStore>;
   oauthClients?: Record<string, ProviderOAuthClient>;
-  oauthStateStore?: ClaudeOAuthStateStore;
+  oauthStateStore?: ProviderOAuthStateStore;
 }
 
 export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
   const app = new OpenAPIHono();
 
-  const verifyToken = (
-    payload: SettingsTokenPayload | null
-  ): (SettingsTokenPayload & { agentId: string }) | null => {
-    if (!payload || !payload.agentId) return null;
-    return payload as typeof payload & { agentId: string };
-  };
-
   // --- Provider login redirect (excluded from docs) ---
   app.get("/:provider/login", async (c) => {
-    const payload = verifyToken(verifySettingsSession(c));
-    if (!payload) return c.json({ error: "Unauthorized" }, 401);
+    const session = verifySettingsSession(c);
+    const agentId = session?.agentId || c.req.query("agentId");
 
-    const provider = c.req.param("provider");
-    const oauthClient = config.oauthClients?.[provider];
+    if (!agentId) return c.json({ error: "Missing agentId" }, 400);
+
+    if (!session) {
+      // No session — redirect through settings OAuth to establish one, then return here
+      const returnUrl = `${c.req.path}?agentId=${encodeURIComponent(agentId)}`;
+      return c.redirect(
+        `/settings/oauth/login?returnUrl=${encodeURIComponent(returnUrl)}`
+      );
+    }
+
+    const oauthClient = config.oauthClients?.[c.req.param("provider")];
     if (!oauthClient) return c.json({ error: "Unknown provider" }, 404);
     if (!config.oauthStateStore)
       return c.json({ error: "Not configured" }, 500);
 
     const codeVerifier = oauthClient.generateCodeVerifier();
     const state = await config.oauthStateStore.create({
-      userId: payload.userId,
-      agentId: payload.agentId,
+      userId: session.userId,
+      agentId,
       codeVerifier,
-      context: { platform: payload.platform, channelId: payload.agentId },
+      context: { platform: session.platform, channelId: agentId },
     });
 
     return c.redirect(oauthClient.buildAuthUrl(state, codeVerifier));
@@ -102,8 +103,9 @@ export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
 
   // --- Provider code exchange ---
   app.openapi(codeExchangeRoute, async (c): Promise<any> => {
-    const payload = verifyToken(verifySettingsSession(c));
-    if (!payload) return c.json({ error: "Unauthorized" }, 401);
+    const session = verifySettingsSession(c);
+    const agentId = session?.agentId;
+    if (!session || !agentId) return c.json({ error: "Unauthorized" }, 401);
 
     const { provider } = c.req.valid("param");
     const oauthClient = config.oauthClients?.[provider];
@@ -131,7 +133,7 @@ export function createOAuthRoutes(config: OAuthRoutesConfig): OpenAPIHono {
         "https://console.anthropic.com/oauth/code/callback",
         state
       );
-      await credentialStore.setCredentials(payload.agentId, credentials);
+      await credentialStore.setCredentials(agentId, credentials);
       return c.json({ success: true });
     } catch (e) {
       return c.json(

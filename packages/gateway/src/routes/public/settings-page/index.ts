@@ -4,10 +4,7 @@
 
 import type { AgentMetadata } from "../../../auth/agent-metadata-store";
 import type { AgentSettings } from "../../../auth/settings";
-import {
-  SETTINGS_TOKEN_HASH_PARAM,
-  type SettingsTokenPayload,
-} from "../../../auth/settings/token-service";
+import type { SettingsTokenPayload } from "../../../auth/settings/token-service";
 import type { ModelOption } from "../../../modules/module-system";
 import { settingsPageCSS } from "../settings-page-styles";
 import { escapeHtml, formatUserId, getPlatformDisplay } from "./utils";
@@ -41,7 +38,6 @@ export interface SettingsPageOptions {
   agentName?: string;
   agentDescription?: string;
   hasChannelId?: boolean;
-  systemSkills?: import("@lobu/core").SkillConfig[];
   integrationStatus?: Record<
     string,
     {
@@ -106,16 +102,13 @@ export function renderSettingsPage(
       apiKeyInstructions: p.apiKeyInstructions,
       apiKeyPlaceholder: p.apiKeyPlaceholder,
     })),
-    initialSkills: [
-      ...(options?.systemSkills || []),
-      ...(s.skillsConfig?.skills || []),
-    ],
+    initialSkills: s.skillsConfig?.skills || [],
     initialMcpServers: s.mcpServers || {},
     prefillSkills: payload.prefillSkills || [],
     prefillMcpServers: payload.prefillMcpServers || [],
     prefillGrants: payload.prefillGrants || [],
     prefillNixPackages: payload.prefillNixPackages || [],
-    prefillEnvVars: payload.prefillEnvVars || [],
+    prefillProviders: payload.prefillProviders || [],
     initialNixPackages,
     agentName,
     agentDescription,
@@ -343,119 +336,6 @@ ${agents
       document.getElementById('success-msg').classList.add('hidden');
       document.getElementById('error-msg').classList.add('hidden');
     }
-  </script>
-</body>
-</html>`;
-}
-
-// ─── Session Bootstrap Page ─────────────────────────────────────────────────
-
-export function renderSessionBootstrapPage(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="referrer" content="no-referrer">
-  <title>Loading Settings - Lobu</title>
-  <style>
-    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.25rem; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(to bottom right, #334155, #0f172a); color: #e2e8f0; }
-    .card { background: #0f172a; border: 1px solid #334155; border-radius: 1rem; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.35); padding: 1.5rem; max-width: 28rem; width: 100%; text-align: center; }
-    .spinner { width: 1.25rem; height: 1.25rem; border: 2px solid #475569; border-top-color: #cbd5e1; border-radius: 9999px; margin: 0 auto 0.75rem; animation: spin 0.8s linear infinite; }
-    .error { display: none; margin-top: 0.75rem; font-size: 0.875rem; color: #fca5a5; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div id="spinner" class="spinner"></div>
-    <p id="status">Securing your settings session...</p>
-    <p id="error" class="error"></p>
-  </div>
-  <script>
-    (async function () {
-      var errorEl = document.getElementById('error');
-      var statusEl = document.getElementById('status');
-      var spinnerEl = document.getElementById('spinner');
-
-      function showError(message) {
-        statusEl.textContent = 'Unable to open settings.';
-        errorEl.textContent = message;
-        errorEl.style.display = 'block';
-        spinnerEl.style.display = 'none';
-      }
-
-      function redirectToSettings() {
-        var url = new URL(window.location.href);
-        url.hash = '';
-        url.search = '';
-        window.history.replaceState({}, '', url.pathname);
-        window.location.replace('/settings');
-      }
-
-      // Path A: Telegram WebApp initData (stable URLs, no token needed)
-      var qp = new URLSearchParams(window.location.search);
-      var chatId = qp.get('chat');
-      var isTelegramUrl = qp.get('platform') === 'telegram' && chatId;
-
-      if (isTelegramUrl) {
-        // Telegram injects initData as #tgWebAppData=<url-encoded-initData>&...
-        var hashStr = window.location.hash ? window.location.hash.slice(1) : '';
-        var hashParams = new URLSearchParams(hashStr);
-        var initData = hashParams.get('tgWebAppData') || '';
-
-        if (!initData) {
-          showError('Could not authenticate with Telegram. Please open this link using the button in Telegram, not as a regular URL.');
-          return;
-        }
-
-        try {
-          var resp = await fetch('/settings/session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData: initData, chatId: chatId })
-          });
-          if (resp.ok) {
-            redirectToSettings();
-            return;
-          }
-          var result = await resp.json().catch(function () { return {}; });
-          showError(result.error || 'Telegram authentication failed.');
-          return;
-        } catch (e) {
-          showError('Network error while authenticating.');
-          return;
-        }
-      }
-
-      // Path B: Token-based authentication (existing flow)
-      var hash = window.location.hash ? window.location.hash.slice(1) : '';
-      var params = new URLSearchParams(hash);
-      var token = params.get('${SETTINGS_TOKEN_HASH_PARAM}') || params.get('token');
-
-      if (!token) {
-        showError('Missing settings link token. Request a new link with /configure.');
-        return;
-      }
-
-      try {
-        var resp = await fetch('/settings/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: token })
-        });
-
-        if (!resp.ok) {
-          var result = await resp.json().catch(function () { return {}; });
-          showError(result.error || 'Invalid or expired settings link.');
-          return;
-        }
-
-        redirectToSettings();
-      } catch (error) {
-        showError('Network error while securing session.');
-      }
-    })();
   </script>
 </body>
 </html>`;

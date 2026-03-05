@@ -60,12 +60,6 @@ This document describes all environment variables used by the Lobu Gateway.
 
 ## MCP (Model Context Protocol) Configuration
 
-### `LOBU_MCP_SERVERS_URL`
-**Description**: Path to MCP servers configuration file
-**Format**: File path (relative to project root)
-**Example**: `file:///app/.lobu/mcp.config.json` or `.lobu/mcp.config.json`
-**Used by**: MCP server discovery and OAuth configuration
-
 ### `PUBLIC_GATEWAY_URL`
 **Description**: Public URL where gateway is accessible (required for MCP OAuth callbacks)
 **Format**: URL without trailing slash
@@ -74,7 +68,7 @@ This document describes all environment variables used by the Lobu Gateway.
 **Used by**: OAuth callback URL generation
 
 ### OAuth Secrets for MCP Servers
-**Description**: Client secrets for MCP OAuth integrations (referenced in mcp.config.json)
+**Description**: Client secrets for MCP OAuth integrations (referenced in system-skills.json via `${env:VAR_NAME}`)
 **Format**: Environment variable name pattern: `${env:VAR_NAME}`
 **Example**: `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_SECRET`
 **Used by**: MCP OAuth flows

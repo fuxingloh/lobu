@@ -3,7 +3,15 @@ title: Getting Started
 description: Choose between managed community access and self-hosted deployment.
 ---
 
-Lobu deploys sandboxed OpenClaw agents on demand for every user and channel.
+import { ArchitectureDiagram } from "../../../components/ArchitectureDiagram";
+
+Lobu deploys sandboxed [OpenClaw](https://github.com/anthropics/openclaw) agents on demand for every user and channel. OpenClaw is Anthropic's open-source agent runtime — Lobu wraps it in multi-tenant infrastructure so every user gets their own isolated agent from a single deploy.
+
+## How it works
+
+<ArchitectureDiagram />
+
+For the full request flow and security details, see the [Architecture guide](/guides/architecture/).
 
 ## Managed (Community)
 

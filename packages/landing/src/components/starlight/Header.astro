@@ -22,7 +22,8 @@ const shouldRenderSearch =
     {shouldRenderSearch && <Search />}
   </div>
   <div class="sl-hidden md:sl-flex print:hidden right-group">
-    <a href="/blog" class="blog-link">Blog</a>
+    <a href="/reference/api-reference/" class="header-link">API</a>
+    <a href="/blog" class="header-link">Blog</a>
     <div class="sl-flex social-icons">
       <SocialIcons />
     </div>
@@ -63,11 +64,11 @@ const shouldRenderSearch =
     }
 
     .top-links a:hover,
-    .blog-link:hover {
+    .header-link:hover {
       color: var(--sl-color-white);
     }
 
-    .blog-link {
+    .header-link {
       color: var(--sl-color-gray-2);
       text-decoration: none;
       font-size: var(--sl-text-sm);

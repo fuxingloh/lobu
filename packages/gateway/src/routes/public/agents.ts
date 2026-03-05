@@ -206,11 +206,7 @@ export function createAgentRoutes(config: AgentRoutesConfig): Hono {
         agentId
       );
       if (!owns) {
-        // Check workspace agent fallback
-        const metadata = await config.agentMetadataStore.getMetadata(agentId);
-        if (!metadata?.isWorkspaceAgent) {
-          return c.json({ error: "Agent not found or not owned by you" }, 404);
-        }
+        return c.json({ error: "Agent not found or not owned by you" }, 404);
       }
 
       const body = await c.req.json<{ name?: string; description?: string }>();

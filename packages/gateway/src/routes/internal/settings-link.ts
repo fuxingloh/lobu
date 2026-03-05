@@ -2,16 +2,14 @@
  * Internal Settings Link Routes
  *
  * Worker-facing endpoint for generating settings magic links.
- * Used by the GetSettingsLink custom MCP tool.
+ * Used by the Configure custom tool.
  */
 
 import { createLogger, verifyWorkerToken } from "@lobu/core";
 import { Hono } from "hono";
+import type { ClaimService } from "../../auth/settings/claim-service";
 import {
-  buildSettingsUrl,
   buildTelegramSettingsUrl,
-  generateSettingsToken,
-  getSettingsTokenTtlMs,
   type PrefillMcpServer,
   type PrefillSkill,
 } from "../../auth/settings/token-service";
@@ -19,6 +17,14 @@ import type { InteractionService } from "../../interactions";
 import type { GrantStore } from "../../permissions/grant-store";
 
 const logger = createLogger("internal-settings-link-routes");
+
+function encodePrefillMcpServers(
+  prefillMcpServers: PrefillMcpServer[]
+): string {
+  return Buffer.from(JSON.stringify(prefillMcpServers), "utf-8").toString(
+    "base64url"
+  );
+}
 
 type WorkerContext = {
   Variables: {
@@ -39,7 +45,8 @@ type WorkerContext = {
  */
 export function createSettingsLinkRoutes(
   interactionService?: InteractionService,
-  grantStore?: GrantStore
+  grantStore?: GrantStore,
+  claimService?: ClaimService
 ): Hono<WorkerContext> {
   const router = new Hono<WorkerContext>();
 
@@ -61,19 +68,6 @@ export function createSettingsLinkRoutes(
   /**
    * Generate a settings magic link for the current user/agent context
    * POST /internal/settings-link
-   *
-   * Body: {
-   *   reason?: string (optional explanation for what to configure)
-   *   message?: string (optional message to display on settings page)
-   *   prefillEnvVars?: string[] (optional env var keys to pre-fill)
-   *   prefillSkills?: PrefillSkill[] (optional skills to pre-fill)
-   *   prefillMcpServers?: PrefillMcpServer[] (optional MCP servers to pre-fill)
-   * }
-   *
-   * Response: {
-   *   url: string (settings page URL with magic token)
-   *   expiresAt: string (ISO timestamp when link expires)
-   * }
    */
   router.post("/internal/settings-link", authenticateWorker, async (c) => {
     try {
@@ -83,7 +77,7 @@ export function createSettingsLinkRoutes(
         reason,
         message,
         label,
-        prefillEnvVars,
+        prefillProviders,
         prefillSkills,
         prefillMcpServers,
         prefillNixPackages,
@@ -92,7 +86,7 @@ export function createSettingsLinkRoutes(
         reason?: string;
         message?: string;
         label?: string;
-        prefillEnvVars?: string[];
+        prefillProviders?: string[];
         prefillSkills?: PrefillSkill[];
         prefillMcpServers?: PrefillMcpServer[];
         prefillNixPackages?: string[];
@@ -114,7 +108,7 @@ export function createSettingsLinkRoutes(
         platform,
         reason: reason?.substring(0, 100),
         hasMessage: !!message,
-        prefillEnvVarsCount: prefillEnvVars?.length || 0,
+        prefillProvidersCount: prefillProviders?.length || 0,
         prefillSkillsCount: prefillSkills?.length || 0,
         prefillMcpServersCount: prefillMcpServers?.length || 0,
         prefillNixPackagesCount: prefillNixPackages?.length || 0,
@@ -127,7 +121,7 @@ export function createSettingsLinkRoutes(
         prefillGrants.length > 0 &&
         !prefillSkills?.length &&
         !prefillMcpServers?.length &&
-        !prefillEnvVars?.length &&
+        !prefillProviders?.length &&
         !prefillNixPackages?.length;
 
       if (isDomainOnly && interactionService && grantStore) {
@@ -153,11 +147,11 @@ export function createSettingsLinkRoutes(
         });
       }
 
-      // Telegram plain "Open Settings" links use stable URLs (no token needed)
+      // Telegram plain "Open Settings" links use stable URLs (no claim needed)
       const hasPrefillData =
         prefillSkills?.length ||
         prefillMcpServers?.length ||
-        prefillEnvVars?.length ||
+        prefillProviders?.length ||
         prefillNixPackages?.length ||
         prefillGrants?.length ||
         message;
@@ -183,34 +177,50 @@ export function createSettingsLinkRoutes(
         });
       }
 
-      // Generate token with configured TTL (defaults to 1 hour)
-      const ttlMs = getSettingsTokenTtlMs();
-      const token = generateSettingsToken(agentId, userId, platform, {
-        ttlMs,
-        channelId: worker.channelId,
-        teamId: worker.teamId,
-        message,
-        prefillEnvVars,
-        prefillSkills,
-        prefillMcpServers,
-        prefillNixPackages,
-        prefillGrants,
-        sourceContext: {
-          conversationId: worker.conversationId,
-          channelId: worker.channelId,
-          teamId: worker.teamId,
-          platform,
-        },
-      });
-      // Telegram web_app buttons replace URL hash fragments, so use query param
-      const url = buildSettingsUrl(token, {
-        useQueryParam: platform === "telegram",
-      });
-      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      // Use claim-based URLs
+      if (!claimService) {
+        return c.json({ error: "Claim service not configured" }, 500);
+      }
 
-      logger.info("Settings link generated", { agentId, userId, expiresAt });
+      const claimCode = await claimService.createClaim(
+        platform,
+        worker.channelId,
+        userId
+      );
 
-      // Fire link button event so platforms render natively
+      const baseUrl = process.env.PUBLIC_GATEWAY_URL || "http://localhost:8080";
+      const settingsUrl = new URL("/settings", baseUrl);
+      settingsUrl.searchParams.set("claim", claimCode);
+      if (agentId) settingsUrl.searchParams.set("agent", agentId);
+
+      // For simple prefill data, use query params
+      if (prefillSkills?.length) {
+        settingsUrl.searchParams.set(
+          "skills",
+          prefillSkills.map((s) => s.repo).join(",")
+        );
+      }
+      if (prefillProviders?.length) {
+        settingsUrl.searchParams.set("providers", prefillProviders.join(","));
+      }
+      if (prefillMcpServers?.length) {
+        settingsUrl.searchParams.set(
+          "mcps",
+          encodePrefillMcpServers(prefillMcpServers)
+        );
+      }
+      if (message) {
+        settingsUrl.searchParams.set("message", message);
+      }
+      if (prefillNixPackages?.length) {
+        settingsUrl.searchParams.set("nix", prefillNixPackages.join(","));
+      }
+      if (prefillGrants?.length) {
+        settingsUrl.searchParams.set("grants", prefillGrants.join(","));
+      }
+
+      const url = settingsUrl.toString();
+
       if (interactionService) {
         const buttonLabel =
           label ||
@@ -239,10 +249,9 @@ export function createSettingsLinkRoutes(
         });
       }
 
-      // Fallback: no interaction service (shouldn't happen in practice)
       return c.json({
         url,
-        expiresAt,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       });
     } catch (error) {
       logger.error("Failed to generate settings link", { error });

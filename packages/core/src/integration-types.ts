@@ -17,6 +17,7 @@ export interface IntegrationOAuthConfig {
   clientId: string;
   clientSecret: string; // Supports ${env:VAR_NAME} substitution
   incrementalAuth?: boolean;
+  tokenEndpointAuthMethod?: string; // "client_secret_post" (default), "client_secret_basic", or "none" (PKCE)
 }
 
 export interface IntegrationApiKeyConfig {
@@ -36,6 +37,8 @@ export interface IntegrationConfig {
   apiKey?: IntegrationApiKeyConfig;
   scopes?: IntegrationScopesConfig;
   apiDomains: string[];
+  apiBase?: string;
+  apiHints?: string;
   openapi?: {
     specUrl: string;
     operations?: string[];
@@ -71,6 +74,8 @@ export interface SystemSkillIntegration {
   scopesConfig?: IntegrationScopesConfig;
   scopes?: string[];
   apiDomains?: string[];
+  apiBase?: string;
+  apiHints?: string;
 }
 
 export interface SystemSkillsConfigFile {
@@ -106,6 +111,8 @@ export interface IntegrationInfo {
   connected: boolean;
   accounts: IntegrationAccountInfo[];
   availableScopes: string[];
+  apiBase?: string;
+  apiHints?: string;
 }
 
 export interface IntegrationApiResponse {

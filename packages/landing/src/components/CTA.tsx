@@ -15,7 +15,7 @@ export function CTA() {
           class="text-sm mb-8"
           style={{ color: "var(--color-page-text-muted)" }}
         >
-          Get running in under a minute — or talk to us about your use case.
+          Self-host in under a minute or let us run it for you.
         </p>
         <div class="flex flex-wrap justify-center gap-3">
           <a

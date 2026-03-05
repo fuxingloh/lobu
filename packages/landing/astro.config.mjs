@@ -82,6 +82,7 @@ export default defineConfig({
     resolve: {
       alias: {
         "@settings": settingsDir,
+        "@skills-config": resolve(__dirname, "../../config/system-skills.json"),
         zod: zodPath,
       },
     },

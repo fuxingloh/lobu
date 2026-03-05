@@ -59,8 +59,9 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
     oauth: OAuth2Config,
     redirectUri: string
   ): Promise<McpCredentialRecord> {
-    // Check if PKCE flow (no client secret required)
-    const isPKCE = oauth.tokenEndpointAuthMethod === "none";
+    const authMethod = oauth.tokenEndpointAuthMethod || "client_secret_post";
+    const isPKCE = authMethod === "none";
+    const isBasicAuth = authMethod === "client_secret_basic";
 
     let clientSecret = "";
     if (!isPKCE) {
@@ -76,18 +77,23 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
     const body = new URLSearchParams({
       grant_type: oauth.grantType || "authorization_code",
       code,
-      client_id: oauth.clientId,
       redirect_uri: redirectUri,
     });
 
-    // Only add client_secret if not using PKCE
-    if (!isPKCE && clientSecret) {
-      body.set("client_secret", clientSecret);
+    // For basic auth, credentials go in the Authorization header, not the body
+    const headers: Record<string, string> = {};
+    if (isBasicAuth) {
+      headers.Authorization = `Basic ${Buffer.from(`${oauth.clientId}:${clientSecret}`).toString("base64")}`;
+    } else {
+      body.set("client_id", oauth.clientId);
+      if (!isPKCE && clientSecret) {
+        body.set("client_secret", clientSecret);
+      }
     }
 
     const tokenData = await this.exchangeToken<
       OAuthTokens | OAuthErrorResponse
-    >(oauth.tokenUrl, body, "form");
+    >(oauth.tokenUrl, body, "form", headers);
 
     // Check for error response
     if ("error" in tokenData) {
@@ -123,15 +129,54 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
     refreshToken: string,
     oauth: OAuth2Config
   ): Promise<McpCredentialRecord> {
+    const authMethod = oauth.tokenEndpointAuthMethod || "client_secret_post";
+    const isBasicAuth = authMethod === "client_secret_basic";
+
     // Resolve client secret if needed (supports ${env:VAR} substitution)
     const clientSecret = oauth.clientSecret
       ? this.resolveClientSecret(oauth.clientSecret)
       : undefined;
 
-    if (!clientSecret && oauth.tokenEndpointAuthMethod !== "none") {
+    if (!clientSecret && authMethod !== "none") {
       throw new Error(
         `Client secret could not be resolved from: ${oauth.clientSecret}`
       );
+    }
+
+    // For basic auth, use Authorization header instead of body params
+    if (isBasicAuth) {
+      const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      });
+      const headers: Record<string, string> = {
+        Authorization: `Basic ${Buffer.from(`${oauth.clientId}:${clientSecret}`).toString("base64")}`,
+      };
+      const tokenData = await this.exchangeToken<
+        OAuthTokens | OAuthErrorResponse
+      >(oauth.tokenUrl, body, "form", headers);
+
+      if ("error" in tokenData) {
+        throw new Error(
+          `OAuth token refresh failed: ${tokenData.error}${tokenData.error_description ? ` - ${tokenData.error_description}` : ""}`
+        );
+      }
+
+      const expiresAt = this.calculateExpiresAt(tokenData.expires_in);
+      this.logger.info(
+        `Token refresh successful, expires_in: ${tokenData.expires_in}s`
+      );
+
+      return {
+        accessToken: tokenData.access_token,
+        tokenType: tokenData.token_type || "Bearer",
+        expiresAt,
+        refreshToken: tokenData.refresh_token || refreshToken,
+        metadata: {
+          scope: tokenData.scope,
+          refreshedAt: new Date().toISOString(),
+        },
+      };
     }
 
     const tokenData = await this.refreshTokenWithConfig<
@@ -139,7 +184,7 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
     >(oauth.tokenUrl, oauth.clientId, refreshToken, {
       clientSecret,
       contentType: "form",
-      tokenEndpointAuthMethod: oauth.tokenEndpointAuthMethod,
+      tokenEndpointAuthMethod: authMethod,
     });
 
     // Check for error response

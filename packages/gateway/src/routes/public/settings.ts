@@ -1,26 +1,27 @@
 /**
  * Settings Page Routes
  *
- * Serves the unified settings/agent-selector page via magic link.
- * Supports two entry modes:
- * - Agent-based token: shows settings directly
- * - Channel-based token: resolves agent via binding or shows agent picker
+ * Serves the unified settings/agent-selector page.
+ * OAuth + claims is the only auth path. No fallback to encrypted tokens.
  *
- * API endpoints (agent config, schedules, etc.) remain in separate files.
+ * Telegram uses initData (HMAC-signed by bot token) for session creation.
  */
 
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { encrypt } from "@lobu/core";
+import { createLogger } from "@lobu/core";
 import type {
   AgentMetadata,
   AgentMetadataStore,
 } from "../../auth/agent-metadata-store";
 import { collectProviderModelOptions } from "../../auth/provider-model-options";
 import type { AgentSettingsStore } from "../../auth/settings";
-import {
-  type SettingsTokenPayload,
-  verifySettingsToken,
+import type { ClaimService } from "../../auth/settings/claim-service";
+import type { SettingsOAuthClient } from "../../auth/settings/oauth-client";
+import type {
+  PrefillMcpServer,
+  SettingsTokenPayload,
 } from "../../auth/settings/token-service";
+import type { OAuthStateStore } from "../../auth/oauth/state-store";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
 import { getModelProviderModules } from "../../modules/module-system";
@@ -34,9 +35,119 @@ import type { ProviderMeta } from "./settings-page";
 import {
   renderErrorPage,
   renderPickerPage,
-  renderSessionBootstrapPage,
   renderSettingsPage,
 } from "./settings-page";
+
+const logger = createLogger("settings-routes");
+
+/**
+ * Validate returnUrl to prevent open redirects.
+ * Only allows relative paths under /settings or /api/v1/.
+ */
+function isSafeReturnUrl(url: string): boolean {
+  if (!url.startsWith("/")) return false;
+  // Block protocol-relative URLs (//evil.com)
+  if (url.startsWith("//")) return false;
+  return (
+    url.startsWith("/settings") ||
+    url.startsWith("/api/v1/") ||
+    url === "/admin"
+  );
+}
+
+function parsePrefillMcpServersParam(
+  encoded?: string
+): PrefillMcpServer[] | undefined {
+  if (!encoded) return undefined;
+
+  try {
+    const decoded = Buffer.from(encoded, "base64url").toString("utf-8");
+    const parsed = JSON.parse(decoded);
+    if (!Array.isArray(parsed)) return undefined;
+
+    const servers: PrefillMcpServer[] = parsed
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+
+        const id = typeof entry.id === "string" ? entry.id.trim() : "";
+        if (!id) return null;
+
+        const server: PrefillMcpServer = { id };
+
+        if (typeof entry.name === "string" && entry.name.trim()) {
+          server.name = entry.name.trim();
+        }
+        if (typeof entry.url === "string" && entry.url.trim()) {
+          server.url = entry.url.trim();
+        }
+        if (entry.type === "sse" || entry.type === "stdio") {
+          server.type = entry.type;
+        }
+        if (typeof entry.command === "string" && entry.command.trim()) {
+          server.command = entry.command.trim();
+        }
+        if (Array.isArray(entry.args)) {
+          server.args = entry.args.filter(
+            (arg: unknown): arg is string =>
+              typeof arg === "string" && arg.trim().length > 0
+          );
+        }
+        if (Array.isArray(entry.envVars)) {
+          server.envVars = entry.envVars.filter(
+            (envVar: unknown): envVar is string =>
+              typeof envVar === "string" && envVar.trim().length > 0
+          );
+        }
+
+        return server;
+      })
+      .filter((server): server is PrefillMcpServer => server !== null);
+
+    return servers.length > 0 ? servers : undefined;
+  } catch (error) {
+    logger.warn("Invalid prefill MCP payload in query param", { error });
+    return undefined;
+  }
+}
+
+/** State data for settings OAuth flow */
+interface SettingsOAuthStateData {
+  userId: string;
+  codeVerifier: string;
+  returnUrl: string;
+}
+
+/**
+ * Verify that the authenticated session user is authorized to act on the given agent.
+ * Mirrors the verifyToken pattern in agent-config.ts.
+ */
+async function verifyAgentAccess(
+  session: SettingsTokenPayload,
+  agentId: string,
+  config: SettingsPageConfig
+): Promise<boolean> {
+  // If the session is scoped to a specific agent, it must match
+  if (session.agentId) {
+    return session.agentId === agentId;
+  }
+
+  // Channel-based session: check ownership via user-agents index
+  const owns = await config.userAgentsStore.ownsAgent(
+    session.platform,
+    session.oauthUserId || session.userId,
+    agentId
+  );
+  if (owns) return true;
+
+  // Fallback: check canonical metadata owner
+  const metadata = await config.agentMetadataStore.getMetadata(agentId);
+  if (!metadata) return false;
+
+  const isOwner =
+    metadata.owner?.platform === session.platform &&
+    metadata.owner?.userId === (session.oauthUserId || session.userId);
+  return isOwner;
+}
 
 export interface SettingsPageConfig {
   agentSettingsStore: AgentSettingsStore;
@@ -46,7 +157,12 @@ export interface SettingsPageConfig {
   integrationConfigService?: import("../../auth/integration/config-service").IntegrationConfigService;
   integrationCredentialStore?: import("../../auth/integration/credential-store").IntegrationCredentialStore;
   connectionManager?: import("../../gateway/connection-manager").WorkerConnectionManager;
-  systemSkillsService?: import("../../services/system-skills-service").SystemSkillsService;
+  /** Settings OAuth client (required) */
+  settingsOAuthClient: SettingsOAuthClient;
+  /** Settings OAuth state store (required) */
+  settingsOAuthStateStore: OAuthStateStore<SettingsOAuthStateData>;
+  /** Claim service for channel ownership verification (required) */
+  claimService: ClaimService;
 }
 
 function buildProviderMeta(
@@ -67,297 +183,600 @@ function buildProviderMeta(
   };
 }
 
+/**
+ * Render the settings page for a resolved payload + agentId.
+ */
+async function renderSettingsForPayload(
+  c: any,
+  config: SettingsPageConfig,
+  payload: SettingsTokenPayload,
+  agentId: string
+) {
+  const [settings, agentMetadata] = await Promise.all([
+    config.agentSettingsStore.getSettings(agentId),
+    config.agentMetadataStore.getMetadata(agentId),
+  ]);
+
+  // Build provider metadata from registry
+  const allModules = getModelProviderModules();
+  const allProviderMeta = allModules
+    .filter((m) => m.catalogVisible !== false)
+    .map(buildProviderMeta);
+
+  // Resolve installed providers in order
+  const installedIds = (settings?.installedProviders || []).map(
+    (ip) => ip.providerId
+  );
+  const installedSet = new Set(installedIds);
+  const installedProviders = installedIds
+    .map((id) => allProviderMeta.find((p) => p.id === id))
+    .filter((p): p is ProviderMeta => p !== undefined);
+
+  // Catalog providers = all that are not installed
+  const catalogProviders = allProviderMeta.filter(
+    (p) => !installedSet.has(p.id)
+  );
+
+  const providerModelOptions = await collectProviderModelOptions(
+    agentId,
+    payload.userId
+  );
+
+  // Determine if agent switcher should be shown
+  const showSwitcher = !!payload.channelId;
+
+  // Get agents list for switcher (only if switcher is enabled)
+  const agents: (AgentMetadata & { channelCount: number })[] = [];
+  if (showSwitcher) {
+    const agentIds = await config.userAgentsStore.listAgents(
+      payload.platform || "unknown",
+      payload.userId
+    );
+    for (const id of agentIds) {
+      const metadata = await config.agentMetadataStore.getMetadata(id);
+      if (metadata) {
+        const bindings = await config.channelBindingService.listBindings(id);
+        agents.push({ ...metadata, channelCount: bindings.length });
+      }
+    }
+
+    // Ensure the currently active agent appears in switcher even when it is
+    // not part of the user's direct agent list (e.g. workspace-bound agent).
+    if (
+      agentMetadata &&
+      !agents.some((agent) => agent.agentId === agentMetadata.agentId)
+    ) {
+      const bindings = await config.channelBindingService.listBindings(
+        agentMetadata.agentId
+      );
+      agents.unshift({ ...agentMetadata, channelCount: bindings.length });
+    }
+  }
+
+  // Fetch integration status keyed by integration ID
+  const integrationStatus: Record<
+    string,
+    {
+      connected: boolean;
+      accounts: { accountId: string; grantedScopes: string[] }[];
+      availableScopes: string[];
+    }
+  > = {};
+  if (config.integrationConfigService && config.integrationCredentialStore) {
+    try {
+      const allConfigs = await config.integrationConfigService.getAll();
+      for (const [id, cfg] of Object.entries(allConfigs)) {
+        const accountList =
+          await config.integrationCredentialStore.listAccounts(agentId, id);
+        integrationStatus[id] = {
+          connected: accountList.length > 0,
+          accounts: accountList.map((a) => ({
+            accountId: a.accountId,
+            grantedScopes: a.credentials.grantedScopes,
+          })),
+          availableScopes: cfg.scopes?.available ?? [],
+        };
+      }
+    } catch {
+      // Integration services may not be configured
+    }
+  }
+
+  // Ensure the payload has agentId for the template (may have been resolved from binding)
+  const effectivePayload = { ...payload, agentId };
+
+  return c.html(
+    renderSettingsPage(effectivePayload, settings, {
+      providers: installedProviders,
+      catalogProviders,
+      providerModelOptions,
+      showSwitcher,
+      agents,
+      agentName: agentMetadata?.name,
+      agentDescription: agentMetadata?.description,
+      hasChannelId: !!payload.channelId,
+      integrationStatus,
+    })
+  );
+}
+
 export function createSettingsPageRoutes(
   config: SettingsPageConfig
 ): OpenAPIHono {
   const app = new OpenAPIHono();
 
+  const oauthClient = config.settingsOAuthClient;
+  const stateStore = config.settingsOAuthStateStore;
+  const claimService = config.claimService;
+
+  // ====================================================================
+  // POST /settings/session — Telegram initData authentication only
+  // ====================================================================
   app.post("/settings/session", async (c) => {
     const body = await c.req
-      .json<{ token?: string; initData?: string; chatId?: string }>()
-      .catch(
-        (): { token?: string; initData?: string; chatId?: string } => ({})
-      );
+      .json<{ initData?: string; chatId?: string }>()
+      .catch((): { initData?: string; chatId?: string } => ({}));
 
-    // Path A: Telegram WebApp initData authentication
-    if (body.initData) {
-      const botToken = process.env.TELEGRAM_BOT_TOKEN;
-      if (!botToken) {
-        return c.json({ error: "Telegram not configured" }, 500);
-      }
-
-      const chatId = (body.chatId ?? "").trim();
-      if (!chatId) {
-        return c.json({ error: "Missing chatId" }, 400);
-      }
-
-      const webAppData = verifyTelegramWebAppData(body.initData, botToken);
-      if (!webAppData) {
-        clearSettingsSessionCookie(c);
-        return c.json({ error: "Invalid or expired Telegram data" }, 401);
-      }
-
-      const userId = String(webAppData.user.id);
-
-      // DM validation: chatId must equal userId
-      const chatIdNum = Number(chatId);
-      if (chatIdNum > 0 && chatId !== userId) {
-        return c.json({ error: "Chat ID mismatch" }, 403);
-      }
-
-      // Build a synthetic payload (1-hour session, matching token-based flow)
-      const sessionTtlMs = 60 * 60 * 1000;
-      const payload: SettingsTokenPayload = {
-        userId,
-        platform: "telegram",
-        channelId: chatId,
-        exp: Date.now() + sessionTtlMs,
-      };
-
-      // Encrypt payload into a token for the session cookie
-      const syntheticToken = encrypt(JSON.stringify(payload));
-
-      const sessionSet = setSettingsSessionCookie(c, syntheticToken, payload);
-      if (!sessionSet) {
-        clearSettingsSessionCookie(c);
-        return c.json({ error: "Failed to create session" }, 500);
-      }
-
-      return c.json({ success: true });
+    if (!body.initData) {
+      return c.json({ error: "Missing initData" }, 400);
     }
 
-    // Path B: Existing token-based authentication
-    const token = (body.token ?? "").trim();
-    if (!token) return c.json({ error: "Missing token" }, 400);
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      return c.json({ error: "Telegram not configured" }, 500);
+    }
 
-    const payload = verifySettingsToken(token);
-    if (!payload) {
+    const chatId = (body.chatId ?? "").trim();
+    if (!chatId) {
+      return c.json({ error: "Missing chatId" }, 400);
+    }
+
+    const webAppData = verifyTelegramWebAppData(body.initData, botToken);
+    if (!webAppData) {
       clearSettingsSessionCookie(c);
-      return c.json({ error: "Invalid or expired token" }, 401);
+      return c.json({ error: "Invalid or expired Telegram data" }, 401);
     }
 
-    const sessionSet = setSettingsSessionCookie(c, token, payload);
-    if (!sessionSet) {
-      clearSettingsSessionCookie(c);
-      return c.json({ error: "Invalid or expired token" }, 401);
+    const userId = String(webAppData.user.id);
+
+    // DM validation: chatId must equal userId
+    const chatIdNum = Number(chatId);
+    if (chatIdNum > 0 && chatId !== userId) {
+      return c.json({ error: "Chat ID mismatch" }, 403);
     }
 
+    // Build session payload (1-hour session)
+    const sessionTtlMs = 60 * 60 * 1000;
+    const session: SettingsTokenPayload = {
+      userId,
+      platform: "telegram",
+      channelId: chatId,
+      exp: Date.now() + sessionTtlMs,
+    };
+
+    setSettingsSessionCookie(c, session);
     return c.json({ success: true });
   });
 
-  // HTML Settings Page
+  // ====================================================================
+  // OAuth Login Flow
+  // ====================================================================
+
+  /**
+   * GET /settings/oauth/login — Start OAuth flow
+   * Redirects to the OAuth provider's authorization page.
+   * Preserves returnUrl through the OAuth round-trip.
+   */
+  app.get("/settings/oauth/login", async (c) => {
+    const rawReturnUrl = c.req.query("returnUrl") || "/settings";
+    const returnUrl = isSafeReturnUrl(rawReturnUrl)
+      ? rawReturnUrl
+      : "/settings";
+    const codeVerifier = oauthClient.generateCodeVerifier();
+
+    const state = await stateStore.create({
+      userId: "pending", // will be resolved after OAuth
+      codeVerifier,
+      returnUrl,
+    });
+
+    const authUrl = await oauthClient.buildAuthUrl(state, codeVerifier);
+    return c.redirect(authUrl);
+  });
+
+  /**
+   * GET /settings/oauth/callback — OAuth callback
+   * Exchanges code for token, fetches user info, creates session.
+   */
+  app.get("/settings/oauth/callback", async (c) => {
+    const code = c.req.query("code");
+    const stateParam = c.req.query("state");
+    const error = c.req.query("error");
+
+    if (error) {
+      logger.warn("OAuth callback error", { error });
+      return c.html(renderErrorPage(`OAuth login failed: ${error}`), 400);
+    }
+
+    if (!code || !stateParam) {
+      return c.html(
+        renderErrorPage("Missing code or state in OAuth callback"),
+        400
+      );
+    }
+
+    // Consume state
+    const stateData = await stateStore.consume(stateParam);
+    if (!stateData) {
+      return c.html(
+        renderErrorPage("Invalid or expired OAuth state. Please try again."),
+        400
+      );
+    }
+
+    try {
+      // Exchange code for token
+      const credentials = await oauthClient.exchangeCodeForToken(
+        code,
+        stateData.codeVerifier
+      );
+
+      // Fetch user info
+      const userInfo = await oauthClient.fetchUserInfo(credentials.accessToken);
+
+      // Validate OAuth user ID (used as Redis key)
+      if (
+        !userInfo.sub ||
+        typeof userInfo.sub !== "string" ||
+        userInfo.sub.length > 255 ||
+        /[:\s]/.test(userInfo.sub)
+      ) {
+        logger.error("Invalid OAuth user ID", { sub: userInfo.sub });
+        return c.html(
+          renderErrorPage("Invalid user identity from OAuth provider."),
+          500
+        );
+      }
+
+      // Create unified session (24h TTL)
+      const sessionTtlMs = 24 * 60 * 60 * 1000;
+      const session: SettingsTokenPayload = {
+        userId: userInfo.sub,
+        platform: "unknown",
+        oauthUserId: userInfo.sub,
+        email: userInfo.email,
+        name: userInfo.name,
+        exp: Date.now() + sessionTtlMs,
+      };
+
+      setSettingsSessionCookie(c, session);
+      logger.info("OAuth login successful", {
+        oauthUserId: userInfo.sub,
+        email: userInfo.email,
+      });
+
+      // Redirect to the original settings URL (with claim/agent params preserved)
+      const safeReturnUrl = isSafeReturnUrl(stateData.returnUrl)
+        ? stateData.returnUrl
+        : "/settings";
+      return c.redirect(safeReturnUrl);
+    } catch (err) {
+      logger.error("OAuth callback failed", { error: err });
+      return c.html(
+        renderErrorPage("OAuth login failed. Please try again."),
+        500
+      );
+    }
+  });
+
+  // ====================================================================
+  // GET /settings — Main settings page
+  // ====================================================================
   app.get("/settings", async (c) => {
     c.header("Referrer-Policy", "no-referrer");
     c.header("Cache-Control", "no-store, max-age=0");
     c.header("Pragma", "no-cache");
 
-    const legacyToken = c.req.query("token");
-    if (legacyToken) {
-      const payload = verifySettingsToken(legacyToken);
-      if (!payload) {
-        clearSettingsSessionCookie(c);
-        return c.html(
-          renderErrorPage(
-            "Invalid or expired link. Use /configure to request a new settings link."
-          ),
-          401
-        );
+    // 1. Verify session from cookie
+    let session = verifySettingsSession(c);
+
+    // 1b. Claim-based flow: if the URL has ?claim= and the existing session
+    // lacks an oauthUserId (e.g. Telegram initData session), clear the stale
+    // session so the claim+OAuth flow can proceed properly.
+    if (session && c.req.query("claim") && !session.oauthUserId) {
+      clearSettingsSessionCookie(c);
+      session = null;
+    }
+
+    // 2. No session + ?claim= → redirect to OAuth login (preserving returnUrl)
+    if (!session && c.req.query("claim")) {
+      const currentUrl = new URL(c.req.url);
+      const returnUrl = `${currentUrl.pathname}${currentUrl.search}`;
+      return c.redirect(
+        `/settings/oauth/login?returnUrl=${encodeURIComponent(returnUrl)}`
+      );
+    }
+
+    // 3. No session + Telegram initData URL → render bootstrap page for Telegram
+    if (!session) {
+      const qp = c.req.query("platform");
+      const chatId = c.req.query("chat");
+      if (qp === "telegram" && chatId) {
+        // Telegram WebApp - render a bootstrap page that extracts initData from hash
+        return c.html(renderTelegramBootstrapPage());
       }
 
-      setSettingsSessionCookie(c, legacyToken, payload);
-      return c.redirect("/settings", 303);
+      return c.html(
+        renderErrorPage(
+          "No active session. Use /configure in your chat to get a settings link."
+        ),
+        401
+      );
     }
 
-    const payload = verifySettingsSession(c);
-    if (!payload) {
-      return c.html(renderSessionBootstrapPage());
+    // 4. Session + ?claim= → process claim, grant access, redirect
+    const claimCode = c.req.query("claim");
+    if (claimCode) {
+      const oauthUserId = session.oauthUserId;
+      if (oauthUserId) {
+        const claimData = await claimService.consumeClaim(claimCode);
+        if (claimData) {
+          await claimService.grantAccess(
+            oauthUserId,
+            claimData.platform,
+            claimData.channelId
+          );
+
+          // Bind OAuth session to the claimed platform identity for subsequent
+          // authorization checks on config/auth APIs.
+          const claimedSession: SettingsTokenPayload = {
+            ...session,
+            platform: claimData.platform,
+            channelId: claimData.channelId,
+            userId: claimData.platformUserId,
+          };
+          setSettingsSessionCookie(c, claimedSession);
+
+          logger.info("Claim processed, access granted", {
+            oauthUserId,
+            platform: claimData.platform,
+            channelId: claimData.channelId,
+          });
+
+          // Redirect to clean URL (strip claim param, keep agent/channel params)
+          const cleanUrl = new URL(c.req.url);
+          cleanUrl.searchParams.delete("claim");
+
+          const binding = await config.channelBindingService.getBinding(
+            claimData.platform,
+            claimData.channelId
+          );
+
+          // Reconcile user-agents index for the claimed platform identity.
+          if (binding) {
+            config.userAgentsStore
+              .addAgent(
+                claimData.platform,
+                claimData.platformUserId,
+                binding.agentId
+              )
+              .catch(() => {
+                /* best-effort reconciliation */
+              });
+          }
+
+          // If no agent was specified, resolve from the claimed channel binding.
+          if (!cleanUrl.searchParams.has("agent") && binding) {
+            cleanUrl.searchParams.set("agent", binding.agentId);
+          }
+          if (!cleanUrl.searchParams.has("platform")) {
+            cleanUrl.searchParams.set("platform", claimData.platform);
+          }
+          if (!cleanUrl.searchParams.has("channel")) {
+            cleanUrl.searchParams.set("channel", claimData.channelId);
+          }
+          return c.redirect(`${cleanUrl.pathname}${cleanUrl.search}`, 303);
+        } else {
+          logger.warn("Invalid or expired claim code", { claimCode });
+        }
+      }
     }
 
-    // Determine the agentId to show settings for
-    let agentId = payload.agentId;
+    // 5. Session + ?agent= → render settings
+    const agentParam = c.req.query("agent");
+    const channelParam = c.req.query("channel");
+    const platformParam = c.req.query("platform");
 
-    if (!agentId && payload.channelId) {
-      // Channel-based token: try to resolve via existing binding
+    let agentId: string | undefined = agentParam;
+
+    // If channel+platform provided, resolve agent via binding
+    if (!agentId && channelParam && platformParam) {
+      // Check access for OAuth sessions
+      if (session.oauthUserId) {
+        const hasAccess = await claimService.hasAccess(
+          session.oauthUserId,
+          platformParam,
+          channelParam
+        );
+        if (!hasAccess) {
+          return c.html(
+            renderErrorPage(
+              "You don't have access to this channel's settings. Use /configure in the chat to get access."
+            ),
+            403
+          );
+        }
+      }
+
       const binding = await config.channelBindingService.getBinding(
-        payload.platform,
-        payload.channelId,
-        payload.teamId
+        platformParam,
+        channelParam
       );
       if (binding) {
         agentId = binding.agentId;
       }
     }
 
-    if (!agentId) {
-      // No agent resolved: show agent picker / creation form
-      const agentIds = await config.userAgentsStore.listAgents(
-        payload.platform,
-        payload.userId
+    // For Telegram sessions with channelId, resolve agent via binding
+    if (!agentId && session.channelId && session.platform) {
+      const binding = await config.channelBindingService.getBinding(
+        session.platform,
+        session.channelId
       );
-
-      const agents: (AgentMetadata & { channelCount: number })[] = [];
-      for (const id of agentIds) {
-        const metadata = await config.agentMetadataStore.getMetadata(id);
-        if (metadata) {
-          const bindings = await config.channelBindingService.listBindings(id);
-          agents.push({ ...metadata, channelCount: bindings.length });
-        }
+      if (binding) {
+        agentId = binding.agentId;
       }
-
-      return c.html(renderPickerPage(payload, agents));
     }
 
-    // We have an agentId: render settings page
-    const [settings, agentMetadata] = await Promise.all([
-      config.agentSettingsStore.getSettings(agentId),
-      config.agentMetadataStore.getMetadata(agentId),
-    ]);
-
-    // Build provider metadata from registry
-    const allModules = getModelProviderModules();
-    const allProviderMeta = allModules
-      .filter((m) => m.catalogVisible !== false)
-      .map(buildProviderMeta);
-
-    // Resolve installed providers in order
-    const installedIds = (settings?.installedProviders || []).map(
-      (ip) => ip.providerId
-    );
-    const installedSet = new Set(installedIds);
-    const installedProviders = installedIds
-      .map((id) => allProviderMeta.find((p) => p.id === id))
-      .filter((p): p is ProviderMeta => p !== undefined);
-
-    // Catalog providers = all that are not installed
-    const catalogProviders = allProviderMeta.filter(
-      (p) => !installedSet.has(p.id)
-    );
-
-    const providerModelOptions = await collectProviderModelOptions(
-      agentId,
-      payload.userId
-    );
-
-    // Determine if agent switcher should be shown
-    const showSwitcher = !!payload.channelId;
-
-    // Get agents list for switcher (only if switcher is enabled)
-    const agents: (AgentMetadata & { channelCount: number })[] = [];
-    if (showSwitcher) {
-      const agentIds = await config.userAgentsStore.listAgents(
-        payload.platform,
-        payload.userId
+    // Verify OAuth sessions have access to the resolved agent
+    if (agentId && session.oauthUserId) {
+      const channels = await claimService.getAccessibleChannels(
+        session.oauthUserId
       );
-      for (const id of agentIds) {
-        const metadata = await config.agentMetadataStore.getMetadata(id);
-        if (metadata) {
-          const bindings = await config.channelBindingService.listBindings(id);
-          agents.push({ ...metadata, channelCount: bindings.length });
-        }
-      }
-
-      // Ensure the currently active agent appears in switcher even when it is
-      // not part of the user's direct agent list (e.g. workspace-bound agent).
-      if (
-        agentMetadata &&
-        !agents.some((agent) => agent.agentId === agentMetadata.agentId)
-      ) {
-        const bindings = await config.channelBindingService.listBindings(
-          agentMetadata.agentId
+      if (channels.length === 0) {
+        return c.html(
+          renderErrorPage(
+            "No channels configured. Use /configure in a chat first."
+          ),
+          403
         );
-        agents.unshift({ ...agentMetadata, channelCount: bindings.length });
+      }
+
+      // Check the agent is reachable from an accessible channel
+      const accessibleAgentIds = new Set<string>();
+      for (const ch of channels) {
+        const binding = await config.channelBindingService.getBinding(
+          ch.platform,
+          ch.channelId
+        );
+        if (binding) accessibleAgentIds.add(binding.agentId);
+      }
+      if (!accessibleAgentIds.has(agentId)) {
+        return c.html(
+          renderErrorPage(
+            "You don't have access to this agent. Use /configure in the chat to get access."
+          ),
+          403
+        );
       }
     }
 
-    // Load system skills to prepend to initial skills
-    let systemSkills: import("@lobu/core").SkillConfig[] = [];
-    if (config.systemSkillsService) {
-      try {
-        systemSkills = await config.systemSkillsService.getSystemSkills();
-      } catch {
-        // System skills service may fail, continue without them
-      }
-    }
+    // 6. No agentId resolved: show dashboard of accessible channels
+    if (!agentId) {
+      if (session.oauthUserId) {
+        // OAuth session: show accessible channels
+        const channels = await claimService.getAccessibleChannels(
+          session.oauthUserId
+        );
 
-    // Fetch integration status keyed by integration ID
-    const integrationStatus: Record<
-      string,
-      {
-        connected: boolean;
-        accounts: { accountId: string; grantedScopes: string[] }[];
-        availableScopes: string[];
-      }
-    > = {};
-    if (config.integrationConfigService && config.integrationCredentialStore) {
-      try {
-        const allConfigs = await config.integrationConfigService.getAll();
-        for (const [id, cfg] of Object.entries(allConfigs)) {
-          const accountList =
-            await config.integrationCredentialStore.listAccounts(agentId, id);
-          integrationStatus[id] = {
-            connected: accountList.length > 0,
-            accounts: accountList.map((a) => ({
-              accountId: a.accountId,
-              grantedScopes: a.credentials.grantedScopes,
-            })),
-            availableScopes: cfg.scopes?.available ?? [],
-          };
+        if (channels.length === 0) {
+          return c.html(
+            renderErrorPage(
+              "No channels configured yet. Use /configure in a chat to link your account."
+            ),
+            200
+          );
         }
-      } catch {
-        // Integration services may not be configured
+
+        // Try to find agents for all accessible channels
+        const agents: (AgentMetadata & { channelCount: number })[] = [];
+        const seenAgents = new Set<string>();
+        for (const ch of channels) {
+          const binding = await config.channelBindingService.getBinding(
+            ch.platform,
+            ch.channelId
+          );
+          if (binding && !seenAgents.has(binding.agentId)) {
+            seenAgents.add(binding.agentId);
+            const metadata = await config.agentMetadataStore.getMetadata(
+              binding.agentId
+            );
+            if (metadata) {
+              const bindings = await config.channelBindingService.listBindings(
+                binding.agentId
+              );
+              agents.push({ ...metadata, channelCount: bindings.length });
+            }
+          }
+        }
+
+        if (agents.length === 1 && agents[0]) {
+          return c.redirect(`/settings?agent=${agents[0].agentId}`, 303);
+        }
+
+        // Build a synthetic payload for the picker page
+        const syntheticPayload: SettingsTokenPayload = {
+          userId: session.oauthUserId,
+          platform: channels[0]?.platform || "unknown",
+          exp: session.exp,
+        };
+        return c.html(renderPickerPage(syntheticPayload, agents));
       }
+
+      // Telegram/non-OAuth session with channelId: show agent picker
+      if (session.channelId && session.platform) {
+        const agentIds = await config.userAgentsStore.listAgents(
+          session.platform,
+          session.userId
+        );
+
+        const agents: (AgentMetadata & { channelCount: number })[] = [];
+        for (const id of agentIds) {
+          const metadata = await config.agentMetadataStore.getMetadata(id);
+          if (metadata) {
+            const bindings =
+              await config.channelBindingService.listBindings(id);
+            agents.push({ ...metadata, channelCount: bindings.length });
+          }
+        }
+
+        return c.html(
+          renderPickerPage(session as SettingsTokenPayload, agents)
+        );
+      }
+
+      return c.html(
+        renderErrorPage(
+          "No agent specified. Use /configure in a chat to get a settings link."
+        ),
+        400
+      );
     }
 
-    // Ensure the payload has agentId for the template (may have been resolved from binding)
-    const effectivePayload = { ...payload, agentId };
-
-    return c.html(
-      renderSettingsPage(effectivePayload, settings, {
-        providers: installedProviders,
-        catalogProviders,
-        providerModelOptions,
-        showSwitcher,
-        agents,
-        agentName: agentMetadata?.name,
-        agentDescription: agentMetadata?.description,
-        hasChannelId: !!payload.channelId,
-        systemSkills,
-        integrationStatus,
-      })
-    );
-  });
-
-  // Disconnect an OAuth integration account
-  app.post("/api/v1/integrations/oauth/disconnect", async (c) => {
-    const session = verifySettingsSession(c);
-    if (!session) return c.json({ error: "Not authenticated" }, 401);
-
-    const { agentId, integrationId, accountId } = await c.req.json<{
-      agentId: string;
-      integrationId: string;
-      accountId?: string;
-    }>();
-
-    if (!agentId || !integrationId) {
-      return c.json({ error: "Missing agentId or integrationId" }, 400);
+    // Update session cookie to include agentId for provider OAuth flows
+    if (agentId && session.agentId !== agentId) {
+      setSettingsSessionCookie(c, { ...session, agentId });
     }
 
-    if (!config.integrationCredentialStore) {
-      return c.json({ error: "Integration services not configured" }, 500);
-    }
-
-    await config.integrationCredentialStore.deleteCredentials(
+    // Build payload for rendering
+    const payload: SettingsTokenPayload = {
+      userId: session.oauthUserId || session.userId,
+      platform: platformParam || session.platform || "unknown",
+      channelId: channelParam || session.channelId,
       agentId,
-      integrationId,
-      accountId || "default"
-    );
+      exp: session.exp,
+      // Parse prefill query params (set by settings-link.ts for claim-based flows)
+      message: c.req.query("message") || undefined,
+      prefillSkills: c.req.query("skills")
+        ? c.req
+            .query("skills")!
+            .split(",")
+            .filter(Boolean)
+            .map((repo: string) => ({ repo }))
+        : undefined,
+      prefillGrants: c.req.query("grants")
+        ? c.req.query("grants")!.split(",").filter(Boolean)
+        : undefined,
+      prefillNixPackages: c.req.query("nix")
+        ? c.req.query("nix")!.split(",").filter(Boolean)
+        : undefined,
+      prefillMcpServers: parsePrefillMcpServersParam(c.req.query("mcps")),
+      prefillProviders: c.req.query("providers")
+        ? c.req.query("providers")!.split(",").filter(Boolean)
+        : undefined,
+    };
 
-    // Notify active workers so they get updated integration status
-    config.connectionManager?.notifyAgent(agentId, "config_changed", {
-      changes: [`integration:${integrationId}:disconnected`],
-    });
-
-    return c.json({ success: true });
+    return await renderSettingsForPayload(c, config, payload, agentId);
   });
 
   // Save an API key for an api-key integration
@@ -376,6 +795,10 @@ export function createSettingsPageRoutes(
         { error: "Missing agentId, integrationId, or apiKey" },
         400
       );
+    }
+
+    if (!(await verifyAgentAccess(session, agentId, config))) {
+      return c.json({ error: "Unauthorized" }, 403);
     }
 
     if (
@@ -418,4 +841,82 @@ export function createSettingsPageRoutes(
   });
 
   return app;
+}
+
+/**
+ * Minimal bootstrap page for Telegram WebApp initData authentication.
+ * Extracts initData from the URL hash fragment and POSTs to /settings/session.
+ */
+function renderTelegramBootstrapPage(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>Loading Settings - Lobu</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.25rem; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(to bottom right, #334155, #0f172a); color: #e2e8f0; }
+    .card { background: #0f172a; border: 1px solid #334155; border-radius: 1rem; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.35); padding: 1.5rem; max-width: 28rem; width: 100%; text-align: center; }
+    .spinner { width: 1.25rem; height: 1.25rem; border: 2px solid #475569; border-top-color: #cbd5e1; border-radius: 9999px; margin: 0 auto 0.75rem; animation: spin 0.8s linear infinite; }
+    .error { display: none; margin-top: 0.75rem; font-size: 0.875rem; color: #fca5a5; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="spinner" class="spinner"></div>
+    <p id="status">Securing your settings session...</p>
+    <p id="error" class="error"></p>
+  </div>
+  <script>
+    (async function () {
+      var errorEl = document.getElementById('error');
+      var statusEl = document.getElementById('status');
+      var spinnerEl = document.getElementById('spinner');
+
+      function showError(message) {
+        statusEl.textContent = 'Unable to open settings.';
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+        spinnerEl.style.display = 'none';
+      }
+
+      var qp = new URLSearchParams(window.location.search);
+      var chatId = qp.get('chat');
+
+      // Telegram injects initData as #tgWebAppData=<url-encoded-initData>&...
+      var hashStr = window.location.hash ? window.location.hash.slice(1) : '';
+      var hashParams = new URLSearchParams(hashStr);
+      var initData = hashParams.get('tgWebAppData') || '';
+
+      if (!initData) {
+        showError('Could not authenticate with Telegram. Please open this link using the button in Telegram, not as a regular URL.');
+        return;
+      }
+
+      try {
+        var resp = await fetch('/settings/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: initData, chatId: chatId })
+        });
+        if (resp.ok) {
+          var url = new URL(window.location.href);
+          url.hash = '';
+          url.search = '';
+          window.history.replaceState({}, '', url.pathname);
+          window.location.replace('/settings');
+          return;
+        }
+        var result = await resp.json().catch(function () { return {}; });
+        showError(result.error || 'Telegram authentication failed.');
+      } catch (e) {
+        showError('Network error while authenticating.');
+      }
+    })();
+  </script>
+</body>
+</html>`;
 }

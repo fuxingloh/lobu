@@ -112,7 +112,6 @@ export interface GatewayConfig {
   };
   orchestration: OrchestratorConfig;
   mcp: {
-    serversUrl?: string;
     publicGatewayUrl: string;
     callbackUrl: string;
   };
@@ -171,8 +170,6 @@ export function buildGatewayConfig(): GatewayConfig {
     );
   }
 
-  // Build MCP config
-  const mcpServersUrl = process.env.LOBU_MCP_SERVERS_URL;
   const defaultOwlettoMemoryEnabled = getOptionalBoolean(
     "AGENT_DEFAULT_OWLETTO_MEMORY_ENABLED",
     true
@@ -336,7 +333,6 @@ export function buildGatewayConfig(): GatewayConfig {
       },
     },
     mcp: {
-      serversUrl: mcpServersUrl,
       publicGatewayUrl,
       callbackUrl,
     },
@@ -379,7 +375,6 @@ export function displayGatewayConfig(config: GatewayConfig): void {
   console.log(`  Retry Delay: ${config.queues.retryDelay}s`);
 
   console.log("\nMCP:");
-  console.log(`  Servers URL: ${config.mcp.serversUrl || "not set"}`);
   console.log(`  Public Gateway: ${config.mcp.publicGatewayUrl}`);
   console.log(`  OAuth Callback: ${config.mcp.callbackUrl}`);
 

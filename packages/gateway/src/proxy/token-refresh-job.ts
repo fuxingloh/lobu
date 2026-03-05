@@ -1,6 +1,6 @@
 import { createLogger } from "@lobu/core";
 import type Redis from "ioredis";
-import { ClaudeOAuthClient } from "../auth/oauth/claude-client";
+import type { OAuthClient } from "../auth/oauth/client";
 import type { AuthProfilesManager } from "../auth/settings/auth-profiles-manager";
 
 const logger = createLogger("token-refresh-job");
@@ -8,31 +8,32 @@ const logger = createLogger("token-refresh-job");
 const REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000; // Refresh tokens expiring within 5 minutes
 
+export interface RefreshableProvider {
+  providerId: string;
+  oauthClient: OAuthClient;
+}
+
 /**
- * Background job that proactively refreshes Claude OAuth tokens before they expire.
+ * Background job that proactively refreshes OAuth tokens before they expire.
  *
  * On each tick:
- * 1. Scans authProfiles for Claude OAuth tokens expiring soon
- * 2. Refreshes via Claude OAuth client
+ * 1. Scans authProfiles for OAuth tokens expiring soon across all registered providers
+ * 2. Refreshes via the provider's OAuth client
  * 3. Updates authProfiles with new credentials
  *
  * With stable agent markers, the proxy resolves credentials from auth profiles
  * at request time, so updating the profile is sufficient — no need to update
  * Redis placeholder mappings.
- *
- * TODO: Generalize to all OAuth providers when more providers support refresh tokens.
  */
 export class TokenRefreshJob {
   private timer: Timer | null = null;
-  private oauthClient: ClaudeOAuthClient;
   private refreshLocks = new Map<string, Promise<void>>();
 
   constructor(
     private authProfilesManager: AuthProfilesManager,
-    private redis: Redis
-  ) {
-    this.oauthClient = new ClaudeOAuthClient();
-  }
+    private redis: Redis,
+    private refreshableProviders: RefreshableProvider[]
+  ) {}
 
   start(): void {
     if (this.timer) return;
@@ -89,55 +90,58 @@ export class TokenRefreshJob {
   }
 
   private async doRefresh(agentId: string): Promise<void> {
-    const profiles = await this.authProfilesManager.getProviderProfiles(
-      agentId,
-      "claude"
-    );
-    const oauthProfile = profiles.find(
-      (profile) =>
-        profile.authType === "oauth" && !!profile.metadata?.refreshToken
-    );
-
-    if (!oauthProfile?.metadata?.refreshToken) return;
-
-    const expiresAt = oauthProfile.metadata.expiresAt || 0;
-    const isExpiring = expiresAt <= Date.now() + EXPIRY_BUFFER_MS;
-    if (!isExpiring) return;
-
-    logger.info(
-      `Refreshing Claude token for agent ${agentId} profile ${oauthProfile.id}`,
-      { expiresAt: new Date(expiresAt).toISOString() }
-    );
-
-    try {
-      const newCredentials = await this.oauthClient.refreshToken(
-        oauthProfile.metadata.refreshToken
+    for (const { providerId, oauthClient } of this.refreshableProviders) {
+      const profiles = await this.authProfilesManager.getProviderProfiles(
+        agentId,
+        providerId
+      );
+      const oauthProfile = profiles.find(
+        (profile) =>
+          profile.authType === "oauth" && !!profile.metadata?.refreshToken
       );
 
-      await this.authProfilesManager.upsertProfile({
-        agentId,
-        id: oauthProfile.id,
-        provider: oauthProfile.provider,
-        credential: newCredentials.accessToken,
-        authType: "oauth",
-        label: oauthProfile.label,
-        model: oauthProfile.model,
-        metadata: {
-          ...oauthProfile.metadata,
-          refreshToken: newCredentials.refreshToken,
-          expiresAt: newCredentials.expiresAt,
-        },
-        makePrimary: false,
-      });
+      if (!oauthProfile?.metadata?.refreshToken) continue;
 
-      // With stable agent markers, updating the auth profile is sufficient.
-      // The proxy resolves credentials from auth profiles at request time.
-      logger.info(`Token refreshed for agent ${agentId} (claude)`);
-    } catch (error) {
-      logger.error(`Failed to refresh Claude token for agent ${agentId}`, {
-        error,
-        profileId: oauthProfile.id,
-      });
+      const expiresAt = oauthProfile.metadata.expiresAt || 0;
+      const isExpiring = expiresAt <= Date.now() + EXPIRY_BUFFER_MS;
+      if (!isExpiring) continue;
+
+      logger.info(
+        `Refreshing ${providerId} token for agent ${agentId} profile ${oauthProfile.id}`,
+        { expiresAt: new Date(expiresAt).toISOString() }
+      );
+
+      try {
+        const newCredentials = await oauthClient.refreshToken(
+          oauthProfile.metadata.refreshToken
+        );
+
+        await this.authProfilesManager.upsertProfile({
+          agentId,
+          id: oauthProfile.id,
+          provider: oauthProfile.provider,
+          credential: newCredentials.accessToken,
+          authType: "oauth",
+          label: oauthProfile.label,
+          model: oauthProfile.model,
+          metadata: {
+            ...oauthProfile.metadata,
+            refreshToken: newCredentials.refreshToken,
+            expiresAt: newCredentials.expiresAt,
+          },
+          makePrimary: false,
+        });
+
+        logger.info(`Token refreshed for agent ${agentId} (${providerId})`);
+      } catch (error) {
+        logger.error(
+          `Failed to refresh ${providerId} token for agent ${agentId}`,
+          {
+            error,
+            profileId: oauthProfile.id,
+          }
+        );
+      }
     }
   }
 }

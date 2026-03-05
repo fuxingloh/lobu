@@ -4,11 +4,14 @@ export const useCases: UseCase[] = [
   {
     id: "setup",
     tabLabel: "Setup",
-    title: "Get started in seconds",
+    title: "Self-service setup",
     description:
-      "Add your own AI provider keys through the settings page — no config files, no terminal.",
+      "Users bring their own AI provider keys via a settings page you don't have to build. No config files, no terminal.",
     settingsLabel: "Pick your AI provider and model",
-    chatLabel: "Bot walks you through setup",
+    chatLabel: "Bot walks users through setup",
+    botName: "YourSaaS",
+    botInitial: "Y",
+    botColor: "#6366f1",
     messages: [
       {
         role: "user",
@@ -30,45 +33,48 @@ export const useCases: UseCase[] = [
     ],
   },
   {
-    id: "packages",
-    tabLabel: "Packages",
-    title: "Reproducible environments",
+    id: "network",
+    tabLabel: "Security",
+    title: "Zero-trust security",
     description:
-      "Agents install system packages via Nix. Environments persist across sessions and are fully reproducible.",
-    settingsLabel: "Manage installed system packages",
-    chatLabel: "Agent requests tools it needs",
+      "Agents start with no internet access and never see real credentials. The gateway proxy swaps in secrets at request time and enforces a domain allowlist.",
+    settingsLabel: "Domains, MCP proxy, and tool permissions",
+    chatLabel: "Agent asks for network access",
+    botName: "InfraBot",
+    botInitial: "I",
+    botColor: "#ef4444",
     messages: [
       {
         role: "user",
-        text: "Convert this video to a gif under 5MB",
+        text: "Clone my repo and install dependencies",
       },
       {
         role: "bot",
-        text: "I need ffmpeg and gifsicle. Install them?",
-        buttons: [{ label: "Approve Installation", action: "link" }],
+        text: "Can't reach github.com — not in allowed domains.\n\nGrant access?",
+        buttons: [{ label: "Allow for 1 hour", action: "link" }],
       },
       {
         role: "user",
-        text: "Go for it",
+        text: "Allow it permanently",
       },
       {
         role: "bot",
-        text: "Installed via Nix. These persist across sessions.\n\nConverting now...",
-      },
-      {
-        role: "bot",
-        text: "Done! 4.2 MB (from 28 MB). Adjust frame rate?",
+        text: "github.com added to always-allow list.\n\nCloned the repo and ran npm install. Ready to go.",
       },
     ],
   },
   {
     id: "skills",
     tabLabel: "Skills",
-    title: "Connect skills and integrations",
+    title: "Skills and integrations",
     description:
-      "Install skills that bundle MCP servers and integrations. Mix OAuth and API-key auth in one setup.",
+      "Users install skills that bundle MCP servers and integrations. OAuth and API-key auth handled for you.",
+    learnMoreUrl: "/skills-as-saas",
     settingsLabel: "Review skills, MCP servers, and auth",
     chatLabel: "Agent configures dependencies",
+    botName: "OpsTriage",
+    botInitial: "O",
+    botColor: "#f59e0b",
     messages: [
       {
         role: "user",
@@ -92,11 +98,14 @@ export const useCases: UseCase[] = [
   {
     id: "memory",
     tabLabel: "Memory",
-    title: "Persistent memory with Owletto",
+    title: "Built-in persistent memory",
     description:
-      "Owletto is the default OpenClaw memory plugin, so important context survives across sessions and compaction.",
+      "Owletto memory plugin is enabled by default. PostgreSQL + pgvector for semantic search, BM25 for keyword recall, and an entity system — auto-recall on every turn, no setup required.",
     settingsLabel: "Choose and configure memory plugins",
     chatLabel: "Agent stores and recalls long-term context",
+    botName: "ReportBot",
+    botInitial: "R",
+    botColor: "#10b981",
     messages: [
       {
         role: "user",
@@ -119,11 +128,14 @@ export const useCases: UseCase[] = [
   {
     id: "schedules",
     tabLabel: "Schedules",
-    title: "Set reminders and recurring tasks",
+    title: "Scheduling out of the box",
     description:
-      "Agents can schedule one-off reminders or recurring cron jobs. They run autonomously at the specified time.",
+      "Users set reminders and recurring tasks in natural language. Agents run autonomously at the scheduled time — you don't build the scheduler.",
     settingsLabel: "View and manage scheduled jobs",
     chatLabel: "Schedule tasks in natural language",
+    botName: "TaskPilot",
+    botInitial: "T",
+    botColor: "#8b5cf6",
     messages: [
       {
         role: "user",
@@ -145,30 +157,37 @@ export const useCases: UseCase[] = [
     ],
   },
   {
-    id: "network",
-    tabLabel: "Network",
-    title: "Fine-grained network access",
+    id: "packages",
+    tabLabel: "Packages",
+    title: "User-installable packages",
     description:
-      "Agents have zero internet by default. You allowlist specific domains — agents can't reach anything else.",
-    settingsLabel: "Control which domains agents can reach",
-    chatLabel: "Agent asks for network access",
+      "Let users install system packages via Nix on demand. Environments persist across sessions and are fully reproducible.",
+    settingsLabel: "Manage installed system packages",
+    chatLabel: "Agent requests tools it needs",
+    botName: "MediaBot",
+    botInitial: "M",
+    botColor: "#ec4899",
     messages: [
       {
         role: "user",
-        text: "Clone my repo and install dependencies",
+        text: "Convert this video to a gif under 5MB",
       },
       {
         role: "bot",
-        text: "Can't reach github.com — not in allowed domains.\n\nGrant access?",
-        buttons: [{ label: "Allow for 1 hour", action: "link" }],
+        text: "I need ffmpeg and gifsicle. Install them?",
+        buttons: [{ label: "Approve Installation", action: "link" }],
       },
       {
         role: "user",
-        text: "Allow it permanently",
+        text: "Go for it",
       },
       {
         role: "bot",
-        text: "github.com added to always-allow list.\n\nCloned the repo and ran npm install. Ready to go.",
+        text: "Installed via Nix. These persist across sessions.\n\nConverting now...",
+      },
+      {
+        role: "bot",
+        text: "Done! 4.2 MB (from 28 MB). Adjust frame rate?",
       },
     ],
   },

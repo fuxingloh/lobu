@@ -332,6 +332,49 @@ export class OpenClawWorker implements WorkerExecutor {
     // Fetch session context BEFORE model resolution so AGENT_DEFAULT_PROVIDER
     // is available when resolveModelRef() needs a fallback provider.
     const context = await getOpenClawSessionContext();
+
+    // Sync enabled skills to workspace filesystem so the agent can `cat` them.
+    // Remove stale skill directories to avoid serving removed/disabled skills.
+    const skillsWorkspaceDir = this.getWorkingDirectory();
+    const skillsRoot = path.join(skillsWorkspaceDir, ".skills");
+    await fs.mkdir(skillsRoot, { recursive: true });
+
+    const nextSkillNames = new Set(
+      context.skillsConfig
+        .map((skill) => path.basename((skill.name || "").trim()))
+        .filter(Boolean)
+    );
+
+    const existingSkillEntries = await fs
+      .readdir(skillsRoot, { withFileTypes: true })
+      .catch(() => []);
+
+    for (const entry of existingSkillEntries) {
+      if (!entry.isDirectory()) continue;
+      if (!nextSkillNames.has(entry.name)) {
+        await fs.rm(path.join(skillsRoot, entry.name), {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
+
+    for (const skill of context.skillsConfig) {
+      const skillName = path.basename((skill.name || "").trim());
+      if (!skillName) continue;
+      const skillDir = path.join(skillsRoot, skillName);
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(
+        path.join(skillDir, "SKILL.md"),
+        skill.content,
+        "utf-8"
+      );
+    }
+
+    logger.info(
+      `Synced ${context.skillsConfig.length} skill(s) to .skills/ directory`
+    );
+
     const pc = context.providerConfig;
     if (pc.credentialEnvVarName) {
       process.env.CREDENTIAL_ENV_VAR_NAME = pc.credentialEnvVarName;
@@ -1066,7 +1109,7 @@ ${fileListing}
         },
         body: JSON.stringify({
           reason: `Connect your ${authHint.providerName} account to use ${modelId} models`,
-          prefillEnvVars: [authHint.envVar],
+          prefillProviders: [authHint.providerName],
         }),
       });
 

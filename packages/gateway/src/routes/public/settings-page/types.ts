@@ -51,6 +51,8 @@ export interface Skill {
   nixPackages?: string[];
   permissions?: string[];
   providers?: string[];
+  modelPreference?: string;
+  thinkingLevel?: string;
 }
 
 export interface McpConfig {
@@ -145,7 +147,7 @@ export interface SettingsState {
   prefillMcpServers: PrefillMcp[];
   prefillGrants: string[];
   prefillNixPackages: string[];
-  prefillEnvVars: string[];
+  prefillProviders: string[];
   initialNixPackages: string[];
   agentName: string;
   agentDescription: string;

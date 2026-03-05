@@ -11,7 +11,7 @@ import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ScheduledWakeupService } from "../../orchestration/scheduled-wakeup";
 import { verifySettingsSession } from "./settings-auth";
 
-const TAG = "Agents";
+const TAG = "Schedules";
 const ErrorResponse = z.object({ error: z.string() });
 const TokenQuery = z.object({ token: z.string().optional() });
 
@@ -112,7 +112,7 @@ export function createAgentSchedulesRoutes(
         const isOwner =
           metadata?.owner?.platform === payload.platform &&
           metadata?.owner?.userId === payload.userId;
-        if (!isOwner && !metadata?.isWorkspaceAgent) return null;
+        if (!isOwner) return null;
 
         if (isOwner && config.userAgentsStore) {
           config.userAgentsStore

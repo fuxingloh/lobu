@@ -719,6 +719,9 @@ export async function installSkill(
       if (manifest.nixPackages?.length) {
         prefill.prefillNixPackages = manifest.nixPackages;
       }
+      if (manifest.providers?.length) {
+        prefill.prefillProviders = manifest.providers;
+      }
 
       // Pre-fill MCP servers from skill manifest
       if (manifest.mcpServers?.length) {
@@ -736,22 +739,20 @@ export async function installSkill(
     }
 
     // Generate settings link for user confirmation
-    return getSettingsLink(
-      gw,
-      prefill as Parameters<typeof getSettingsLink>[1]
-    );
+    return configure(gw, prefill as Parameters<typeof configure>[1]);
   });
 }
 
 // ============================================================================
-// GetSettingsLink
+// Configure
 // ============================================================================
 
-export async function getSettingsLink(
+export async function configure(
   gw: GatewayParams,
   args: {
     reason: string;
     message?: string;
+    prefillProviders?: string[];
     prefillSkills?: Array<{
       repo: string;
       name?: string;
@@ -769,8 +770,8 @@ export async function getSettingsLink(
     }>;
   }
 ): Promise<TextResult> {
-  return withErrorHandling("GetSettingsLink", async () => {
-    logger.info(`GetSettingsLink: ${args.reason}`);
+  return withErrorHandling("Configure", async () => {
+    logger.info(`Configure: ${args.reason}`);
 
     interface SettingsLinkResult {
       url?: string;
@@ -787,6 +788,7 @@ export async function getSettingsLink(
         body: JSON.stringify({
           reason: args.reason,
           message: args.message,
+          prefillProviders: args.prefillProviders,
           prefillNixPackages: args.prefillNixPackages,
           prefillGrants: args.prefillGrants,
           prefillSkills: args.prefillSkills,
@@ -867,7 +869,7 @@ export async function generateAudio(
             ?.map((p) => `${p.name} (${p.envVar})`)
             .join(", ") || "openai, gemini, elevenlabs";
         return textResult(
-          `Audio generation is not configured. To enable it, add an API key for one of these providers: ${providerList}. Use the GetSettingsLink tool to help the user configure this.`
+          `Audio generation is not configured. To enable it, add an API key for one of these providers: ${providerList}. Use the Configure tool to help the user configure this.`
         );
       }
     }
@@ -893,7 +895,7 @@ export async function generateAudio(
 
       if (errorData.availableProviders?.length) {
         return textResult(
-          `Audio generation failed: ${errorData.error}. No provider configured. Use GetSettingsLink to help the user add an API key.`
+          `Audio generation failed: ${errorData.error}. No provider configured. Use Configure to help the user add an API key.`
         );
       }
 

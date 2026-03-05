@@ -7,6 +7,7 @@ import {
   type CommandRegistry,
   type AgentOptions as CoreAgentOptions,
   createLogger,
+  type InstructionProvider,
   type UserSuggestion,
 } from "@lobu/core";
 import { Bot } from "grammy";
@@ -27,6 +28,7 @@ import type { TelegramConfig } from "./config";
 import { shouldUseWebhook, TELEGRAM_WEBHOOK_PATH } from "./config";
 import { TelegramMessageHandler } from "./events/message-handler";
 import { TelegramFileHandler } from "./file-handler";
+import { TelegramInstructionProvider } from "./instructions/provider";
 import { TelegramInteractionRenderer } from "./interactions";
 import { TelegramResponseRenderer } from "./response-renderer";
 import { createTelegramWebhookRoute } from "./webhook-route";
@@ -157,6 +159,20 @@ export class TelegramPlatform implements PlatformAdapter {
     if (this.messageHandler) {
       this.messageHandler.setCommandDispatcher(commandDispatcher);
       logger.info("Command dispatcher wired to Telegram message handler");
+    }
+
+    // Wire up claim service for settings link generation
+    const claimService = services.getClaimService();
+    if (claimService) {
+      if (this.messageHandler) {
+        this.messageHandler.setClaimService(claimService);
+      }
+      if (this.authAdapter) {
+        this.authAdapter.setClaimService(claimService);
+      }
+      logger.info(
+        "Claim service wired to Telegram auth adapter and message handler"
+      );
     }
 
     // Wire up user agent configuration stores
@@ -306,6 +322,10 @@ export class TelegramPlatform implements PlatformAdapter {
 
   getFileHandler(): IFileHandler | undefined {
     return this.fileHandler;
+  }
+
+  getInstructionProvider(): InstructionProvider {
+    return new TelegramInstructionProvider();
   }
 
   buildDeploymentMetadata(

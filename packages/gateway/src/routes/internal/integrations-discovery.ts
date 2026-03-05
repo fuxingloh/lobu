@@ -168,20 +168,6 @@ export function createIntegrationsDiscoveryRoutes(
     }
   );
 
-  // Get MCP server details by ID
-  router.get(
-    "/internal/integrations/mcps/:id",
-    authenticateWorker,
-    async (c) => {
-      const id = c.req.param("id");
-      const result = await mcpDiscovery.getById(id);
-      if (!result) {
-        return c.json({ error: "MCP not found" }, 404);
-      }
-      return c.json({ mcp: result });
-    }
-  );
-
   // Installed capabilities for an agent (skills, integrations, MCP servers)
   router.get(
     "/internal/integrations/installed",

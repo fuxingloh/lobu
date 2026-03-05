@@ -5,10 +5,9 @@ const logger = createLogger("dispatcher");
 import type { AnyBlock } from "@slack/types";
 import type { WebClient } from "@slack/web-api";
 import {
-  buildSettingsUrl,
-  formatSettingsTokenTtl,
-  generateSettingsToken,
-} from "../../auth/settings/token-service";
+  type ClaimService,
+  buildClaimSettingsUrl,
+} from "../../auth/settings/claim-service";
 import type { DispatcherModuleSource } from "../../modules/module-system";
 import { resolveSpace } from "../../spaces";
 import type { SlackActionBody, SlackContext } from "../types";
@@ -213,10 +212,16 @@ async function handleBlockkitForm(
 }
 
 export class ActionHandler {
+  private claimService?: ClaimService;
+
   constructor(
     private messageHandler: MessageHandler,
     private moduleRegistry: DispatcherModuleSource
   ) {}
+
+  setClaimService(service: ClaimService): void {
+    this.claimService = service;
+  }
 
   /**
    * Handle block action events
@@ -309,13 +314,18 @@ export class ActionHandler {
 
   /**
    * Handle "Open Settings" button click from home tab
-   * Generates a settings link and sends it via DM
+   * Generates a claim-based settings link and sends it via DM
    */
   private async handleOpenSettings(
     userId: string,
     client: WebClient
   ): Promise<void> {
     logger.info(`Generating settings link for user: ${userId}`);
+
+    if (!this.claimService) {
+      logger.error("ClaimService not available for settings link generation");
+      return;
+    }
 
     try {
       // Resolve agentId for user's personal space (DM context)
@@ -326,15 +336,17 @@ export class ActionHandler {
         isGroup: false,
       });
 
-      // Generate settings token (configured TTL, default 1 hour)
-      const token = generateSettingsToken(agentId, userId, "slack");
-      const settingsUrl = buildSettingsUrl(token);
-      const ttlLabel = formatSettingsTokenTtl();
+      const claimCode = await this.claimService.createClaim(
+        "slack",
+        userId,
+        userId
+      );
+      const settingsUrl = buildClaimSettingsUrl(claimCode, { agentId });
 
       // Send DM with settings link
       await client.chat.postMessage({
         channel: userId, // DM to user
-        text: `Here's your settings link (expires in ${ttlLabel}):\n${settingsUrl}`,
+        text: `Here's your settings link:\n${settingsUrl}`,
         blocks: [
           {
             type: "section",
@@ -352,15 +364,6 @@ export class ActionHandler {
                 url: settingsUrl,
                 style: "primary",
               },
-            ],
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `_This link expires in ${ttlLabel}. Click the button above or copy the URL._`,
-              } as any,
             ],
           },
         ],

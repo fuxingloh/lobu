@@ -24,23 +24,30 @@ export class TelegramBlockBuilder {
   /**
    * Build Telegram HTML content with optional inline keyboard buttons
    * extracted from settings links in the markdown.
+   *
+   * @param isGroup - If true, uses url buttons instead of web_app (web_app is private-chat only).
    */
-  build(markdown: string): TelegramBlockResult {
+  build(markdown: string, isGroup = false): TelegramBlockResult {
     const { processedContent, linkButtons } =
       extractSettingsLinkButtons(markdown);
 
     const html = convertMarkdownToTelegramHtml(processedContent);
-    const replyMarkup = this.buildReplyMarkup(linkButtons);
+    const replyMarkup = this.buildReplyMarkup(linkButtons, isGroup);
 
     return { html, replyMarkup };
   }
 
-  private buildReplyMarkup(buttons: LinkButton[]): InlineKeyboard | undefined {
+  private buildReplyMarkup(
+    buttons: LinkButton[],
+    isGroup: boolean
+  ): InlineKeyboard | undefined {
     if (buttons.length === 0) return undefined;
 
     return {
       inline_keyboard: buttons.map((btn) => [
-        { text: btn.text, web_app: { url: btn.url } },
+        isGroup
+          ? { text: btn.text, url: btn.url }
+          : { text: btn.text, web_app: { url: btn.url } },
       ]),
     };
   }

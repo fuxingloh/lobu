@@ -83,7 +83,7 @@ export class OAuthStateStore<T extends { userId: string }> {
 }
 
 // ============================================================================
-// Claude OAuth State Types and Factory
+// Provider OAuth State Types and Factory
 // ============================================================================
 
 /**
@@ -95,22 +95,29 @@ export interface OAuthPlatformContext {
   conversationId?: string;
 }
 
-export interface ClaudeOAuthStateData {
+export interface ProviderOAuthStateData {
   userId: string;
   agentId: string;
   codeVerifier: string;
   context?: OAuthPlatformContext;
 }
 
-export type ClaudeOAuthState = ClaudeOAuthStateData & { createdAt: number };
+export type ProviderOAuthState = ProviderOAuthStateData & {
+  createdAt: number;
+};
 
 /**
- * Create a Claude OAuth state store for PKCE flow
+ * Create a provider OAuth state store for PKCE flow
  */
-export function createClaudeOAuthStateStore(
+export function createOAuthStateStore(
+  providerId: string,
   redis: Redis
-): OAuthStateStore<ClaudeOAuthStateData> {
-  return new OAuthStateStore(redis, "claude:oauth_state", "claude-oauth-state");
+): OAuthStateStore<ProviderOAuthStateData> {
+  return new OAuthStateStore(
+    redis,
+    `${providerId}:oauth_state`,
+    `${providerId}-oauth-state`
+  );
 }
 
 // ============================================================================
@@ -156,5 +163,4 @@ export function createMcpOAuthStateStore(redis: Redis): McpOAuthStateStore {
   return new McpOAuthStateStore(redis);
 }
 
-// Type alias for backward compatibility
-export type ClaudeOAuthStateStore = OAuthStateStore<ClaudeOAuthStateData>;
+export type ProviderOAuthStateStore = OAuthStateStore<ProviderOAuthStateData>;

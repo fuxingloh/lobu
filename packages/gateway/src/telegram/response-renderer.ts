@@ -273,7 +273,11 @@ export class TelegramResponseRenderer implements ResponseRenderer {
     stream: StreamState,
     traceId?: string
   ): Promise<void> {
-    const { html, replyMarkup } = this.blockBuilder.build(stream.buffer);
+    const isGroup = stream.chatId < 0;
+    const { html, replyMarkup } = this.blockBuilder.build(
+      stream.buffer,
+      isGroup
+    );
 
     if (html.length <= this.config.messageChunkSize) {
       // Single chunk - edit existing message

@@ -82,6 +82,7 @@ export type {
   SessionContext,
   SkillConfig,
   SkillIntegration,
+  ThinkingLevel,
   SkillMcpServer,
   SkillsConfig,
   SuggestedPrompt,

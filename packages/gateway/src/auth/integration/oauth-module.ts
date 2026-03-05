@@ -10,6 +10,7 @@ import {
   renderOAuthErrorPage,
   renderOAuthSuccessPage,
 } from "../oauth-templates";
+import { SETTINGS_SESSION_COOKIE_NAME } from "../../routes/public/settings-auth";
 import type { IntegrationConfigService } from "./config-service";
 import type { IntegrationCredentialStore } from "./credential-store";
 
@@ -192,6 +193,7 @@ export class IntegrationOAuthModule {
           scopes: scopesForRequest,
           grantType: "authorization_code",
           responseType: "code",
+          tokenEndpointAuthMethod: config.oauth.tokenEndpointAuthMethod,
         },
         state,
         this.callbackUrl
@@ -305,6 +307,7 @@ export class IntegrationOAuthModule {
           clientSecret: config.oauth.clientSecret,
           grantType: "authorization_code",
           responseType: "code",
+          tokenEndpointAuthMethod: config.oauth.tokenEndpointAuthMethod,
         },
         this.callbackUrl
       );
@@ -369,7 +372,23 @@ export class IntegrationOAuthModule {
         threadContext
       );
 
-      return c.html(renderOAuthSuccessPage(config.label));
+      // If user has a settings session, redirect to settings page
+      const hasSession = !!c.req.raw.headers
+        .get("cookie")
+        ?.includes(SETTINGS_SESSION_COOKIE_NAME);
+      if (hasSession) {
+        return c.redirect(
+          `/settings?agent=${encodeURIComponent(agentId)}&open=skills&message=${encodeURIComponent(`Connected to ${config.label}`)}`
+        );
+      }
+
+      // No session — show success page with link to settings
+      return c.html(
+        renderOAuthSuccessPage(
+          config.label,
+          `/settings?agent=${encodeURIComponent(agentId)}&open=skills`
+        )
+      );
     } catch (error) {
       logger.error("Failed to handle integration OAuth callback", { error });
       return c.html(

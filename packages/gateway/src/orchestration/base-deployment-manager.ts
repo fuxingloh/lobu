@@ -7,7 +7,6 @@ import {
   OrchestratorError,
 } from "@lobu/core";
 import type Redis from "ioredis";
-import { mcpConfigStore } from "../auth/mcp/mcp-config-store";
 import type { MessagePayload } from "../infrastructure/queue/queue-producer";
 import type { ModelProviderModule } from "../modules/module-system";
 import type { GrantStore } from "../permissions/grant-store";
@@ -400,13 +399,6 @@ export abstract class BaseDeploymentManager {
         `Added Nix cache domains as grants for ${deploymentName}: ${NIX_DOMAINS.join(", ")}`
       );
     }
-
-    if (messageData.mcpConfig) {
-      await mcpConfigStore.set(deploymentName, messageData.mcpConfig);
-      logger.debug(
-        `Stored MCP config for ${deploymentName}: ${Object.keys(messageData.mcpConfig.mcpServers).length} servers`
-      );
-    }
   }
 
   /**
@@ -545,7 +537,15 @@ export abstract class BaseDeploymentManager {
         // sees real credentials. The proxy resolves the real credential
         // using agentId from the URL path (/a/{agentId}) and the provider
         // slug, then overrides the Authorization header before forwarding.
-        envVars[key] = "lobu-proxy";
+        const ownerProvider = this.providerModules.find(
+          (p) => p.getCredentialEnvVarName() === key
+        );
+        if (ownerProvider?.buildCredentialPlaceholder) {
+          envVars[key] =
+            await ownerProvider.buildCredentialPlaceholder(agentId);
+        } else {
+          envVars[key] = "lobu-proxy";
+        }
         hasSecrets = true;
       } else {
         // Use UUID placeholder for non-provider secrets (legacy path)
@@ -752,9 +752,6 @@ export abstract class BaseDeploymentManager {
    */
   async deleteWorkerDeployment(deploymentName: string): Promise<void> {
     try {
-      // Clean up per-deployment configs from stores
-      await mcpConfigStore.delete(deploymentName);
-
       // Clean up secret placeholder mappings
       if (this.redisClient) {
         await deleteSecretMappings(this.redisClient, deploymentName);

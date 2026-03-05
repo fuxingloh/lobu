@@ -54,7 +54,7 @@ export function createMcpDiscoveryClient(
 
   async function getById(mcpId: string): Promise<McpDetails> {
     const response = await fetch(
-      `${gatewayUrl}/internal/integrations/mcps/${encodeURIComponent(mcpId)}`,
+      `${gatewayUrl}/internal/integrations/resolve/${encodeURIComponent(mcpId)}`,
       { headers }
     );
 
@@ -67,8 +67,7 @@ export function createMcpDiscoveryClient(
       throw new Error(errorData.error || "Failed to load MCP details");
     }
 
-    const data = (await response.json()) as { mcp: McpDetails };
-    return data.mcp;
+    return (await response.json()) as McpDetails;
   }
 
   async function install(

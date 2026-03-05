@@ -35,6 +35,8 @@ export interface OAuthProviderConfig {
     | "none"
     | "client_secret_post"
     | "client_secret_basic";
+  /** Whether auth-code exchange must include refresh_token */
+  requireRefreshToken?: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ export const CLAUDE_PROVIDER: OAuthProviderConfig = {
   responseType: "code",
   grantType: "authorization_code",
   tokenEndpointAuthMethod: "none",
+  requireRefreshToken: true,
   customHeaders: {
     "User-Agent":
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

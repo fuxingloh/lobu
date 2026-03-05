@@ -1,7 +1,9 @@
 import type { ComponentType } from "preact";
+import { useState } from "preact/hooks";
 import { useCases } from "../use-cases";
 import {
   IntegrationsPanel,
+  MemoryPanel,
   ModelsPanel,
   PackagesPanel,
   PermissionsPanel,
@@ -15,23 +17,37 @@ const PANEL_MAP: Record<string, ComponentType> = {
   skills: IntegrationsPanel,
   schedules: RemindersPanel,
   network: PermissionsPanel,
+  memory: MemoryPanel,
 };
+
+function TimelineDot() {
+  return (
+    <div
+      class="w-3 h-3 rounded-full shrink-0 my-1"
+      style={{
+        backgroundColor: "var(--color-tg-accent)",
+        opacity: 0.5,
+      }}
+    />
+  );
+}
 
 function FeatureRow({
   uc,
-  index,
+  isFirst,
   isLast,
 }: {
   uc: (typeof useCases)[0];
-  index: number;
+  isFirst: boolean;
   isLast: boolean;
 }) {
   const Panel = PANEL_MAP[uc.id];
+  const [panelHighlight, setPanelHighlight] = useState(false);
 
   return (
-    <div class="grid grid-cols-1 md:grid-cols-[1fr_40px_1fr] gap-4 md:gap-6">
-      {/* Left column: title + settings panel */}
-      <div class="pb-8 md:pb-12 md:text-right md:pr-4">
+    <>
+      {/* Left cell */}
+      <div class="pb-8 md:pb-10 md:text-right md:pr-4">
         <div
           class="text-xs font-semibold uppercase tracking-wider mb-1"
           style={{ color: "var(--color-tg-accent)" }}
@@ -45,53 +61,73 @@ function FeatureRow({
           {uc.title}
         </h3>
         <p
-          class="text-sm leading-relaxed mb-6 md:ml-auto max-w-md"
+          class="text-sm leading-relaxed md:ml-auto max-w-md"
           style={{ color: "var(--color-page-text-muted)" }}
         >
           {uc.description}
         </p>
+        {uc.learnMoreUrl && (
+          <a
+            href={uc.learnMoreUrl}
+            class="inline-block text-xs font-medium mt-2 mb-4 transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-tg-accent)" }}
+          >
+            Learn more →
+          </a>
+        )}
+        {!uc.learnMoreUrl && <div class="mb-6" />}
         <p
           class="text-xs font-medium mb-2"
           style={{ color: "var(--color-page-text-muted)" }}
         >
           {uc.settingsLabel}
         </p>
-        <div class="md:text-left">
+        <div
+          class="md:text-left transition-all duration-300"
+          style={{
+            transform: panelHighlight ? "scale(1.02)" : "scale(1)",
+            boxShadow: panelHighlight
+              ? "0 0 20px rgba(249, 115, 22, 0.15)"
+              : "none",
+            borderRadius: "12px",
+          }}
+        >
           <Panel />
         </div>
       </div>
 
-      {/* Timeline column (center) */}
+      {/* Center cell — timeline */}
       <div class="hidden md:flex flex-col items-center">
-        <div
-          class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-          style={{
-            backgroundColor: "rgba(var(--color-tg-accent-rgb), 0.15)",
-            color: "var(--color-tg-accent)",
-            border: "1px solid rgba(var(--color-tg-accent-rgb), 0.3)",
-          }}
-        >
-          {index + 1}
-        </div>
-        {!isLast && (
+        {isFirst ? (
+          <div class="h-2" />
+        ) : (
           <div
-            class="w-px flex-1 mt-2"
+            class="w-px flex-1"
+            style={{ backgroundColor: "var(--color-page-border)" }}
+          />
+        )}
+        <TimelineDot />
+        {isLast ? (
+          <div class="h-2" />
+        ) : (
+          <div
+            class="w-px flex-1"
             style={{ backgroundColor: "var(--color-page-border)" }}
           />
         )}
       </div>
 
-      {/* Right column: chat */}
-      <div class="pb-8 md:pb-12 md:pl-4">
+      {/* Right cell */}
+      <div class="pb-8 md:pb-10 md:pl-4">
         <p
           class="text-xs font-medium mb-2"
           style={{ color: "var(--color-page-text-muted)" }}
         >
           {uc.chatLabel}
         </p>
-        <TelegramChat useCase={uc} />
+        <TelegramChat useCase={uc} onButtonHover={setPanelHighlight} />
       </div>
-    </div>
+    </>
   );
 }
 
@@ -103,15 +139,16 @@ export function DemoSection() {
           class="text-2xl sm:text-3xl font-bold text-center mb-12 tracking-tight"
           style={{ color: "var(--color-page-text)" }}
         >
-          How it works
+          Your users' experience
         </h2>
 
-        <div>
+        {/* Single grid — timeline column is continuous across all rows */}
+        <div class="grid grid-cols-1 md:grid-cols-[1fr_40px_1fr] gap-4 md:gap-x-6 md:gap-y-0">
           {useCases.map((uc, i) => (
             <FeatureRow
               key={uc.id}
               uc={uc}
-              index={i}
+              isFirst={i === 0}
               isLast={i === useCases.length - 1}
             />
           ))}

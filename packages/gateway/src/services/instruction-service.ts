@@ -55,22 +55,30 @@ class SkillsInstructionProvider implements InstructionProvider {
         return this.getGenericSkillsInstructions();
       }
 
-      // Progressive disclosure: inject only metadata (name + description)
+      // Progressive disclosure: inject only metadata (name + description + model/thinking tags)
       // to reduce prompt size. Agent reads full SKILL.md on demand.
       const skillSummaries = enabledSkills
         .map((skill) => {
           const desc = skill.description ? ` - ${skill.description}` : "";
-          return `- **${skill.name}**${desc} (\`${skill.repo}\`)`;
+          const tags: string[] = [];
+          if (skill.modelPreference) {
+            tags.push(`[model: ${skill.modelPreference}]`);
+          }
+          if (skill.thinkingLevel) {
+            tags.push(`[thinking: ${skill.thinkingLevel}]`);
+          }
+          const tagStr = tags.length > 0 ? ` ${tags.join(" ")}` : "";
+          return `- **${skill.name}**${desc} (\`${skill.repo}\`)${tagStr}`;
         })
         .join("\n");
 
       return `# Enabled Skills
 
-The following skills are installed and available. When a task matches a skill, read the full skill instructions before using it.
+The following skills are installed and available. When a task matches a skill, read the full skill instructions before using it. Skills tagged with [model: ...] prefer a specific model — delegate to the corresponding coding agent when available.
 
 ${skillSummaries}
 
-**To read full skill instructions:** \`cat ~/.claude/skills/*/SKILL.md\` to read the relevant SKILL.md file.
+**To read full skill instructions:** \`cat .skills/*/SKILL.md\` to read the relevant SKILL.md file.
 
 ---
 
@@ -137,7 +145,7 @@ You can access any external service without restrictions.`;
 
 **Internet Access:** Complete isolation (no external access)
 
-You do NOT have access to the internet. All external requests (curl, wget, npm, pip, etc.) will fail. If you need network access, use GetSettingsLink with prefillGrants to request it — this presents inline approval buttons to the user. Only local operations and MCP tools are available.`;
+You do NOT have access to the internet. All external requests (curl, wget, npm, pip, etc.) will fail. If you need network access, use Configure with prefillGrants to request it — this presents inline approval buttons to the user. Only local operations and MCP tools are available.`;
     }
 
     // Allowlist mode
@@ -168,7 +176,7 @@ ${blockedList}`;
 
     instructions += `
 
-You can only access the allowed domains listed above. All other external requests will be blocked by the proxy. If a domain is blocked, use GetSettingsLink with prefillGrants to request access — this presents inline approval buttons to the user (default grant: 1 hour). Plan your work accordingly and use available MCP tools when possible.`;
+You can only access the allowed domains listed above. All other external requests will be blocked by the proxy. If a domain is blocked, use Configure with prefillGrants to request access — this presents inline approval buttons to the user (default grant: 1 hour). Plan your work accordingly and use available MCP tools when possible.`;
 
     return instructions;
   }

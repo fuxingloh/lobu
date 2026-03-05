@@ -1,13 +1,13 @@
 /**
  * Extract settings link buttons from markdown content.
  *
- * Scans for markdown links pointing to `/settings#st=...` URLs and
+ * Scans for markdown links pointing to `/settings?claim=...` URLs and
  * returns them as structured button data, stripping the link syntax
  * from the content so platforms can render native buttons instead.
  */
 
 const SETTINGS_LINK_RE =
-  /\[([^\]]+)\]\((https?:\/\/[^)]*\/settings[#?]st=[^)]+)\)/g;
+  /\[([^\]]+)\]\((https?:\/\/[^)]*\/settings\?claim=[^)]+)\)/g;
 
 /**
  * Returns true when the URL points to a loopback address that

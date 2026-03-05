@@ -136,63 +136,66 @@ export function PackagesPanel() {
 // --- Skills + Integrations ---
 
 export function IntegrationsPanel() {
-  const integrations = [
-    {
-      name: "ops-triage",
-      type: "skill",
-      auth: "Mixed",
-      description: "Bundles Gmail/GitHub MCP + Linear integration",
-      enabled: true,
-    },
-    {
-      name: "gmail-mcp",
-      type: "mcp",
-      auth: "OAuth",
-      description: "https://gmail-mcp.example.com/sse",
-      enabled: true,
-    },
-    {
-      name: "github-mcp",
-      type: "mcp",
-      auth: "OAuth",
-      description: "https://github-mcp.example.com/sse",
-      enabled: true,
-    },
-    {
-      name: "linear",
-      type: "integration",
-      auth: "API key",
-      description: "Linear workspace token configured",
-      enabled: true,
-    },
-  ];
-
   return (
-    <PanelShell title="Integrations">
-      <SectionHeader emoji="🔗" label="Integrations" />
+    <PanelShell title="Skills">
+      <SectionHeader emoji="🔗" label="Skills" />
       <div class="space-y-2">
-        {integrations.map((i) => (
-          <div
-            key={i.name}
-            class="flex items-center justify-between p-2 bg-white rounded border border-gray-100"
-          >
-            <div class="flex items-center gap-2 flex-1 min-w-0">
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 shrink-0">
-                {i.type}
+        {/* Skill with nested integrations/MCPs */}
+        <div class="p-2 bg-white rounded border border-gray-100">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-medium text-slate-700">ops-triage</span>
+              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                skill
               </span>
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0">
-                {i.auth}
-              </span>
-              <div class="min-w-0">
-                <p class="text-xs font-medium text-slate-700">{i.name}</p>
-                <p class="text-xs text-gray-500 truncate">{i.description}</p>
-              </div>
             </div>
-            <span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800 shrink-0">
+            <span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">
               Enabled
             </span>
           </div>
-        ))}
+          <div class="ml-3 space-y-1 border-l-2 border-gray-100 pl-2">
+            <div class="flex items-center gap-2">
+              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                mcp
+              </span>
+              <span class="text-xs text-gray-600">gmail-mcp</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                connected
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                mcp
+              </span>
+              <span class="text-xs text-gray-600">github-mcp</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                connected
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                api-key
+              </span>
+              <span class="text-xs text-gray-600">linear</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                connected
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* System skill */}
+        <div class="flex items-center justify-between p-2 bg-white rounded border border-gray-100">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-medium text-slate-700">web-search</span>
+            <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+              system
+            </span>
+          </div>
+          <span class="px-2 py-1 text-xs rounded bg-slate-100 text-slate-600">
+            Always on
+          </span>
+        </div>
       </div>
     </PanelShell>
   );
@@ -201,55 +204,57 @@ export function IntegrationsPanel() {
 // --- Memory: Owletto default plugin ---
 
 export function MemoryPanel() {
-  const memoryPlugins = [
-    {
-      name: "owletto-memory",
-      source: "./plugins/openclaw-owletto-plugin.js",
-      slot: "memory",
-      status: "Default",
-      enabled: true,
-    },
-    {
-      name: "native-memory",
-      source: "@openclaw/native-memory",
-      slot: "memory",
-      status: "Optional",
-      enabled: false,
-    },
-  ];
-
   return (
     <PanelShell title="Memory">
       <SectionHeader emoji="🧠" label="Memory Plugins" />
       <div class="space-y-2">
-        {memoryPlugins.map((p) => (
-          <div
-            key={p.name}
-            class="flex items-center justify-between p-2 bg-white rounded border border-gray-100"
-          >
-            <div class="flex items-center gap-2 flex-1 min-w-0">
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
-                {p.slot}
+        {/* Owletto — active */}
+        <div class="p-2 bg-white rounded border border-gray-100">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-medium text-slate-700">
+                owletto-memory
               </span>
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 shrink-0">
-                {p.status}
+              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                default
               </span>
-              <div class="min-w-0">
-                <p class="text-xs font-medium text-slate-700">{p.name}</p>
-                <p class="text-xs text-gray-500 truncate">{p.source}</p>
-              </div>
             </div>
-            <span
-              class={`px-2 py-1 text-xs rounded shrink-0 ${
-                p.enabled
-                  ? "bg-green-100 text-green-800"
-                  : "bg-slate-100 text-slate-700"
-              }`}
-            >
-              {p.enabled ? "Enabled" : "Disabled"}
+            <span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">
+              Enabled
             </span>
           </div>
-        ))}
+          <div class="flex flex-wrap gap-1 ml-0.5">
+            {[
+              "pgvector",
+              "BM25 search",
+              "entity system",
+              "auto-recall",
+              "auto-capture",
+            ].map((tag) => (
+              <span
+                key={tag}
+                class="text-[9px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-100"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Native — disabled */}
+        <div class="flex items-center justify-between p-2 bg-white rounded border border-gray-100 opacity-60">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-medium text-slate-700">
+              native-memory
+            </span>
+            <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+              optional
+            </span>
+          </div>
+          <span class="px-2 py-1 text-xs rounded bg-slate-100 text-slate-700">
+            Disabled
+          </span>
+        </div>
       </div>
     </PanelShell>
   );
@@ -313,7 +318,7 @@ export function RemindersPanel() {
 // --- Network: Permissions ---
 
 export function PermissionsPanel() {
-  const permissions = [
+  const domains = [
     {
       pattern: "github.com",
       badge: "Always",
@@ -324,34 +329,86 @@ export function PermissionsPanel() {
       badge: "Always",
       color: "bg-green-100 text-green-700",
     },
+  ];
+
+  const mcpServers = [
     {
-      pattern: "api.openai.com",
-      badge: "1 hour",
+      name: "gmail-mcp",
+      badge: "Secrets proxied",
+      color: "bg-purple-100 text-purple-700",
+    },
+    {
+      name: "github-mcp",
+      badge: "Secrets proxied",
+      color: "bg-purple-100 text-purple-700",
+    },
+  ];
+
+  const tools = [
+    {
+      name: "Bash",
+      badge: "Sandboxed",
       color: "bg-amber-100 text-amber-700",
     },
     {
-      pattern: "pypi.org",
-      badge: "Session",
-      color: "bg-blue-100 text-blue-700",
+      name: "file_upload",
+      badge: "Allowed",
+      color: "bg-green-100 text-green-700",
     },
   ];
 
   return (
-    <PanelShell title="Permissions">
-      <SectionHeader emoji="🛡️" label="Permissions" />
-      <div class="space-y-2">
-        {permissions.map((p) => (
+    <PanelShell title="Security">
+      <SectionHeader emoji="🛡️" label="Domain allowlist" />
+      <div class="space-y-1.5 mb-3">
+        {domains.map((d) => (
           <div
-            key={p.pattern}
+            key={d.pattern}
             class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5"
           >
             <span class="flex-1 text-xs font-mono text-gray-800 truncate">
-              {p.pattern}
+              {d.pattern}
             </span>
             <span
-              class={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${p.color}`}
+              class={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${d.color}`}
             >
-              {p.badge}
+              {d.badge}
+            </span>
+          </div>
+        ))}
+      </div>
+      <SectionHeader emoji="🔌" label="MCP proxy" />
+      <div class="space-y-1.5 mb-3">
+        {mcpServers.map((m) => (
+          <div
+            key={m.name}
+            class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5"
+          >
+            <span class="flex-1 text-xs font-mono text-gray-800 truncate">
+              {m.name}
+            </span>
+            <span
+              class={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${m.color}`}
+            >
+              {m.badge}
+            </span>
+          </div>
+        ))}
+      </div>
+      <SectionHeader emoji="🔧" label="Allowed tools" />
+      <div class="space-y-1.5">
+        {tools.map((t) => (
+          <div
+            key={t.name}
+            class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5"
+          >
+            <span class="flex-1 text-xs font-mono text-gray-800 truncate">
+              {t.name}
+            </span>
+            <span
+              class={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${t.color}`}
+            >
+              {t.badge}
             </span>
           </div>
         ))}

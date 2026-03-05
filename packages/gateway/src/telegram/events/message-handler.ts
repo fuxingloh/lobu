@@ -12,6 +12,10 @@ import type { Bot } from "grammy";
 import type { AdminStatusCache } from "../../auth/admin-status-cache";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
 import type { AgentSettingsStore } from "../../auth/settings";
+import {
+  type ClaimService,
+  buildClaimSettingsUrl,
+} from "../../auth/settings/claim-service";
 import { buildTelegramSettingsUrl } from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
@@ -91,6 +95,7 @@ export class TelegramMessageHandler {
   private userAgentsStore?: UserAgentsStore;
   private agentMetadataStore?: AgentMetadataStore;
   private adminStatusCache?: AdminStatusCache;
+  private claimService?: ClaimService;
   private commandDispatcher?: CommandDispatcher;
   private botUsername?: string;
   private statusCallback?: (
@@ -125,6 +130,10 @@ export class TelegramMessageHandler {
 
   setAdminStatusCache(cache: AdminStatusCache): void {
     this.adminStatusCache = cache;
+  }
+
+  setClaimService(service: ClaimService): void {
+    this.claimService = service;
   }
 
   setCommandDispatcher(dispatcher: CommandDispatcher): void {
@@ -461,6 +470,8 @@ export class TelegramMessageHandler {
 
   /**
    * Send a configuration prompt when no agent is bound.
+   * Groups: claim-based OAuth flow (url button in group).
+   * DMs: web_app button with Telegram initData auth.
    * Returns true if sent (caller should stop), false if failed (caller should fallback).
    */
   private async sendConfigurationPrompt(
@@ -490,9 +501,45 @@ export class TelegramMessageHandler {
         }
       }
 
+      // Groups: claim-based OAuth flow with url button
+      if (context.isGroup) {
+        if (!this.claimService) {
+          logger.warn("ClaimService not available for group config prompt");
+          await this.bot.api.sendMessage(
+            context.chatId,
+            "Welcome! Configuration is temporarily unavailable. Please try again later."
+          );
+          return true;
+        }
+
+        const claimCode = await this.claimService.createClaim(
+          "telegram",
+          chatId,
+          userId
+        );
+        const configUrl = buildClaimSettingsUrl(claimCode);
+
+        await this.bot.api.sendMessage(
+          context.chatId,
+          "Welcome! To get started, tap the button below to configure which agent should handle messages here.",
+          {
+            reply_markup: {
+              inline_keyboard: [[{ text: "Configure Agent", url: configUrl }]],
+            },
+          }
+        );
+
+        logger.info(
+          { userId, chatId: context.chatId },
+          "Sent claim-based configuration prompt (group)"
+        );
+        return true;
+      }
+
+      // DMs: web_app button with Telegram initData auth
       const configUrl = buildTelegramSettingsUrl(chatId);
 
-      // Telegram rejects inline keyboard URLs like http://localhost:...; fall back to plain text in that case.
+      // Telegram rejects inline keyboard URLs like http://localhost:...; fall back to plain text
       let includeButton = true;
       try {
         const u = new URL(configUrl);
@@ -533,7 +580,7 @@ export class TelegramMessageHandler {
 
       logger.info(
         { userId, chatId: context.chatId },
-        "Sent configuration prompt"
+        "Sent configuration prompt (DM)"
       );
       return true;
     } catch (error) {

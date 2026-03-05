@@ -11,7 +11,7 @@ import {
   disconnectService,
   generateAudio,
   getChannelHistory,
-  getSettingsLink,
+  configure,
   installSkill,
   listReminders,
   scheduleReminder,
@@ -169,9 +169,9 @@ export function createOpenClawCustomTools(params: {
     }),
 
     defineTool({
-      name: "GetSettingsLink",
+      name: "Configure",
       description:
-        "Generate a settings link for the user to configure their agent. Use when the user needs to add API keys, enable skills, configure MCP servers, approve network domains, or change other settings. Also use when a network request fails with 'Domain not allowed' — pass the blocked domain in prefillGrants.",
+        "Open the agent settings page for the user to configure their agent. Use when the user needs to add API keys, enable skills, configure MCP servers, approve network domains, or change other settings. Also use when a network request fails with 'Domain not allowed' — pass the blocked domain in prefillGrants.",
       parameters: Type.Object({
         reason: Type.String({
           description:
@@ -181,6 +181,12 @@ export function createOpenClawCustomTools(params: {
           Type.String({
             description:
               "Optional message to display on the settings page with instructions",
+          })
+        ),
+        prefillProviders: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Optional provider IDs to pre-fill auth setup (e.g., 'openai', 'claude')",
           })
         ),
         prefillSkills: Type.Optional(
@@ -234,20 +240,20 @@ export function createOpenClawCustomTools(params: {
             { description: "Optional list of MCP servers to pre-fill" }
           )
         ),
-        prefillGrants: Type.Optional(
-          Type.Array(Type.String(), {
-            description:
-              "Optional list of domain patterns to pre-fill as grants (e.g., 'api.example.com')",
-          })
-        ),
         prefillNixPackages: Type.Optional(
           Type.Array(Type.String(), {
             description:
               "Optional list of nix packages to pre-fill (e.g., 'ffmpeg', 'imagemagick')",
           })
         ),
+        prefillGrants: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Optional list of domain patterns to pre-fill as grants (e.g., 'api.example.com')",
+          })
+        ),
       }),
-      run: (args) => getSettingsLink(gw, args),
+      run: (args) => configure(gw, args),
     }),
 
     defineTool({

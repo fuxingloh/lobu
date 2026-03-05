@@ -10,12 +10,10 @@
 import { createLogger } from "@lobu/core";
 import { Hono } from "hono";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
-import {
-  type SettingsTokenPayload,
-  verifySettingsToken,
-} from "../../auth/settings/token-service";
+import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
+import { verifySettingsSession } from "./settings-auth";
 
 const logger = createLogger("channel-binding-routes");
 
@@ -34,12 +32,11 @@ export function createChannelBindingRoutes(
 ): Hono {
   const router = new Hono();
 
-  const verifyToken = async (
-    token: string | undefined,
+  const verifyAuth = async (
+    c: any,
     agentId: string
   ): Promise<SettingsTokenPayload | null> => {
-    if (!token) return null;
-    const payload = verifySettingsToken(token);
+    const payload = verifySettingsSession(c);
     if (!payload) return null;
 
     if (payload.agentId) {
@@ -59,7 +56,7 @@ export function createChannelBindingRoutes(
         const isOwner =
           metadata?.owner?.platform === payload.platform &&
           metadata?.owner?.userId === payload.userId;
-        if (!isOwner && !metadata?.isWorkspaceAgent) return null;
+        if (!isOwner) return null;
 
         if (isOwner && config.userAgentsStore) {
           config.userAgentsStore
@@ -82,7 +79,7 @@ export function createChannelBindingRoutes(
       return c.json({ error: "Missing agentId" }, 400);
     }
 
-    if (!(await verifyToken(c.req.query("token"), agentId))) {
+    if (!(await verifyAuth(c, agentId))) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
@@ -112,7 +109,7 @@ export function createChannelBindingRoutes(
       return c.json({ error: "Missing agentId" }, 400);
     }
 
-    const authPayload = await verifyToken(c.req.query("token"), agentId);
+    const authPayload = await verifyAuth(c, agentId);
     if (!authPayload) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -195,7 +192,7 @@ export function createChannelBindingRoutes(
       return c.json({ error: "Missing required parameters" }, 400);
     }
 
-    if (!(await verifyToken(c.req.query("token"), agentId))) {
+    if (!(await verifyAuth(c, agentId))) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
@@ -213,37 +210,16 @@ export function createChannelBindingRoutes(
       );
 
       if (!deleted) {
-        return c.json(
-          { error: "Binding not found or belongs to a different agent" },
-          404
-        );
+        return c.json({ error: "Binding not found" }, 404);
       }
 
-      logger.info(`Deleted binding: ${platform}/${channelId} from ${agentId}`);
-
-      return c.json({
-        success: true,
-        agentId,
-        platform,
-        channelId,
-      });
+      logger.info(`Deleted binding: ${platform}/${channelId} -> ${agentId}`);
+      return c.json({ success: true });
     } catch (error) {
-      logger.error("Failed to delete binding", {
-        error,
-        agentId,
-        platform,
-        channelId,
-      });
-      return c.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Failed to delete binding",
-        },
-        400
-      );
+      logger.error("Failed to delete binding", { error, agentId });
+      return c.json({ error: "Failed to delete binding" }, 500);
     }
   });
 
-  logger.info("Channel binding routes registered");
   return router;
 }

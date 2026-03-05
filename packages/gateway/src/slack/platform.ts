@@ -223,9 +223,7 @@ export class SlackPlatform implements PlatformAdapter {
     // Create interaction renderer (needs messageHandler from event handlers)
     this.interactionRenderer = new SlackInteractionRenderer(
       this.app.client,
-      interactionService,
-      services.getGrantStore(),
-      services.getQueueProducer()
+      interactionService
     );
     logger.info("✅ Slack interaction renderer initialized");
 
@@ -301,6 +299,13 @@ export class SlackPlatform implements PlatformAdapter {
     });
     this.eventHandlers.setCommandDispatcher(commandDispatcher);
     logger.info("✅ Command dispatcher wired to Slack event handlers");
+
+    // Wire up claim service for settings link generation
+    const claimService = services.getClaimService();
+    if (claimService) {
+      this.eventHandlers.setClaimService(claimService);
+      logger.info("✅ Claim service wired to Slack event handlers");
+    }
 
     logger.info("✅ Slack platform initialized");
   }

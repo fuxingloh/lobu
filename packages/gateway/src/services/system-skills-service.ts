@@ -10,6 +10,14 @@ import { createLogger } from "@lobu/core";
 
 const logger = createLogger("system-skills-service");
 
+export interface RuntimeSystemSkill {
+  id: string;
+  repo: string;
+  name: string;
+  description?: string;
+  content: string;
+}
+
 export class SystemSkillsService {
   private configUrl?: string;
   private loaded?: SystemSkillsConfigFile;
@@ -56,6 +64,12 @@ export class SystemSkillsService {
     return result;
   }
 
+  async getRuntimeSystemSkills(): Promise<RuntimeSystemSkill[]> {
+    const config = await this.loadConfig();
+    if (!config) return [];
+    return config.skills.map((entry) => this.toRuntimeSystemSkill(entry));
+  }
+
   private toSkillConfig(entry: SystemSkillEntry): SkillConfig {
     return {
       repo: `system/${entry.id}`,
@@ -75,6 +89,72 @@ export class SystemSkillsService {
       mcpServers: entry.mcpServers,
       nixPackages: entry.nixPackages,
       permissions: entry.permissions,
+    };
+  }
+
+  private toRuntimeSystemSkill(entry: SystemSkillEntry): RuntimeSystemSkill {
+    const repo = `system/${entry.id}`;
+    const lines: string[] = [
+      `# ${entry.name}`,
+      "",
+      `System skill ID: \`${repo}\``,
+    ];
+
+    if (entry.description?.trim()) {
+      lines.push("", entry.description.trim());
+    }
+
+    if (entry.integrations?.length) {
+      lines.push("", "## Integrations");
+      for (const integration of entry.integrations) {
+        const scopeInfo = integration.scopesConfig?.available?.length
+          ? ` (scopes: ${integration.scopesConfig.available.join(", ")})`
+          : "";
+        lines.push(
+          `- ${integration.label} (\`${integration.id}\`, auth: ${integration.authType || "oauth"})${scopeInfo}`
+        );
+        if (integration.apiBase) {
+          lines.push(`  - API base: \`${integration.apiBase}\``);
+        }
+        if (integration.apiHints) {
+          lines.push(`  - API hints: ${integration.apiHints}`);
+        }
+      }
+    }
+
+    if (entry.mcpServers?.length) {
+      lines.push("", "## MCP Servers");
+      for (const mcp of entry.mcpServers) {
+        const endpoint = mcp.url || mcp.command || "n/a";
+        lines.push(`- ${mcp.name || mcp.id} (\`${mcp.id}\`): ${endpoint}`);
+      }
+    }
+
+    if (entry.permissions?.length) {
+      lines.push(
+        "",
+        "## Network Permissions",
+        `- ${entry.permissions.join(", ")}`
+      );
+    }
+
+    if (entry.nixPackages?.length) {
+      lines.push("", "## Nix Packages", `- ${entry.nixPackages.join(", ")}`);
+    }
+
+    lines.push(
+      "",
+      "## Usage",
+      "- Use `CallService` for these integrations.",
+      "- If auth is needed, use `ConnectService` first."
+    );
+
+    return {
+      id: entry.id,
+      repo,
+      name: entry.name,
+      description: entry.description,
+      content: lines.join("\n"),
     };
   }
 

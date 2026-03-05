@@ -7,7 +7,10 @@ import { InstructionsSection } from "./components/InstructionsSection";
 import { MessageBanners } from "./components/MessageBanners";
 import { NixPackagesSection } from "./components/NixPackagesSection";
 import { PermissionsSection } from "./components/PermissionsSection";
-import { ProviderSection } from "./components/ProviderSection";
+import {
+  ProviderSection,
+  triggerProviderAuth,
+} from "./components/ProviderSection";
 import { RemindersSection } from "./components/RemindersSection";
 import { SkillsSection } from "./components/SkillsSection";
 import type {
@@ -91,7 +94,7 @@ export interface SettingsContextValue {
   prefillMcpServers: Signal<PrefillMcp[]>;
   prefillGrants: Signal<string[]>;
   prefillNixPackages: Signal<string[]>;
-  prefillEnvVars: Signal<string[]>;
+  prefillProviders: Signal<string[]>;
   prefillBannerDismissed: Signal<boolean>;
   approvingPrefills: Signal<boolean>;
 
@@ -229,7 +232,7 @@ function App() {
   const prefillNixPackages = useSignal<string[]>(
     state.prefillNixPackages || []
   );
-  const prefillEnvVars = useSignal<string[]>(state.prefillEnvVars || []);
+  const prefillProviders = useSignal<string[]>(state.prefillProviders || []);
   const prefillBannerDismissed = useSignal(
     new URL(window.location.href).searchParams.has("dismissed")
   );
@@ -257,6 +260,8 @@ function App() {
         mcpServers: s.mcpServers,
         nixPackages: s.nixPackages,
         permissions: s.permissions,
+        modelPreference: s.modelPreference,
+        thinkingLevel: s.thinkingLevel,
       }))
     );
   }
@@ -356,9 +361,10 @@ function App() {
       openSections.value = sections;
     }
 
-    // Auto-open model section when no providers
+    // Auto-open model section and provider catalog when no providers
     if (state.hasNoProviders && !openParam) {
       openSections.value = { ...openSections.value, model: true };
+      showCatalog.value = true;
     }
 
     // Check providers
@@ -383,6 +389,22 @@ function App() {
           };
         }
         providerState.value = updated;
+
+        // Auto-trigger auth flow for prefilled providers
+        if (prefillProviders.value.length > 0) {
+          openSections.value = { ...openSections.value, model: true };
+          triggerProviderAuth(ctx, prefillProviders.value[0]);
+
+          // Auto-dismiss banner if only providers are prefilled
+          const onlyProviders =
+            prefillSkills.value.length === 0 &&
+            prefillGrants.value.length === 0 &&
+            prefillNixPackages.value.length === 0 &&
+            prefillMcpServers.value.length === 0;
+          if (onlyProviders) {
+            prefillBannerDismissed.value = true;
+          }
+        }
       })
       .catch(() => {
         // noop
@@ -480,7 +502,7 @@ function App() {
     prefillMcpServers,
     prefillGrants,
     prefillNixPackages,
-    prefillEnvVars,
+    prefillProviders,
     prefillBannerDismissed,
     approvingPrefills,
 
@@ -609,10 +631,9 @@ async function handleSave(ctx: SettingsContextValue) {
     const snap = ctx.initialSettingsSnapshot.value;
     const currentSnap = ctx.buildSettingsSnapshot();
 
-    // Save skills (only if changed), filter out system skills
+    // Save skills (only if changed)
     if (!snap || snap.skills !== currentSnap.skills) {
-      const userSkills = ctx.skills.value.filter((s) => !s.system);
-      await api.saveSkills(ctx.agentId, userSkills);
+      await api.saveSkills(ctx.agentId, ctx.skills.value);
     }
 
     // Save MCPs (only if changed)

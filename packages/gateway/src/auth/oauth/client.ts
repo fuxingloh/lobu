@@ -1,8 +1,8 @@
-import type { ClaudeCredentials } from "../claude/credential-store";
 import { BaseOAuth2Client } from "./base-client";
-import { CLAUDE_PROVIDER, type OAuthProviderConfig } from "./providers";
+import type { OAuthCredentials } from "./credentials";
+import type { OAuthProviderConfig } from "./providers";
 
-interface ClaudeTokenResponse {
+interface OAuthTokenResponse {
   access_token: string;
   refresh_token?: string;
   token_type?: string;
@@ -11,21 +11,20 @@ interface ClaudeTokenResponse {
 }
 
 /**
- * Claude-specific OAuth client using config-driven approach
- * Extends BaseOAuth2Client with Claude provider configuration
+ * Config-driven OAuth client for any provider
+ * Extends BaseOAuth2Client with provider configuration
  *
  * Features:
  * - PKCE support (RFC 7636) for public client security
  * - Browser-like headers for anti-bot protection
- * - Configurable via OAUTH_PROVIDERS registry
+ * - Configurable via OAuthProviderConfig
  */
-export class ClaudeOAuthClient extends BaseOAuth2Client {
+export class OAuthClient extends BaseOAuth2Client {
   private config: OAuthProviderConfig;
 
-  constructor(customConfig?: Partial<OAuthProviderConfig>) {
-    super("claude-oauth-client");
-    // Use provider config with optional overrides
-    this.config = { ...CLAUDE_PROVIDER, ...customConfig };
+  constructor(config: OAuthProviderConfig) {
+    super(`${config.id ?? "oauth"}-client`);
+    this.config = config;
   }
 
   /**
@@ -59,7 +58,7 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
     codeVerifier: string,
     customRedirectUri?: string,
     state?: string
-  ): Promise<ClaudeCredentials> {
+  ): Promise<OAuthCredentials> {
     const redirectUri = customRedirectUri || this.config.redirectUri;
 
     const body: Record<string, string> = {
@@ -76,7 +75,7 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
     }
 
     // Add provider-specific custom headers
-    const tokenData = await this.exchangeToken<ClaudeTokenResponse>(
+    const tokenData = await this.exchangeToken<OAuthTokenResponse>(
       this.config.tokenUrl,
       body,
       "json",
@@ -96,8 +95,8 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
    * Refresh access token using refresh token
    * Uses generic refresh method from base client with Claude-specific config
    */
-  async refreshToken(refreshToken: string): Promise<ClaudeCredentials> {
-    const tokenData = await this.refreshTokenWithConfig<ClaudeTokenResponse>(
+  async refreshToken(refreshToken: string): Promise<OAuthCredentials> {
+    const tokenData = await this.refreshTokenWithConfig<OAuthTokenResponse>(
       this.config.tokenUrl,
       this.config.clientId,
       refreshToken,
@@ -125,13 +124,15 @@ export class ClaudeOAuthClient extends BaseOAuth2Client {
       scope?: string;
     },
     fallbackRefreshToken?: string
-  ): ClaudeCredentials {
+  ): OAuthCredentials {
     const expiresAt = this.calculateExpiresAt(tokenData.expires_in)!;
     const scopes = this.parseScopes(tokenData.scope);
     const refreshToken = tokenData.refresh_token ?? fallbackRefreshToken;
 
-    if (!refreshToken) {
-      throw new Error("Claude OAuth response missing refresh token");
+    if (!refreshToken && this.config.requireRefreshToken !== false) {
+      throw new Error(
+        `${this.config.name} OAuth response missing refresh token`
+      );
     }
 
     return {

@@ -25,7 +25,7 @@ import type { IMessageQueue } from "../../infrastructure/queue";
 import type { GrantStore } from "../../permissions/grant-store";
 import { verifySettingsSession } from "./settings-auth";
 
-const TAG = "Agents";
+const TAG = "Configuration";
 const ErrorResponse = z.object({ error: z.string() });
 const TokenQuery = z.object({ token: z.string().optional() });
 const logger = createLogger("agent-config-routes");
@@ -130,6 +130,10 @@ const updateConfigRoute = createRoute({
                     enabled: z.boolean(),
                     content: z.string().optional(),
                     contentFetchedAt: z.number().optional(),
+                    modelPreference: z.string().optional(),
+                    thinkingLevel: z
+                      .enum(["off", "low", "medium", "high"])
+                      .optional(),
                   })
                 ),
               })
@@ -378,7 +382,7 @@ export function createAgentConfigRoutes(
         const isOwner =
           metadata?.owner?.platform === payload.platform &&
           metadata?.owner?.userId === payload.userId;
-        if (!isOwner && !metadata?.isWorkspaceAgent) return null;
+        if (!isOwner) return null;
 
         // Reconcile: metadata says owner but index is missing — repair it
         if (isOwner && config.userAgentsStore) {

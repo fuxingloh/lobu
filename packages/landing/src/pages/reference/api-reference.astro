@@ -1,0 +1,43 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { ScalarComponent } from "@scalar/astro";
+---
+
+<StarlightPage
+  frontmatter={{
+    title: "API Reference",
+    description: "Interactive API reference for the Lobu gateway REST API.",
+    template: "splash",
+  }}
+  hasSidebar={false}
+>
+  <ScalarComponent
+    configuration={{
+      url: "https://community.lobu.ai/api/docs/openapi.json",
+      theme: "kepler",
+      layout: "modern",
+      defaultHttpClient: { targetKey: "js", clientKey: "fetch" },
+      servers: [
+        { url: "http://localhost:8080", description: "Local development" },
+      ],
+    }}
+  />
+</StarlightPage>
+
+<style is:global>
+  /* Let the Scalar component take the full viewport width */
+  .main-pane {
+    max-width: 100% !important;
+  }
+  .content-panel {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+  .sl-container {
+    max-width: 100% !important;
+  }
+  /* Hide the Starlight page title — Scalar has its own header */
+  h1#_top {
+    display: none !important;
+  }
+</style>

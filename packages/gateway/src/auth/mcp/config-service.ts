@@ -1,8 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { createLogger, verifyWorkerToken } from "@lobu/core";
-import { z } from "zod";
 import type {
   DiscoveredOAuthMetadata,
   OAuthDiscoveryService,
@@ -10,15 +6,8 @@ import type {
 import type { AgentSettingsStore } from "../settings/agent-settings-store";
 import type { McpCredentialStore } from "./credential-store";
 import type { McpInputStore } from "./input-store";
-import { mcpConfigStore } from "./mcp-config-store";
 
 const logger = createLogger("mcp-config-service");
-
-const McpServersSchema = z.object({
-  mcpServers: z.record(z.string(), z.any()),
-});
-
-type RawMcpConfig = z.infer<typeof McpServersSchema>;
 
 export interface OAuth2Config {
   authUrl: string;
@@ -62,14 +51,10 @@ interface McpStatus {
 interface LoadedConfig {
   rawServers: Record<string, any>;
   httpServers: Map<string, HttpMcpServerConfig>;
-  mtimeMs: number;
   discoveredOAuth?: Map<string, DiscoveredOAuthMetadata>;
 }
 
-type ConfigSource = { type: "file"; path: string } | { type: "http"; url: URL };
-
 interface McpConfigServiceOptions {
-  configUrl?: string; // Accepts both URLs (http://, https://) and file paths
   discoveryService?: OAuthDiscoveryService;
   credentialStore?: McpCredentialStore;
   inputStore?: McpInputStore;
@@ -77,7 +62,6 @@ interface McpConfigServiceOptions {
 }
 
 export class McpConfigService {
-  private source?: ConfigSource;
   private cache?: LoadedConfig;
   private discoveryService?: OAuthDiscoveryService;
   private credentialStore?: McpCredentialStore;
@@ -93,14 +77,33 @@ export class McpConfigService {
     logger.info(
       `McpConfigService initialized with discovery: ${!!this.discoveryService}, credential store: ${!!this.credentialStore}, input store: ${!!this.inputStore}`
     );
+  }
 
-    if (!options.configUrl) {
-      logger.warn("No MCP config location provided");
-      return;
+  /**
+   * Register additional global MCP servers (e.g. from system skills).
+   * These are merged into the cache alongside any file-based config.
+   */
+  registerGlobalServers(servers: Record<string, any>): void {
+    if (!this.cache) {
+      this.cache = {
+        rawServers: {},
+        httpServers: new Map(),
+      };
     }
 
-    logger.info(`MCP config location: ${options.configUrl}`);
-    this.source = this.resolveConfigSource(options.configUrl);
+    const normalized = normalizeConfig({ mcpServers: servers });
+    for (const [id, raw] of Object.entries(normalized.rawServers)) {
+      if (this.cache.rawServers[id]) continue; // file config takes precedence
+      this.cache.rawServers[id] = raw;
+    }
+    for (const [id, http] of normalized.httpServers) {
+      if (this.cache.httpServers.has(id)) continue;
+      this.cache.httpServers.set(id, http);
+    }
+
+    logger.info(
+      `Registered ${Object.keys(servers).length} global MCP(s) from system skills: ${Object.keys(servers).join(", ")}`
+    );
   }
 
   /**
@@ -112,7 +115,7 @@ export class McpConfigService {
     workerToken: string;
     deploymentName?: string;
   }): Promise<WorkerMcpConfig> {
-    const { baseUrl, workerToken, deploymentName } = options;
+    const { baseUrl, workerToken } = options;
     const config = await this.loadConfig();
     const workerConfig: WorkerMcpConfig = { mcpServers: {} };
 
@@ -195,51 +198,6 @@ export class McpConfigService {
       );
     }
 
-    // Legacy fallback: merge deployment-scoped MCPs if present
-    if (deploymentName) {
-      const agentMcpConfig = await mcpConfigStore.get(deploymentName);
-      if (agentMcpConfig?.mcpServers) {
-        for (const [id, serverConfig] of Object.entries(
-          agentMcpConfig.mcpServers
-        )) {
-          // Per-agent MCPs are additive - skip if global MCP with same ID exists
-          if (workerConfig.mcpServers[id]) {
-            logger.warn(
-              `Per-agent MCP ${id} skipped - global MCP with same ID exists`
-            );
-            continue;
-          }
-
-          const cloned = cloneConfig(serverConfig);
-
-          if (cloned.url) {
-            // HTTP/SSE MCP - proxy through gateway
-            logger.info(
-              `🔧 Configuring per-agent HTTP MCP ${id}: baseUrl=${baseUrl}`
-            );
-            // Store original URL for proxy forwarding (used by MCP proxy)
-            cloned.originalUrl = cloned.url;
-            cloned.url = baseUrl;
-            cloned.type = "sse";
-            cloned.headers = mergeHeaders(cloned.headers, workerToken, id);
-            cloned.perAgent = true; // Mark as per-agent for proxy routing
-            logger.info(`✅ Including per-agent HTTP MCP ${id}`);
-          } else if (cloned.command) {
-            // Stdio MCP - runs directly in worker container
-            logger.info(
-              `✅ Including per-agent stdio MCP ${id}: ${cloned.command}`
-            );
-          }
-
-          workerConfig.mcpServers[id] = cloned;
-        }
-
-        logger.info(
-          `Merged ${Object.keys(agentMcpConfig.mcpServers).length} per-agent MCPs for deployment ${deploymentName}`
-        );
-      }
-    }
-
     logger.info(
       `Returning worker config with ${Object.keys(workerConfig.mcpServers).length} MCPs for user ${userId}:`,
       {
@@ -314,10 +272,9 @@ export class McpConfigService {
    */
   async getHttpServer(
     id: string,
-    agentId?: string,
-    deploymentName?: string
+    agentId?: string
   ): Promise<HttpMcpServerConfig | undefined> {
-    const httpServers = await this.getAllHttpServers(agentId, deploymentName);
+    const httpServers = await this.getAllHttpServers(agentId);
     return httpServers.get(id);
   }
 
@@ -325,8 +282,7 @@ export class McpConfigService {
    * Get all HTTP proxy metadata for all MCP servers.
    */
   async getAllHttpServers(
-    agentId?: string,
-    deploymentName?: string
+    agentId?: string
   ): Promise<Map<string, HttpMcpServerConfig>> {
     const config = await this.loadConfig();
     const merged = new Map(config.httpServers);
@@ -334,20 +290,6 @@ export class McpConfigService {
     if (agentId) {
       const agentMcpServers = await this.getAgentMcpServers(agentId);
       for (const [id, serverConfig] of Object.entries(agentMcpServers)) {
-        if (merged.has(id)) continue;
-        const httpServer = toHttpServerConfig(id, serverConfig);
-        if (httpServer) {
-          merged.set(id, httpServer);
-        }
-      }
-    }
-
-    // Legacy fallback: deployment-scoped MCPs
-    if (deploymentName) {
-      const agentMcpConfig = await mcpConfigStore.get(deploymentName);
-      for (const [id, serverConfig] of Object.entries(
-        agentMcpConfig?.mcpServers || {}
-      )) {
         if (merged.has(id)) continue;
         const httpServer = toHttpServerConfig(id, serverConfig);
         if (httpServer) {
@@ -551,115 +493,17 @@ export class McpConfigService {
   }
 
   private async loadConfig(): Promise<LoadedConfig> {
-    if (!this.source) {
-      if (!this.cache) {
-        this.cache = {
-          rawServers: {},
-          httpServers: new Map(),
-          mtimeMs: 0,
-        };
-      }
-      return this.cache;
-    }
-
-    const fallback = this.cache ?? {
-      rawServers: {},
-      httpServers: new Map(),
-      mtimeMs: 0,
-    };
-
-    try {
-      if (this.source.type === "file") {
-        const fileStat = await stat(this.source.path);
-        const fileContents = await readFile(this.source.path, "utf-8");
-        return this.parseAndCache(fileContents, fileStat.mtimeMs);
-      }
-
-      const response = await fetch(this.source.url);
-      if (!response.ok) {
-        logger.error("Failed to fetch MCP config from remote URL", {
-          url: this.source.url.toString(),
-          status: response.status,
-          statusText: response.statusText,
-        });
-        return fallback;
-      }
-
-      const text = await response.text();
-      return this.parseAndCache(text, Date.now());
-    } catch (error) {
-      logger.error("Error loading MCP config", {
-        error,
-        source:
-          this.source.type === "file"
-            ? this.source.path
-            : this.source.url.toString(),
-      });
-      return fallback;
-    }
-  }
-
-  private resolveConfigSource(location: string): ConfigSource | undefined {
-    try {
-      const parsed = new URL(location);
-      if (parsed.protocol === "file:") {
-        return { type: "file", path: fileURLToPath(parsed) };
-      }
-
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        return { type: "http", url: parsed };
-      }
-
-      logger.warn("Unsupported MCP config URL protocol; falling back to file", {
-        location,
-      });
-    } catch (_err) {
-      // Not a valid URL, treat as path
-      return { type: "file", path: path.resolve(location) };
-    }
-
-    return { type: "file", path: path.resolve(location) };
-  }
-
-  private parseAndCache(rawContents: string, mtimeMs: number): LoadedConfig {
-    try {
-      const parsed = McpServersSchema.safeParse(JSON.parse(rawContents));
-      if (!parsed.success) {
-        logger.error("Failed to parse MCP config", {
-          issues: parsed.error.issues,
-        });
-        return (
-          this.cache ?? {
-            rawServers: {},
-            httpServers: new Map(),
-            mtimeMs,
-          }
-        );
-      }
-
-      const normalized = normalizeConfig(parsed.data);
+    if (!this.cache) {
       this.cache = {
-        rawServers: normalized.rawServers,
-        httpServers: normalized.httpServers,
-        mtimeMs,
-        // Preserve discovery results from enrichWithDiscovery()
-        discoveredOAuth: this.cache?.discoveredOAuth,
+        rawServers: {},
+        httpServers: new Map(),
       };
-      return this.cache;
-    } catch (error) {
-      logger.error("Failed to parse MCP config contents", { error });
-      return (
-        this.cache ?? {
-          rawServers: {},
-          httpServers: new Map(),
-          mtimeMs,
-        }
-      );
     }
+    return this.cache;
   }
 }
 
-function normalizeConfig(config: RawMcpConfig) {
+function normalizeConfig(config: { mcpServers: Record<string, any> }) {
   const rawServers: Record<string, any> = {};
   const httpServers = new Map<string, HttpMcpServerConfig>();
 

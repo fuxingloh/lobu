@@ -4,9 +4,9 @@ import type { AdminStatusCache } from "../../auth/admin-status-cache";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
 import type { AgentSettingsStore } from "../../auth/settings";
 import {
-  buildSettingsUrl,
-  generateChannelSettingsToken,
-} from "../../auth/settings/token-service";
+  type ClaimService,
+  buildClaimSettingsUrl,
+} from "../../auth/settings/claim-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
 import type { CommandDispatcher } from "../../commands/command-dispatcher";
@@ -34,6 +34,7 @@ export class MessageHandler {
   private agentMetadataStore?: AgentMetadataStore;
   private adminStatusCache?: AdminStatusCache;
   private commandDispatcher?: CommandDispatcher;
+  private claimService?: ClaimService;
 
   constructor(
     private queueProducer: QueueProducer,
@@ -86,6 +87,10 @@ export class MessageHandler {
 
   setCommandDispatcher(dispatcher: CommandDispatcher): void {
     this.commandDispatcher = dispatcher;
+  }
+
+  setClaimService(service: ClaimService): void {
+    this.claimService = service;
   }
 
   /**
@@ -505,14 +510,17 @@ export class MessageHandler {
     }
 
     try {
-      const token = generateChannelSettingsToken(
-        context.userId,
+      if (!this.claimService) {
+        logger.warn("ClaimService not available for config prompt");
+        return false;
+      }
+
+      const claimCode = await this.claimService.createClaim(
         "slack",
         context.channelId,
-        context.teamId
+        context.userId
       );
-
-      const configUrl = buildSettingsUrl(token);
+      const configUrl = buildClaimSettingsUrl(claimCode);
       const threadTs = context.threadTs || context.messageTs;
 
       if (isDirectMessage) {

@@ -31,7 +31,7 @@ From `packages/worker/src/openclaw/custom-tools.ts`.
 | `ListReminders` | Lists pending reminders and schedule IDs. | Audit or pick reminder to cancel/update. |
 | `SearchSkills` | Searches for skills and MCP servers, or lists installed capabilities (empty query). | Discover capabilities and check installed state. |
 | `InstallSkill` | Creates a settings link to install or upgrade a skill/MCP server. | Guided install/upgrade with user confirmation and pre-filled dependencies. |
-| `GetSettingsLink` | Creates a settings link with optional prefilled config. | Ask user to add keys, grants, skills, or MCP config. |
+| `Configure` | Opens agent settings with optional prefilled config. | Ask user to add keys, grants, skills, or MCP config. |
 | `GenerateAudio` | Converts text to speech and returns audio. | Voice responses or spoken summaries. |
 | `GetChannelHistory` | Fetches prior messages in the conversation thread. | Recover context from earlier discussion. |
 | `AskUserQuestion` | Sends structured button-based questions to the user. | Branching choices and approvals without free-text ambiguity. |

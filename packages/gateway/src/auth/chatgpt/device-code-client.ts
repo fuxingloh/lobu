@@ -194,6 +194,9 @@ export class ChatGPTDeviceCodeClient {
       if (authClaim?.organization_id) {
         return authClaim.organization_id;
       }
+      if (authClaim?.chatgpt_account_id) {
+        return authClaim.chatgpt_account_id;
+      }
 
       return undefined;
     } catch (error) {

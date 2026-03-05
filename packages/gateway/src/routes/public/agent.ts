@@ -320,7 +320,7 @@ const deleteAgentRoute = createRoute({
 const getAgentEventsRoute = createRoute({
   method: "get",
   path: "/api/v1/agents/{agentId}/events",
-  tags: ["Agents"],
+  tags: ["Messages"],
   summary: "Subscribe to agent events (SSE)",
   description: "Server-Sent Events stream for real-time agent updates",
   security: [{ bearerAuth: [] }],
@@ -344,7 +344,7 @@ const getAgentEventsRoute = createRoute({
 const sendMessageRoute = createRoute({
   method: "post",
   path: "/api/v1/agents/{agentId}/messages",
-  tags: ["Agent Messages"],
+  tags: ["Messages"],
   summary: "Send a message to the agent",
   security: [{ bearerAuth: [] }],
   request: {

@@ -1,22 +1,14 @@
 import { createLogger } from "@lobu/core";
 import type { ModelOption } from "../../modules/module-system";
-import type { AgentMetadataStore } from "../agent-metadata-store";
 import { BaseProviderModule } from "../base-provider-module";
 import type { AgentSettingsStore } from "../settings/agent-settings-store";
 import {
   AuthProfilesManager,
   createAuthProfileLabel,
 } from "../settings/auth-profiles-manager";
-import { verifySettingsToken } from "../settings/token-service";
-import type { UserAgentsStore } from "../user-agents-store";
 import { ChatGPTDeviceCodeClient } from "./device-code-client";
 
 const logger = createLogger("chatgpt-oauth-module");
-
-interface ChatGPTOAuthModuleOptions {
-  userAgentsStore?: UserAgentsStore;
-  agentMetadataStore?: AgentMetadataStore;
-}
 
 /**
  * ChatGPT OAuth Module - Handles device code authentication for ChatGPT.
@@ -24,13 +16,8 @@ interface ChatGPTOAuthModuleOptions {
  */
 export class ChatGPTOAuthModule extends BaseProviderModule {
   private deviceCodeClient: ChatGPTDeviceCodeClient;
-  private userAgentsStore?: UserAgentsStore;
-  private agentMetadataStore?: AgentMetadataStore;
 
-  constructor(
-    agentSettingsStore: AgentSettingsStore,
-    options: ChatGPTOAuthModuleOptions = {}
-  ) {
+  constructor(agentSettingsStore: AgentSettingsStore) {
     const authProfilesManager = new AuthProfilesManager(agentSettingsStore);
     super(
       {
@@ -55,8 +42,31 @@ export class ChatGPTOAuthModule extends BaseProviderModule {
     // Preserve existing module name
     this.name = "chatgpt-oauth";
     this.deviceCodeClient = new ChatGPTDeviceCodeClient();
-    this.userAgentsStore = options.userAgentsStore;
-    this.agentMetadataStore = options.agentMetadataStore;
+  }
+
+  async buildCredentialPlaceholder(agentId: string): Promise<string> {
+    const profile = await this.authProfilesManager.getBestProfile(
+      agentId,
+      this.providerId
+    );
+    // Try metadata first, then extract from the stored credential JWT
+    let accountId = profile?.metadata?.accountId as string | undefined;
+    if (!accountId && profile?.credential) {
+      accountId = this.deviceCodeClient.extractAccountId(profile.credential);
+    }
+    if (!accountId) return "lobu-proxy";
+
+    // Minimal JWT with the chatgpt_account_id claim.
+    // Not a valid credential — only used by the codex backend to extract accountId.
+    const header = Buffer.from(
+      JSON.stringify({ alg: "none", typ: "JWT" })
+    ).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({
+        "https://api.openai.com/auth": { chatgpt_account_id: accountId },
+      })
+    ).toString("base64url");
+    return `${header}.${payload}.placeholder`;
   }
 
   getCliBackendConfig() {
@@ -105,173 +115,71 @@ export class ChatGPTOAuthModule extends BaseProviderModule {
       .filter((item): item is ModelOption => Boolean(item));
   }
 
-  /**
-   * Get authentication status for ChatGPT provider.
-   */
-  async getAuthStatus(
-    _userId: string,
-    agentId: string
-  ): Promise<
-    Array<{
-      id: string;
-      name: string;
-      isAuthenticated: boolean;
-      metadata?: Record<string, any>;
-    }>
-  > {
+  async startDeviceCode(agentId: string): Promise<{
+    userCode: string;
+    deviceAuthId: string;
+    interval: number;
+    verificationUrl: string;
+  }> {
     try {
-      const hasCredentials = await this.hasCredentials(agentId);
-      const isAuthenticated = hasCredentials || this.hasSystemKey();
-
-      return [
-        {
-          id: "chatgpt",
-          name: "ChatGPT",
-          isAuthenticated,
-          metadata: {
-            systemTokenAvailable: this.hasSystemKey(),
-          },
-        },
-      ];
+      logger.info("Starting ChatGPT device code flow", { agentId });
+      const result = await this.deviceCodeClient.requestDeviceCode();
+      return {
+        userCode: result.userCode,
+        deviceAuthId: result.deviceAuthId,
+        interval: result.interval,
+        verificationUrl: "https://auth.openai.com/codex/device",
+      };
     } catch (error) {
-      logger.error("Failed to get ChatGPT auth status", { error });
-      return [];
+      logger.error("Failed to start device code flow", { error });
+      throw new Error("Failed to start device code flow");
     }
   }
 
-  protected override setupRoutes(): void {
-    // Start device code flow
-    this.app.post("/start", async (c) => {
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          agentId?: string;
-          token?: string;
-        };
-        const agentId = body.agentId?.trim();
-        const token = body.token?.trim();
+  async pollDeviceCode(
+    agentId: string,
+    payload: { deviceAuthId: string; userCode: string }
+  ): Promise<{
+    status: "pending" | "success";
+    error?: string;
+    accountId?: string;
+  }> {
+    try {
+      const result = await this.deviceCodeClient.pollForToken(
+        payload.deviceAuthId,
+        payload.userCode
+      );
 
-        if (!agentId || !token) {
-          return c.json({ error: "Missing agentId or token" }, 401);
-        }
-
-        const authorized = await this.isAuthorizedForAgent(token, agentId);
-        if (!authorized) {
-          return c.json({ error: "Unauthorized" }, 401);
-        }
-
-        const result = await this.deviceCodeClient.requestDeviceCode();
-        return c.json({
-          userCode: result.userCode,
-          deviceAuthId: result.deviceAuthId,
-          interval: result.interval,
-          verificationUrl: "https://auth.openai.com/codex/device",
-        });
-      } catch (error) {
-        logger.error("Failed to start device code flow", { error });
-        return c.json({ error: "Failed to start device code flow" }, 500);
+      if (!result) {
+        return { status: "pending" };
       }
-    });
 
-    // Poll for token
-    this.app.post("/poll", async (c) => {
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          deviceAuthId?: string;
-          userCode?: string;
-          agentId?: string;
-          token?: string;
-        };
-        const deviceAuthId = body.deviceAuthId?.trim();
-        const userCode = body.userCode?.trim();
-        const agentId = body.agentId?.trim();
-        const token = body.token?.trim();
-
-        if (!deviceAuthId || !userCode || !agentId || !token) {
-          return c.json(
-            { error: "Missing deviceAuthId, userCode, agentId, or token" },
-            400
-          );
-        }
-
-        const authorized = await this.isAuthorizedForAgent(token, agentId);
-        if (!authorized) {
-          return c.json({ error: "Unauthorized" }, 401);
-        }
-
-        const result = await this.deviceCodeClient.pollForToken(
-          deviceAuthId,
-          userCode
-        );
-
-        if (!result) {
-          return c.json({ status: "pending" });
-        }
-
-        await this.authProfilesManager.upsertProfile({
-          agentId,
-          provider: this.providerId,
-          credential: result.accessToken,
-          authType: "device-code",
-          label: createAuthProfileLabel(
-            this.providerDisplayName,
-            result.accessToken,
-            result.accountId
-          ),
-          metadata: {
-            accountId: result.accountId,
-            refreshToken: result.refreshToken,
-            expiresAt: Date.now() + result.expiresIn * 1000,
-          },
-          makePrimary: true,
-        });
-
-        logger.info(`ChatGPT token saved for agent ${agentId}`);
-
-        return c.json({
-          status: "success",
+      await this.authProfilesManager.upsertProfile({
+        agentId,
+        provider: this.providerId,
+        credential: result.accessToken,
+        authType: "device-code",
+        label: createAuthProfileLabel(
+          this.providerDisplayName,
+          result.accessToken,
+          result.accountId
+        ),
+        metadata: {
           accountId: result.accountId,
-        });
-      } catch (error) {
-        logger.error("Failed to poll for token", { error });
-        return c.json({ error: "Failed to poll for token" }, 500);
-      }
-    });
+          refreshToken: result.refreshToken,
+          expiresAt: Date.now() + result.expiresIn * 1000,
+        },
+        makePrimary: true,
+      });
 
-    logger.info("ChatGPT auth routes configured");
-  }
-
-  private async isAuthorizedForAgent(
-    token: string,
-    agentId: string
-  ): Promise<boolean> {
-    const payload = verifySettingsToken(token);
-    if (!payload) {
-      return false;
+      logger.info(`ChatGPT token saved for agent ${agentId}`);
+      return {
+        status: "success",
+        accountId: result.accountId,
+      };
+    } catch (error) {
+      logger.error("Failed to poll for token", { error });
+      throw new Error("Failed to poll for token");
     }
-
-    if (payload.agentId) {
-      return payload.agentId === agentId;
-    }
-
-    if (!this.userAgentsStore) {
-      logger.warn("UserAgentsStore unavailable for channel-based token auth");
-      return false;
-    }
-
-    const userOwnsAgent = await this.userAgentsStore.ownsAgent(
-      payload.platform,
-      payload.userId,
-      agentId
-    );
-    if (userOwnsAgent) {
-      return true;
-    }
-
-    if (!this.agentMetadataStore) {
-      return false;
-    }
-
-    const metadata = await this.agentMetadataStore.getMetadata(agentId);
-    return metadata?.isWorkspaceAgent === true;
   }
 }

@@ -8,11 +8,6 @@ import {
   type WorkerModule,
 } from "@lobu/core";
 
-export interface HomeTabModule<TModuleData = unknown>
-  extends ModuleInterface<TModuleData> {
-  renderHomeTab(userId: string): Promise<any[]>;
-}
-
 export interface ModelOption {
   value: string;
   label: string;
@@ -57,6 +52,21 @@ export interface ModelProviderModule extends OrchestratorModule {
   getApp?(): any;
   getModelOptions?(agentId: string, userId: string): Promise<ModelOption[]>;
   getCliBackendConfig?(): CliBackendConfig | null;
+  buildCredentialPlaceholder?(agentId: string): Promise<string> | string;
+  startDeviceCode?(agentId: string): Promise<{
+    userCode: string;
+    deviceAuthId: string;
+    interval: number;
+    verificationUrl?: string;
+  }>;
+  pollDeviceCode?(
+    agentId: string,
+    payload: { deviceAuthId: string; userCode: string }
+  ): Promise<{
+    status: "pending" | "success";
+    error?: string;
+    accountId?: string;
+  }>;
 }
 
 export interface DispatcherContext<TModuleData = unknown> {
@@ -78,12 +88,6 @@ export interface DispatcherModule<TModuleData = unknown>
     agentId: string,
     context: any
   ): Promise<boolean>;
-  handleViewSubmission?(
-    viewId: string,
-    userId: string,
-    values: any,
-    privateMetadata: string
-  ): Promise<void>;
 }
 
 export interface DispatcherModuleSource {
@@ -94,7 +98,6 @@ export abstract class BaseModule<TModuleData = unknown>
   implements
     WorkerModule<TModuleData>,
     DispatcherModule<TModuleData>,
-    HomeTabModule<TModuleData>,
     OrchestratorModule<TModuleData>
 {
   abstract name: string;
@@ -106,10 +109,6 @@ export abstract class BaseModule<TModuleData = unknown>
 
   registerEndpoints(_app: any): void {
     // no-op
-  }
-
-  async renderHomeTab(_userId: string): Promise<any[]> {
-    return [];
   }
 
   async initWorkspace(_config: any): Promise<void> {
