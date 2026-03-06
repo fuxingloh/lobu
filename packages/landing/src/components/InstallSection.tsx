@@ -1,26 +1,33 @@
-const modes = [
-  {
-    id: "docker",
-    label: "Docker Compose",
-    badges: ["Single node", "Low ops", "Vertical scale"],
-    chooseIf: [
-      "You want the fastest setup on one machine.",
-      "You prefer minimal operational overhead.",
-    ],
+const localDev = {
+  id: "dev",
+  label: "Local Dev",
+  badges: ["Docker", "Hot reload", "Fastest setup"],
+  docsHref: "/deployment/docker/",
+  steps: [
+    { label: "Scaffold a new agent", code: "npx @lobu/cli init my-agent" },
+    { label: "Start the stack", code: "cd my-agent && npx @lobu/cli dev -d" },
+  ],
+};
+
+const lobuCloud = {
+  id: "managed",
+  label: "Lobu Cloud",
+  badges: ["Serverless", "Scale-to-zero", "No ops"],
+  docsHref: "/serverless-openclaw",
+  steps: [{ label: "Deploy to Lobu Cloud", code: "npx @lobu/cli launch" }],
+};
+
+const selfHosted = {
+  docker: {
     docsHref: "/deployment/docker/",
     steps: [
-      { label: "Scaffold a new project", code: "npx create-lobu my-bot" },
-      { label: "Start the stack", code: "cd my-bot && docker compose up -d" },
+      {
+        label: "Start the stack",
+        code: "cd my-agent && docker compose up -d",
+      },
     ],
   },
-  {
-    id: "kubernetes",
-    label: "Kubernetes",
-    badges: ["Multi-node", "Higher ops", "Horizontal scale"],
-    chooseIf: [
-      "You need cluster scheduling and autoscaling.",
-      "You need production-grade isolation controls.",
-    ],
+  kubernetes: {
     docsHref: "/deployment/kubernetes/",
     steps: [
       {
@@ -31,9 +38,13 @@ const modes = [
       },
     ],
   },
-];
+};
 
-function ModeCard({ mode }: { mode: (typeof modes)[0] }) {
+export type Mode = typeof localDev;
+
+export const modes = [localDev, lobuCloud];
+
+export function ModeCard({ mode }: { mode: Mode }) {
   return (
     <div
       class="rounded-xl p-6"
@@ -101,39 +112,176 @@ function ModeCard({ mode }: { mode: (typeof modes)[0] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
 
-      <div
-        class="text-[11px] font-medium mb-2"
-        style={{ color: "var(--color-page-text-muted)" }}
+function SelfHostSteps({ variant }: { variant: "docker" | "kubernetes" }) {
+  const data = selfHosted[variant];
+  return (
+    <div class="space-y-3">
+      {data.steps.map((step, i) => (
+        <div key={`${variant}-${i}`}>
+          <div
+            class="text-[11px] font-medium mb-1.5"
+            style={{ color: "var(--color-page-text-muted)" }}
+          >
+            {step.label}
+          </div>
+          <div
+            class="rounded-lg overflow-hidden font-mono text-[12.5px] leading-[1.6]"
+            style={{
+              backgroundColor: "rgba(0,0,0,0.3)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <pre
+              class="p-3.5 m-0 overflow-x-auto"
+              style={{ color: "rgba(255,255,255,0.75)" }}
+            >
+              <span style={{ color: "var(--color-tg-accent)" }}>$</span>{" "}
+              {step.code}
+            </pre>
+          </div>
+        </div>
+      ))}
+      <a
+        href={data.docsHref}
+        class="inline-block mt-2 text-xs font-medium hover:opacity-80 transition-opacity"
+        style={{ color: "var(--color-tg-accent)" }}
       >
-        Choose this if
+        Docs →
+      </a>
+    </div>
+  );
+}
+
+function SelfHostCard() {
+  return (
+    <div
+      class="selfhost-card rounded-xl p-6"
+      style={{
+        backgroundColor: "var(--color-page-bg-elevated)",
+        border: "1px solid var(--color-page-border)",
+      }}
+    >
+      <div class="flex items-center gap-3 mb-5">
+        <h3
+          class="text-lg font-semibold"
+          style={{ color: "var(--color-page-text)" }}
+        >
+          Self-Host
+        </h3>
+        <div
+          class="inline-flex rounded-lg p-0.5"
+          style={{
+            backgroundColor: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.09)",
+          }}
+        >
+          <button
+            type="button"
+            class="selfhost-tab px-3 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.1)",
+              color: "var(--color-page-text)",
+            }}
+            onClick={(e) => {
+              const card = (e.target as HTMLElement).closest(".selfhost-card");
+              if (!card) return;
+              card.querySelectorAll(".selfhost-tab").forEach((t) => {
+                (t as HTMLElement).style.backgroundColor = "transparent";
+                (t as HTMLElement).style.color = "var(--color-page-text-muted)";
+              });
+              (e.target as HTMLElement).style.backgroundColor =
+                "rgba(255,255,255,0.1)";
+              (e.target as HTMLElement).style.color = "var(--color-page-text)";
+              card
+                .querySelector(".selfhost-docker")
+                ?.classList.remove("hidden");
+              card.querySelector(".selfhost-k8s")?.classList.add("hidden");
+            }}
+          >
+            Docker
+          </button>
+          <button
+            type="button"
+            class="selfhost-tab px-3 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer"
+            style={{
+              backgroundColor: "transparent",
+              color: "var(--color-page-text-muted)",
+            }}
+            onClick={(e) => {
+              const card = (e.target as HTMLElement).closest(".selfhost-card");
+              if (!card) return;
+              card.querySelectorAll(".selfhost-tab").forEach((t) => {
+                (t as HTMLElement).style.backgroundColor = "transparent";
+                (t as HTMLElement).style.color = "var(--color-page-text-muted)";
+              });
+              (e.target as HTMLElement).style.backgroundColor =
+                "rgba(255,255,255,0.1)";
+              (e.target as HTMLElement).style.color = "var(--color-page-text)";
+              card.querySelector(".selfhost-docker")?.classList.add("hidden");
+              card.querySelector(".selfhost-k8s")?.classList.remove("hidden");
+            }}
+          >
+            Kubernetes
+          </button>
+        </div>
       </div>
-      <ul class="m-0 pl-4 space-y-1 text-[12px] leading-relaxed">
-        {mode.chooseIf.map((item) => (
-          <li key={item} style={{ color: "var(--color-page-text-muted)" }}>
-            {item}
-          </li>
-        ))}
-      </ul>
+
+      <div class="selfhost-docker">
+        <SelfHostSteps variant="docker" />
+      </div>
+      <div class="selfhost-k8s hidden">
+        <SelfHostSteps variant="kubernetes" />
+      </div>
     </div>
   );
 }
 
 export function InstallSection() {
   return (
-    <section id="installation" class="py-12 px-8">
-      <div class="max-w-3xl mx-auto">
+    <section id="get-started" class="py-12 px-8">
+      <div class="max-w-4xl mx-auto">
         <h2
-          class="text-2xl sm:text-3xl font-bold text-center mb-10 tracking-tight"
+          class="text-2xl sm:text-3xl font-bold text-center mb-3 tracking-tight"
           style={{ color: "var(--color-page-text)" }}
         >
-          Installation
+          Get started
         </h2>
+        <p
+          class="text-sm text-center mb-10 max-w-lg mx-auto"
+          style={{ color: "var(--color-page-text-muted)" }}
+        >
+          Run locally, deploy to{" "}
+          <a
+            href="/serverless-openclaw"
+            class="underline decoration-dotted underline-offset-2 hover:opacity-80"
+            style={{ color: "var(--color-tg-accent)" }}
+          >
+            Lobu Cloud
+          </a>
+          , or self-host on your own infra. Browse{" "}
+          <a
+            href="/skills-as-saas"
+            class="underline decoration-dotted underline-offset-2 hover:opacity-80"
+            style={{ color: "var(--color-tg-accent)" }}
+          >
+            skills
+          </a>{" "}
+          to extend your agent.
+        </p>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {modes.map((mode) => (
-            <ModeCard key={mode.id} mode={mode} />
-          ))}
+          {/* Left column: Local Dev */}
+          <ModeCard mode={localDev} />
+
+          {/* Right column: Lobu Cloud + Self-Host stacked */}
+          <div class="space-y-6">
+            <ModeCard mode={lobuCloud} />
+            <SelfHostCard />
+          </div>
         </div>
       </div>
     </section>
