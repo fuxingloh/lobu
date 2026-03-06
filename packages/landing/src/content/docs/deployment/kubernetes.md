@@ -1,6 +1,8 @@
 ---
 title: Kubernetes
 description: How Lobu works in Kubernetes mode.
+sidebar:
+  order: 2
 ---
 
 Kubernetes mode is designed for production-grade, multi-tenant deployments.

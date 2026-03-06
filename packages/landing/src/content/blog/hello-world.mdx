@@ -14,7 +14,7 @@ I started working on this last summer as a Slack bot called **[Peerbot](https://
 
 By October I had a working product, but it was Slack-only. The core infrastructure wasn't platform-specific at all — only the message handling was. So I refactored the platform layer into thin adapters and opened it up to Telegram and WhatsApp.
 
-The biggest unlock came in February when I integrated [OpenClaw](https://github.com/anthropics/openclaw). I'd been managing tool execution, session lifecycle, and process state manually — OpenClaw handles all of that. My gateway became purely about orchestration while OpenClaw handled the agent runtime.
+The biggest unlock came in February when I integrated [OpenClaw](https://github.com/openclaw/openclaw). I'd been managing tool execution, session lifecycle, and process state manually — OpenClaw handles all of that. My gateway became purely about orchestration while OpenClaw handled the agent runtime.
 
 <ArchitectureDiagram />
 

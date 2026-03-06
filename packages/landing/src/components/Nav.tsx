@@ -3,12 +3,13 @@ const GITHUB_STARS_BADGE =
   "https://img.shields.io/github/stars/lobu-ai/lobu?style=social";
 
 const leftLinks = [
-  { label: "Skills as SaaS", href: "/skills-as-saas" },
-  { label: "Serverless OpenClaw", href: "/serverless-openclaw" },
+  { label: "Skills", href: "/skills-as-saas" },
+  { label: "Pricing", href: "/serverless-openclaw" },
 ];
 
 const rightLinks = [
   { label: "Docs", href: "/getting-started" },
+  { label: "API", href: "/reference/api-reference" },
   { label: "Blog", href: "/blog" },
 ];
 

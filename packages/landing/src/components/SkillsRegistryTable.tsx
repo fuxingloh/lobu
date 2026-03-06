@@ -15,27 +15,19 @@ interface McpServer {
   type: string;
 }
 
-interface Provider {
-  displayName: string;
-  defaultModel: string;
-  sdkCompat: string;
-}
-
 interface Skill {
   id: string;
   name: string;
   description: string;
   integrations?: Integration[];
   mcpServers?: McpServer[];
-  providers?: Provider[];
 }
 
 const skills: Skill[] = (skillsConfig as { skills: Skill[] }).skills;
 
 const integrationSkills = skills.filter((s) =>
-  s.integrations?.some((i) => i.authType === "oauth" && !s.providers)
+  s.integrations?.some((i) => i.authType === "oauth")
 );
-const providerSkills = skills.filter((s) => s.providers);
 const mcpSkills = skills.filter((s) => s.mcpServers);
 
 const cellStyle = {
@@ -126,55 +118,6 @@ export function SkillsRegistryTable() {
                     ) : (
                       <span style={{ opacity: 0.5 }}>—</span>
                     )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <h2>LLM Providers</h2>
-      <p>
-        API-key authenticated model providers. Users paste their own keys in the
-        settings page.
-      </p>
-      <div style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            border: "1px solid var(--color-page-border)",
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={headerCellStyle}>Name</th>
-              <th style={headerCellStyle}>Default Model</th>
-              <th style={headerCellStyle}>SDK Compat</th>
-            </tr>
-          </thead>
-          <tbody>
-            {providerSkills.map((skill) => {
-              const provider = skill.providers![0];
-              return (
-                <tr key={skill.id}>
-                  <td
-                    style={{
-                      ...cellStyle,
-                      fontWeight: 500,
-                      color: "var(--color-page-text)",
-                    }}
-                  >
-                    {provider.displayName}
-                  </td>
-                  <td style={cellStyle}>
-                    <code style={{ fontSize: "12px" }}>
-                      {provider.defaultModel}
-                    </code>
-                  </td>
-                  <td style={cellStyle}>
-                    <Badge text={provider.sdkCompat} />
                   </td>
                 </tr>
               );

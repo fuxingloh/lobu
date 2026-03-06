@@ -1,4 +1,5 @@
-const SCHEDULE_CALL_URL = "https://calendar.app.google/LwAk3ecptkJQaYr87";
+import { ScheduleCallButton } from "./ScheduleDialog";
+
 const GITHUB_URL = "https://github.com/lobu-ai/lobu";
 
 const verticals = [
@@ -203,6 +204,109 @@ function SkillYaml() {
   );
 }
 
+function LobuTomlExample() {
+  return (
+    <pre
+      class="p-4 text-[11px] leading-relaxed font-mono overflow-x-auto m-0"
+      style={{ backgroundColor: "rgba(0,0,0,0.3)", color: "#9aa5ce" }}
+    >
+      <code>
+        <span style={d}>{"# Agent config"}</span>
+        {"\n"}
+        <span style={d}>[</span>
+        <span style={k}>agent</span>
+        <span style={d}>]</span>
+        {"\n"}
+        <span style={k}>name</span>
+        {" = "}
+        <span style={s}>"acme-support"</span>
+        {"\n"}
+        <span style={k}>description</span>
+        {" = "}
+        <span style={s}>"Customer support agent for Acme Corp"</span>
+        {"\n\n"}
+        <span style={d}>{"# LLM providers (order = priority)"}</span>
+        {"\n"}
+        <span style={d}>[[</span>
+        <span style={k}>providers</span>
+        <span style={d}>]]</span>
+        {"\n"}
+        <span style={k}>id</span>
+        {" = "}
+        <span style={s}>"groq"</span>
+        {"\n"}
+        <span style={k}>model</span>
+        {" = "}
+        <span style={s}>"llama-3.3-70b-versatile"</span>
+        {"\n\n"}
+        <span style={d}>[[</span>
+        <span style={k}>providers</span>
+        <span style={d}>]]</span>
+        {"\n"}
+        <span style={k}>id</span>
+        {" = "}
+        <span style={s}>"gemini"</span>
+        {"\n"}
+        <span style={k}>model</span>
+        {" = "}
+        <span style={s}>"gemini-2.0-flash"</span>
+        {"\n\n"}
+        <span style={d}>{"# Skills from the registry"}</span>
+        {"\n"}
+        <span style={d}>[</span>
+        <span style={k}>skills</span>
+        <span style={d}>]</span>
+        {"\n"}
+        <span style={k}>enabled</span>
+        {" = "}
+        <span style={d}>[</span>
+        <span style={s}>"github"</span>
+        <span style={d}>,</span>
+        {" "}
+        <span style={s}>"google-workspace"</span>
+        <span style={d}>]</span>
+        {"\n\n"}
+        <span style={d}>{"# Custom MCP server"}</span>
+        {"\n"}
+        <span style={d}>[</span>
+        <span style={k}>skills.mcp.my-kb</span>
+        <span style={d}>]</span>
+        {"\n"}
+        <span style={k}>url</span>
+        {" = "}
+        <span style={s}>"https://mcp.acme.com/sse"</span>
+        {"\n\n"}
+        <span style={d}>{"# Network sandbox"}</span>
+        {"\n"}
+        <span style={d}>[</span>
+        <span style={k}>network</span>
+        <span style={d}>]</span>
+        {"\n"}
+        <span style={k}>allowed</span>
+        {" = "}
+        <span style={d}>[</span>
+        <span style={s}>"api.github.com"</span>
+        <span style={d}>,</span>
+        {" "}
+        <span style={s}>"registry.npmjs.org"</span>
+        <span style={d}>]</span>
+        {"\n\n"}
+        <span style={d}>[</span>
+        <span style={k}>platforms</span>
+        <span style={d}>]</span>
+        {"\n"}
+        <span style={k}>telegram</span>
+        {" = "}
+        <span style={o}>true</span>
+        {"\n"}
+        <span style={k}>api</span>
+        {" = "}
+        <span style={o}>true</span>
+      </code>
+    </pre>
+  );
+}
+
 export function SkillsSection() {
   return (
     <section class="pt-28 pb-16 px-8">
@@ -213,9 +317,8 @@ export function SkillsSection() {
             class="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-5"
             style={{ color: "var(--color-page-text)" }}
           >
-            Ship SaaS as an{" "}
-            <span style={{ color: "var(--color-tg-accent)" }}>OpenClaw</span>{" "}
-            skill
+            Build skills, bundle as{" "}
+            <span style={{ color: "var(--color-tg-accent)" }}>Openclaw</span>
           </h1>
           <p
             class="text-lg max-w-xl mx-auto mb-8 leading-relaxed"
@@ -227,7 +330,7 @@ export function SkillsSection() {
           </p>
           <div class="flex flex-wrap gap-3 justify-center">
             <a
-              href="/reference/skills-registry/"
+              href="/getting-started/skills/"
               class="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-lg transition-all hover:opacity-90"
               style={{
                 backgroundColor: "var(--color-page-text)",
@@ -236,10 +339,7 @@ export function SkillsSection() {
             >
               Start building
             </a>
-            <a
-              href={SCHEDULE_CALL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <ScheduleCallButton
               class="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-lg transition-all hover:opacity-90"
               style={{
                 color: "var(--color-page-text-muted)",
@@ -247,61 +347,189 @@ export function SkillsSection() {
               }}
             >
               Talk to Founder
-            </a>
+            </ScheduleCallButton>
           </div>
         </div>
 
-        {/* How it works */}
+        {/* Agent project structure */}
         <div class="mb-16">
           <h2
             class="text-xl font-bold mb-2 text-center"
             style={{ color: "var(--color-page-text)" }}
           >
-            How skills work
+            Define your agent in files
           </h2>
           <p
             class="text-sm text-center mb-8 max-w-lg mx-auto"
             style={{ color: "var(--color-page-text-muted)" }}
           >
-            You define the environment, not just the instructions. Each skill
-            declares its own packages, network access, tool permissions, and
-            auth — the platform provisions a matching sandbox automatically.
+            Each skill declares its own packages, network access, tool
+            permissions, and auth — the platform provisions a matching sandbox
+            automatically.
           </p>
 
-          {/* SKILL.md example */}
+          {/* Unified block */}
           <div
-            class="rounded-xl overflow-hidden mb-8 max-w-xl mx-auto"
-            style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+            class="rounded-xl overflow-hidden mb-6"
+            style={{ border: "1px solid var(--color-page-border)" }}
           >
+            {/* Top: IDENTITY.md, SOUL.md, USER.md cards */}
             <div
-              class="flex items-center gap-2 px-4 py-2"
-              style={{
-                backgroundColor: "rgba(255,255,255,0.03)",
-                borderBottom: "1px solid rgba(255,255,255,0.06)",
-              }}
+              class="grid grid-cols-1 sm:grid-cols-3"
+              style={{ borderBottom: "1px solid var(--color-page-border)" }}
             >
-              <div class="flex gap-1.5">
-                <span
-                  class="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: "rgba(255,255,255,0.12)" }}
-                />
-                <span
-                  class="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: "rgba(255,255,255,0.12)" }}
-                />
-                <span
-                  class="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: "rgba(255,255,255,0.12)" }}
-                />
-              </div>
-              <span
-                class="text-[10px] font-mono ml-2"
-                style={{ color: "var(--color-page-text-muted)" }}
-              >
-                skills/ops-triage/SKILL.md
-              </span>
+              {[
+                {
+                  file: "IDENTITY.md",
+                  desc: "Who the agent is — persona, name, tone.",
+                  badge: "identity",
+                  color:
+                    "bg-cyan-900/40 text-cyan-400 border-cyan-800/50",
+                },
+                {
+                  file: "SOUL.md",
+                  desc: "Behavior rules. What the agent should always or never do.",
+                  badge: "rules",
+                  color:
+                    "bg-purple-900/40 text-purple-400 border-purple-800/50",
+                },
+                {
+                  file: "USER.md",
+                  desc: "User-specific context — timezone, preferences.",
+                  badge: "context",
+                  color:
+                    "bg-green-900/40 text-green-400 border-green-800/50",
+                },
+              ].map((item, i) => (
+                <div
+                  key={item.file}
+                  class="p-5"
+                  style={{
+                    backgroundColor: "var(--color-page-bg-elevated)",
+                    borderRight:
+                      i < 2
+                        ? "1px solid var(--color-page-border)"
+                        : undefined,
+                  }}
+                >
+                  <div class="flex items-center gap-2 mb-2">
+                    <span
+                      class={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${item.color}`}
+                    >
+                      {item.badge}
+                    </span>
+                    <h3
+                      class="text-sm font-semibold font-mono"
+                      style={{ color: "var(--color-page-text)" }}
+                    >
+                      {item.file}
+                    </h3>
+                  </div>
+                  <p
+                    class="text-xs leading-relaxed"
+                    style={{ color: "var(--color-page-text-muted)" }}
+                  >
+                    {item.desc}
+                  </p>
+                </div>
+              ))}
             </div>
-            <SkillYaml />
+
+            {/* Bottom: lobu.toml (left) + skills/*.md (right) */}
+            <div class="grid grid-cols-1 md:grid-cols-2">
+              {/* lobu.toml */}
+              <div
+                style={{
+                  borderRight: "1px solid var(--color-page-border)",
+                }}
+              >
+                <div
+                  class="p-5"
+                  style={{
+                    backgroundColor: "var(--color-page-bg-elevated)",
+                    borderBottom: "1px solid var(--color-page-border)",
+                  }}
+                >
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-400 border-amber-800/50">
+                      config
+                    </span>
+                    <h3
+                      class="text-sm font-semibold font-mono"
+                      style={{ color: "var(--color-page-text)" }}
+                    >
+                      lobu.toml
+                    </h3>
+                  </div>
+                  <p
+                    class="text-xs leading-relaxed"
+                    style={{ color: "var(--color-page-text-muted)" }}
+                  >
+                    Providers, skills, network policy, platforms.
+                  </p>
+                </div>
+                <LobuTomlExample />
+              </div>
+
+              {/* skills/*.md */}
+              <div>
+                <div
+                  class="p-5"
+                  style={{
+                    backgroundColor: "var(--color-page-bg-elevated)",
+                    borderBottom: "1px solid var(--color-page-border)",
+                  }}
+                >
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-blue-900/40 text-blue-400 border-blue-800/50">
+                      skills
+                    </span>
+                    <h3
+                      class="text-sm font-semibold font-mono"
+                      style={{ color: "var(--color-page-text)" }}
+                    >
+                      skills/ops-triage.md
+                    </h3>
+                  </div>
+                  <p
+                    class="text-xs leading-relaxed"
+                    style={{ color: "var(--color-page-text-muted)" }}
+                  >
+                    Third-party app integrations, MCP, and sandbox config.
+                  </p>
+                </div>
+                <SkillYaml />
+              </div>
+            </div>
+          </div>
+
+          <div class="text-center">
+            <div
+              class="inline-flex flex-wrap items-center gap-4 text-xs"
+              style={{ color: "var(--color-page-text-muted)" }}
+            >
+              <code
+                class="text-[11px] px-2 py-1 rounded"
+                style={{ backgroundColor: "var(--color-page-surface-dim)" }}
+              >
+                lobu dev
+              </code>
+              <span>Run locally</span>
+              <span style={{ opacity: 0.3 }}>|</span>
+              <code
+                class="text-[11px] px-2 py-1 rounded"
+                style={{ backgroundColor: "var(--color-page-surface-dim)" }}
+              >
+                lobu launch
+              </code>
+              <a
+                href="/serverless-openclaw"
+                class="hover:underline underline-offset-2"
+                style={{ color: "var(--color-tg-accent)" }}
+              >
+                Deploy to cloud →
+              </a>
+            </div>
           </div>
         </div>
 
@@ -557,7 +785,7 @@ export function SkillsSection() {
           </div>
           <div class="text-center mt-6">
             <a
-              href="/reference/skills-registry/"
+              href="/getting-started/skills/"
               class="text-xs font-medium hover:underline"
               style={{ color: "var(--color-tg-accent)" }}
             >
@@ -603,17 +831,14 @@ export function SkillsSection() {
               </svg>
               View on GitHub
             </a>
-            <a
-              href={SCHEDULE_CALL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <ScheduleCallButton
               class="inline-flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg transition-all hover:opacity-80"
               style={{
                 color: "var(--color-tg-accent)",
               }}
             >
               Talk to Founder →
-            </a>
+            </ScheduleCallButton>
           </div>
         </div>
       </div>

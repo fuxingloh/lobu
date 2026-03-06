@@ -1,6 +1,8 @@
 ---
 title: Docker
 description: How Lobu works in Docker Compose mode.
+sidebar:
+  order: 1
 ---
 
 Docker mode is the easiest way to run Lobu on a single machine.

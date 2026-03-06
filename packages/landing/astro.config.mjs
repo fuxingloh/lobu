@@ -50,7 +50,18 @@ export default defineConfig({
       sidebar: [
         {
           label: "Getting Started",
-          autogenerate: { directory: "getting-started" },
+          items: [
+            { label: "Getting Started", link: "/getting-started/" },
+            { label: "Comparison", link: "/getting-started/comparison/" },
+            {
+              label: "Capabilities",
+              items: [
+                { label: "Overview", link: "/getting-started/capabilities/" },
+                { label: "Skills", link: "/getting-started/skills/" },
+                { label: "Providers", link: "/reference/providers/" },
+              ],
+            },
+          ],
         },
         { label: "Deployment", autogenerate: { directory: "deployment" } },
         {
@@ -63,8 +74,6 @@ export default defineConfig({
           ],
         },
         { label: "Guides", autogenerate: { directory: "guides" } },
-        { label: "Reference", autogenerate: { directory: "reference" } },
-        { label: "Comparison", autogenerate: { directory: "comparison" } },
       ],
       social: [
         {

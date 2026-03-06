@@ -1,3 +1,5 @@
+import skillsConfig from "@skills-config";
+
 function PanelShell({
   title,
   children,
@@ -59,26 +61,29 @@ function SectionHeader({ emoji, label }: { emoji: string; label: string }) {
 
 // --- Setup: Model providers ---
 
+type LandingProviderSkill = {
+  providers?: Array<{
+    displayName: string;
+    defaultModel?: string;
+  }>;
+};
+
+const modelProviders = (
+  skillsConfig as { skills: LandingProviderSkill[] }
+).skills.flatMap((skill) => skill.providers ?? []);
+
 export function ModelsPanel() {
-  const providers = [
-    {
-      name: "Anthropic",
-      model: "claude-sonnet-4-20250514",
-      selected: true,
-      status: "Connected",
-    },
-    {
-      name: "OpenAI",
-      model: "Auto model",
-      selected: false,
-      status: "Connected",
-    },
-  ];
+  const providers = modelProviders.map((provider, index) => ({
+    name: provider.displayName,
+    model: provider.defaultModel ?? "Auto model",
+    selected: index === 0,
+    status: "Connected",
+  }));
 
   return (
     <PanelShell title="Models">
       <SectionHeader emoji="🤖" label="Models" />
-      <div class="space-y-0 divide-y divide-gray-200">
+      <div class="space-y-0 divide-y divide-gray-200 max-h-72 overflow-y-auto pr-1">
         {providers.map((p) => (
           <div
             key={p.name}
