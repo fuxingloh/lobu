@@ -16,3 +16,10 @@ const jsonDest = "dist/mcp-servers.json";
 if (fs.existsSync(jsonSrc)) {
   fs.cpSync(jsonSrc, jsonDest);
 }
+
+// Copy system-skills.json from monorepo config
+const skillsSrc = "../../config/system-skills.json";
+const skillsDest = "dist/system-skills.json";
+if (fs.existsSync(skillsSrc)) {
+  fs.cpSync(skillsSrc, skillsDest);
+}

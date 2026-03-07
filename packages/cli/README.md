@@ -1,25 +1,24 @@
-# create-lobu
+# @lobu/cli
 
-CLI tool for initializing Lobu projects with Docker Compose.
+CLI tool for initializing and managing Lobu projects.
 
 ## Installation
 
-### Standalone
+### npx (Recommended)
 
 ```bash
-npm install -g create-lobu
-
-mkdir my-lobu
-cd my-lobu
-npm create lobu my-lobu
+npx @lobu/cli init my-bot
+cd my-bot
 docker compose up -d
 ```
 
-### npx/npm create (Recommended)
+### Global Install
 
 ```bash
-npm create lobu my-lobu
-cd my-lobu
+npm install -g @lobu/cli
+
+lobu init my-bot
+cd my-bot
 docker compose up -d
 ```
 
@@ -41,13 +40,13 @@ RUN apt-get install postgresql-client
 ```
 
 **Pros:**
-- ✅ Turnkey experience - just works
-- ✅ All dependencies pre-installed
-- ✅ Predictable environment
+- Turnkey experience - just works
+- All dependencies pre-installed
+- Predictable environment
 
 **Cons:**
-- ❌ Stuck with our base OS choice
-- ❌ May not meet compliance requirements
+- Stuck with our base OS choice
+- May not meet compliance requirements
 
 ---
 
@@ -76,14 +75,14 @@ CMD ["lobu-worker"]
 ```
 
 **Pros:**
-- ✅ Full control over base OS
-- ✅ Use company-approved images
-- ✅ Smaller images (Alpine, Distroless)
-- ✅ Meet security/compliance requirements
+- Full control over base OS
+- Use company-approved images
+- Smaller images (Alpine, Distroless)
+- Meet security/compliance requirements
 
 **Cons:**
-- ❌ More setup required
-- ❌ Must install system dependencies yourself
+- More setup required
+- Must install system dependencies yourself
 
 See [Worker Package Documentation](../worker/docs/custom-base-image.md) for details.
 
@@ -91,7 +90,7 @@ See [Worker Package Documentation](../worker/docs/custom-base-image.md) for deta
 
 ## Commands
 
-### `create-lobu`
+### `lobu init`
 
 Initialize a new Lobu project in the current directory.
 
@@ -111,7 +110,7 @@ Initialize a new Lobu project in the current directory.
 
 ## Usage
 
-After running `npm create lobu`:
+After running `npx @lobu/cli init`:
 
 ```bash
 # Start services
@@ -172,9 +171,7 @@ CMD ["lobu-worker"]
 
 ```bash
 # 1. Create project
-mkdir my-bot
-cd my-bot
-npm create lobu
+npx @lobu/cli init my-bot
 
 # 2. Choose worker mode during init
 #    - Base image (recommended)
@@ -184,6 +181,7 @@ npm create lobu
 # Edit Dockerfile.worker
 
 # 4. Start services
+cd my-bot
 docker compose up -d
 
 # 5. View logs
@@ -200,8 +198,8 @@ docker compose down
 
 The CLI version locks to base image versions:
 
-- CLI `0.1.0` → `buremba/lobu-worker-base:0.1.0`
-- CLI `0.2.0` → `buremba/lobu-worker-base:0.2.0`
+- CLI `0.1.0` -> `buremba/lobu-worker-base:0.1.0`
+- CLI `0.2.0` -> `buremba/lobu-worker-base:0.2.0`
 
 This ensures compatibility between CLI and runtime images.
 
@@ -233,7 +231,7 @@ docker pull buremba/lobu-worker-base:0.1.0
 **NPM Registry:**
 ```bash
 # CLI tool
-npm install -g create-lobu@0.1.0
+npm install -g @lobu/cli
 
 # Worker runtime (for custom base images)
 npm install -g @lobu/worker@0.1.0
@@ -243,27 +241,25 @@ npm install -g @lobu/worker@0.1.0
 
 ```
 User creates project
-        ↓
-mkdir my-bot && cd my-bot
-        ↓
-npm create lobu
-        ↓
+        |
+npx @lobu/cli init my-bot
+        |
 Choose: Base image or Package?
-        ↓
-┌───────────────┴────────────────┐
-│ Base Image Mode                │ Package Mode
-│                                 │
-│ FROM lobu-worker-base       │ FROM your-company/base
-│ RUN pip install pandas         │ RUN npm install -g @lobu/worker
-│                                 │ RUN pip install pandas
-└───────────────┬────────────────┘
-                ↓
+        |
++---------------+----------------+
+| Base Image Mode                | Package Mode
+|                                |
+| FROM lobu-worker-base          | FROM your-company/base
+| RUN pip install pandas         | RUN npm install -g @lobu/worker
+|                                | RUN pip install pandas
++---------------+----------------+
+                |
     CLI generates docker-compose.yml
-                ↓
+                |
         User runs: docker compose up -d
-                ↓
+                |
         Docker builds worker:latest
-                ↓
+                |
         Gateway spawns workers dynamically
 ```
 

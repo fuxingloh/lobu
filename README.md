@@ -1,6 +1,6 @@
 # Lobu [![Talk to Founder](https://img.shields.io/badge/-Talk%20to%20Founder-red?style=flat-square&logo=google-calendar&logoColor=white)](https://calendar.app.google/LwAk3ecptkJQaYr87)
 
-**Lobu** is a platform for deploying **persistent, autonomous agents**. It provides a unified gateway for programmatic agent creation and multi-platform access (Slack, Telegram, WhatsApp), backed by a hardened, sandboxed execution environment.
+**Lobu** is a platform for deploying **persistent, autonomous agents**. It provides a unified gateway for programmatic agent creation and multi-platform access (Slack, WhatsApp), backed by a hardened, sandboxed execution environment.
 
 **Batteries included.** Lobu bundles sandboxed execution, MCP proxy with OAuth, and network isolation — no external sandbox providers, no third-party MCP gateways. One deployment, everything included.
 
@@ -14,10 +14,6 @@
 
 [![Add to Slack](https://img.shields.io/badge/Add_to_Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://community.lobu.ai/slack/install) [![Join Community](https://img.shields.io/badge/Join_Community-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://join.slack.com/t/peerbot/shared_invite/zt-391o8tyw2-iyupjTG1xHIz9Og8C7JOnw)
 
-**Telegram** — Personal AI assistants with long-polling.
-
-[![Try @lobuaibot](https://img.shields.io/badge/Try_@lobuaibot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/lobuaibot)
-
 **WhatsApp** — Baileys-based integration with a unique self-chat mode.
 
 ## Quick Start
@@ -27,7 +23,7 @@
 The recommended way to start is using our CLI. It scaffolds a project with everything you need.
 
 ```bash
-npx create-lobu my-bot
+npx @lobu/cli init my-bot
 cd my-bot && docker compose up -d
 ```
 
@@ -52,7 +48,6 @@ helm install lobu oci://ghcr.io/lobu-ai/charts/lobu \
 ```mermaid
 flowchart LR
   Slack[Slack] <--> GW[Gateway]
-  Telegram[Telegram] <--> GW
   WhatsApp[WhatsApp] <--> GW
   API[REST API] <--> GW
 
@@ -95,7 +90,7 @@ Lobu's gateway handles OAuth and secret injection for any MCP server, including:
 
 **MCP Proxy.** Workers call MCP tools via the gateway. The gateway handles OAuth, injects scoped tokens, and resolves `${env:VAR}` secrets. Workers never see client secrets.
 
-**Multi-platform, multi-tenant.** One bot instance serves Slack, Telegram, WhatsApp, and REST API. Each channel/DM gets its own isolated runtime, model, tools, credentials, and Nix packages.
+**Multi-platform, multi-tenant.** One bot instance serves Slack, WhatsApp, and REST API. Each channel/DM gets its own isolated runtime, model, tools, credentials, and Nix packages.
 
 **OpenClaw runtime.** Workers run [OpenClaw Pi Agent](https://openclaw.ai/), with per-agent model selection via the settings page. Supports OpenClaw skills, `IDENTITY.md`, `SOUL.md`, and `USER.md` workspace files.
 
@@ -109,7 +104,7 @@ Lobu is the **infrastructure layer** for autonomous agents. Unlike frameworks (L
 |---|---|---|
 | **Scale to zero** | Workers scale down when idle | Requires always-on computer |
 | **Multi-tenant** | Single bot, per-channel/DM isolation | One instance per setup |
-| **Multi-platform** | Slack, Telegram, WhatsApp, REST API | [15+ chat platforms](https://openclaw.ai/integrations) |
+| **Multi-platform** | Slack, WhatsApp, REST API | [15+ chat platforms](https://openclaw.ai/integrations) |
 | **Runtime** | OpenClaw engine (sandboxed/proxied) | Native OpenClaw runtime |
 | **User onboarding** | Configure page with OAuth login per provider | CLI setup required |
 | **MCP access** | Proxied through gateway, secrets isolated | Direct from agent |
@@ -129,7 +124,7 @@ Lobu is designed for high-stakes, persistent agents. While the platform is open-
 
 If you want to deploy agents for your organization but need expert implementation and infrastructure maintenance, I provide end-to-end support for:
 
-*   **Employee AI Assistants** — Deploy persistent, sandboxed agents across Slack/Telegram that have access to your internal tools and documentation.
+*   **Employee AI Assistants** — Deploy persistent, sandboxed agents across Slack that have access to your internal tools and documentation.
 *   **Automated Customer Support** — Build agents that handle complex, multi-step support tickets autonomously while keeping a human in the loop.
 *   **Autonomous Workflows** — Use Lobu to automate background tasks that require persistent state, long-running execution, and scheduled cron jobs.
 *   **Infrastructure Maintenance** — Let me manage your private Lobu deployment on your own Kubernetes cluster, ensuring 99.9% uptime, security updates, and automated scaling.

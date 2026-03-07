@@ -1,7 +1,7 @@
 {
-  "name": "create-lobu",
+  "name": "lobu-monorepo",
   "version": "2.6.1",
-  "description": "Multi-tenant OpenClaw for teams and end-users. Safely deploy persistent, autonomous agents with sandboxing, network isolation, and programmatic API creation.",
+  "description": "Deploy autonomous AI agents with sandboxing, network isolation, and multi-platform access.",
   "license": "Apache-2.0",
   "workspaces": [
     "packages/cli",

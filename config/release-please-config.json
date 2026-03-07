@@ -32,7 +32,7 @@
     "packages/cli": {
       "changelog-path": "docs/CHANGELOG.md",
       "release-type": "node",
-      "package-name": "create-lobu",
+      "package-name": "@lobu/cli",
       "include-component-in-tag": true,
       "include-v-in-tag": false
     },

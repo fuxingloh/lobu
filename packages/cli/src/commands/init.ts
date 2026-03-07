@@ -685,6 +685,14 @@ export async function initCommand(
       );
     }
 
+    // Generate lobu.toml
+    await generateLobuToml(projectDir, {
+      agentName: projectName,
+      platforms: answers.selectedPlatforms,
+      mcpServers: answers.selectedMcpServers,
+      allowedDomains: answers.allowedDomains,
+    });
+
     const variables = {
       PROJECT_NAME: projectName,
       CLI_VERSION: cliVersion,
@@ -735,6 +743,24 @@ export async function initCommand(
       join(projectDir, "README.md")
     );
 
+    // Create agent instruction files
+    await writeFile(
+      join(projectDir, "IDENTITY.md"),
+      `# Identity\n\nYou are ${projectName}, a helpful AI assistant.\n`
+    );
+    await writeFile(
+      join(projectDir, "SOUL.md"),
+      `# Instructions\n\nBe concise and helpful. Ask clarifying questions when the request is ambiguous.\n`
+    );
+    await writeFile(
+      join(projectDir, "USER.md"),
+      `# User Context\n\n<!-- Add user-specific preferences, timezone, environment details here -->\n`
+    );
+
+    // Create skills directory for custom skills
+    await mkdir(join(projectDir, "skills"), { recursive: true });
+    await writeFile(join(projectDir, "skills", ".gitkeep"), "");
+
     // Create AGENTS.md
     await renderTemplate(
       "AGENTS.md.tmpl",
@@ -774,7 +800,16 @@ export async function initCommand(
     console.log(chalk.cyan("  1. Navigate to your project:"));
     console.log(chalk.dim(`     cd ${projectName}\n`));
     console.log(chalk.cyan("  2. Review your configuration:"));
-    console.log(chalk.dim("     - .env"));
+    console.log(
+      chalk.dim("     - lobu.toml          (providers, skills, network)")
+    );
+    console.log(chalk.dim("     - IDENTITY.md        (who the agent is)"));
+    console.log(chalk.dim("     - SOUL.md            (behavior rules)"));
+    console.log(chalk.dim("     - USER.md            (user-specific context)"));
+    console.log(
+      chalk.dim("     - skills/            (custom skills — auto-discovered)")
+    );
+    console.log(chalk.dim("     - .env               (secrets)"));
     console.log(chalk.dim(`     - ${composeFilename}`));
     console.log(chalk.dim("     - Dockerfile.worker"));
     if (answers.selectedMcpServers.length > 0) {
@@ -862,6 +897,82 @@ export async function initCommand(
     spinner.fail("Failed to create project");
     throw error;
   }
+}
+
+async function generateLobuToml(
+  projectDir: string,
+  options: {
+    agentName: string;
+    platforms: string[];
+    mcpServers: McpServerDefinition[];
+    allowedDomains: string;
+  }
+): Promise<void> {
+  const lines: string[] = [
+    "# lobu.toml — Agent configuration",
+    "# Docs: https://lobu.ai/docs/getting-started",
+    "#",
+    "# Agent identity lives in markdown files:",
+    "#   IDENTITY.md  — Who the agent is",
+    "#   SOUL.md      — Behavior rules & instructions",
+    "#   USER.md      — User-specific context",
+    "#   skills/*.md  — Custom capabilities (auto-discovered)",
+    "",
+    "[agent]",
+    `name = "${options.agentName}"`,
+    `description = ""`,
+    "",
+    "# LLM providers (order = priority)",
+    "[[providers]]",
+    'id = "groq"',
+    'model = "llama-3.3-70b-versatile"',
+    "",
+    "# Skills from the registry",
+    "[skills]",
+    'enabled = ["github"]',
+  ];
+
+  // Custom MCP servers
+  const customMcps = options.mcpServers.filter(
+    (s) => s.type === "none" || s.type === "command"
+  );
+  if (customMcps.length > 0) {
+    lines.push("");
+    for (const mcp of customMcps) {
+      if (mcp.config?.url) {
+        lines.push(`[skills.mcp.${mcp.id}]`);
+        lines.push(`url = "${mcp.config.url}"`);
+      }
+    }
+  }
+
+  // Network
+  if (options.allowedDomains) {
+    const domains = options.allowedDomains
+      .split(",")
+      .map((d) => `"${d.trim()}"`)
+      .join(", ");
+    lines.push("", "[network]", `allowed = [${domains}]`);
+  }
+
+  // Platforms
+  const platformLines: string[] = [];
+  if (options.platforms.includes("telegram")) {
+    platformLines.push("telegram = true");
+  }
+  if (options.platforms.includes("slack")) {
+    platformLines.push("slack = true");
+  }
+  if (options.platforms.includes("api")) {
+    platformLines.push("api = true");
+  }
+  if (platformLines.length > 0) {
+    lines.push("", "[platforms]");
+    lines.push(...platformLines);
+  }
+
+  lines.push(""); // trailing newline
+  await writeFile(join(projectDir, "lobu.toml"), lines.join("\n"));
 }
 
 async function getSlackManifestUrl(): Promise<string> {

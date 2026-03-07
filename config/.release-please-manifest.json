@@ -1,5 +1,5 @@
 {
   ".": "2.6.1",
-  "packages/cli": "0.1.0",
+  "packages/cli": "3.0.1",
   "packages/worker": "0.1.0"
 }
