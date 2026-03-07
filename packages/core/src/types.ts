@@ -294,6 +294,17 @@ export interface AgentMcpConfig {
   mcpServers: Record<string, McpServerConfig>;
 }
 
+export interface MemoryFlushOptions {
+  enabled?: boolean;
+  softThresholdTokens?: number;
+  systemPrompt?: string;
+  prompt?: string;
+}
+
+export interface AgentCompactionOptions {
+  memoryFlush?: MemoryFlushOptions;
+}
+
 /**
  * Platform-agnostic execution hints passed through gateway → worker.
  * Flexible types (string | string[]) and index signature allow forward
@@ -307,6 +318,7 @@ export interface AgentOptions {
   allowedTools?: string | string[];
   disallowedTools?: string | string[];
   timeoutMinutes?: number | string;
+  compaction?: AgentCompactionOptions;
   // Additional settings passed through from gateway (can be nested objects)
   networkConfig?: Record<string, unknown>;
   envVars?: Record<string, string>;

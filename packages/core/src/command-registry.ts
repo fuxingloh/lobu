@@ -14,7 +14,7 @@ export interface CommandContext {
   args: string;
   reply: (
     text: string,
-    options?: { url?: string; urlLabel?: string }
+    options?: { url?: string; urlLabel?: string; webApp?: boolean }
   ) => Promise<void>;
   platform: string;
 }

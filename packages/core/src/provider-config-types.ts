@@ -26,6 +26,23 @@ export interface ProviderConfigEntry {
   registryAlias?: string;
   /** Whether to show in "Add Provider" catalog (default: true) */
   catalogVisible?: boolean;
+  /**
+   * Optional speech-to-text configuration.
+   * If omitted and sdkCompat is "openai", STT is enabled with default endpoint/model.
+   * Use this block to override endpoint/model or disable STT for a provider.
+   */
+  stt?: {
+    /** Set false to disable STT even when this block exists. */
+    enabled?: boolean;
+    /** STT protocol compatibility; currently only OpenAI-compatible is supported here. */
+    sdkCompat?: "openai";
+    /** Optional upstream base URL override for STT requests. */
+    baseUrl?: string;
+    /** Relative or absolute transcription endpoint path/URL. */
+    transcriptionPath?: string;
+    /** STT model ID (for OpenAI-compatible endpoints). */
+    model?: string;
+  };
 }
 
 /** Metadata passed from gateway to worker for config-driven providers. */

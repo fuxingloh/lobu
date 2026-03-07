@@ -25,6 +25,25 @@ export type {
   SystemSkillsConfigFile,
 } from "./integration-types";
 export * from "./logger";
+// Typed memory contracts
+export type {
+  LinkMemoryRequest,
+  LinkMemoryResponse,
+  MemoryError,
+  MemoryFilter,
+  MemoryRecord,
+  MemoryRecordType,
+  MemoryRelationType,
+  MemorySort,
+  MemorySortDirection,
+  MemorySortField,
+  RecallMemoryRequest,
+  RecallMemoryResponse,
+  SaveMemoryRequest,
+  SaveMemoryResponse,
+  UpdateMemoryRequest,
+  UpdateMemoryResponse,
+} from "./memory-types";
 // Module system
 export type { ActionButton, ModuleSessionContext } from "./modules";
 export * from "./modules";
@@ -82,10 +101,10 @@ export type {
   SessionContext,
   SkillConfig,
   SkillIntegration,
-  ThinkingLevel,
   SkillMcpServer,
   SkillsConfig,
   SuggestedPrompt,
+  ThinkingLevel,
   ThreadResponsePayload,
   ToolsConfig,
   UserSuggestion,
