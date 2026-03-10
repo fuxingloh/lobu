@@ -1,4 +1,4 @@
-# Lobu [![Talk to Founder](https://img.shields.io/badge/-Talk%20to%20Founder-red?style=flat-square&logo=google-calendar&logoColor=white)](https://calendar.app.google/LwAk3ecptkJQaYr87)
+# Lobu - Serverless Openclaw Infrastructure
 
 **Lobu** helps you deploy **autonomous AI agents**.
 
