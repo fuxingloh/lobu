@@ -165,10 +165,10 @@ export interface SettingsPageConfig {
   integrationConfigService?: import("../../auth/integration/config-service").IntegrationConfigService;
   integrationCredentialStore?: import("../../auth/integration/credential-store").IntegrationCredentialStore;
   connectionManager?: import("../../gateway/connection-manager").WorkerConnectionManager;
-  /** Settings OAuth client (required) */
-  settingsOAuthClient: SettingsOAuthClient;
-  /** Settings OAuth state store (required) */
-  settingsOAuthStateStore: OAuthStateStore<SettingsOAuthStateData>;
+  /** Settings OAuth client (optional — Telegram initData auth works without it) */
+  settingsOAuthClient?: SettingsOAuthClient;
+  /** Settings OAuth state store (optional — required only when OAuth client is set) */
+  settingsOAuthStateStore?: OAuthStateStore<SettingsOAuthStateData>;
   /** Claim service for channel ownership verification (required) */
   claimService: ClaimService;
   /** Platform registry for dispatching notifications */
@@ -464,8 +464,8 @@ export function createSettingsPageRoutes(
 ): OpenAPIHono {
   const app = new OpenAPIHono();
 
-  const oauthClient = config.settingsOAuthClient;
-  const stateStore = config.settingsOAuthStateStore;
+  const oauthClient = config.settingsOAuthClient ?? null;
+  const stateStore = config.settingsOAuthStateStore ?? null;
   const claimService = config.claimService;
 
   // ====================================================================
@@ -528,115 +528,132 @@ export function createSettingsPageRoutes(
   });
 
   // ====================================================================
-  // OAuth Login Flow
+  // OAuth Login Flow (only registered when OAuth client is configured)
   // ====================================================================
 
-  /**
-   * GET /settings/oauth/login — Start OAuth flow
-   * Redirects to the OAuth provider's authorization page.
-   * Preserves returnUrl through the OAuth round-trip.
-   */
-  app.get("/settings/oauth/login", async (c) => {
-    const rawReturnUrl = c.req.query("returnUrl") || "/settings";
-    const returnUrl = isSafeReturnUrl(rawReturnUrl)
-      ? rawReturnUrl
-      : "/settings";
-    const codeVerifier = oauthClient.generateCodeVerifier();
+  if (oauthClient && stateStore) {
+    /**
+     * GET /settings/oauth/login — Start OAuth flow
+     * Redirects to the OAuth provider's authorization page.
+     * Preserves returnUrl through the OAuth round-trip.
+     */
+    app.get("/settings/oauth/login", async (c) => {
+      const rawReturnUrl = c.req.query("returnUrl") || "/settings";
+      const returnUrl = isSafeReturnUrl(rawReturnUrl)
+        ? rawReturnUrl
+        : "/settings";
+      const codeVerifier = oauthClient.generateCodeVerifier();
 
-    const state = await stateStore.create({
-      userId: "pending", // will be resolved after OAuth
-      codeVerifier,
-      returnUrl,
+      const state = await stateStore.create({
+        userId: "pending", // will be resolved after OAuth
+        codeVerifier,
+        returnUrl,
+      });
+
+      const authUrl = await oauthClient.buildAuthUrl(state, codeVerifier);
+      return c.redirect(authUrl);
     });
 
-    const authUrl = await oauthClient.buildAuthUrl(state, codeVerifier);
-    return c.redirect(authUrl);
-  });
+    /**
+     * GET /settings/oauth/callback — OAuth callback
+     * Exchanges code for token, fetches user info, creates session.
+     */
+    app.get("/settings/oauth/callback", async (c) => {
+      const code = c.req.query("code");
+      const stateParam = c.req.query("state");
+      const error = c.req.query("error");
 
-  /**
-   * GET /settings/oauth/callback — OAuth callback
-   * Exchanges code for token, fetches user info, creates session.
-   */
-  app.get("/settings/oauth/callback", async (c) => {
-    const code = c.req.query("code");
-    const stateParam = c.req.query("state");
-    const error = c.req.query("error");
+      if (error) {
+        logger.warn("OAuth callback error", { error });
+        return c.html(renderErrorPage(`OAuth login failed: ${error}`), 400);
+      }
 
-    if (error) {
-      logger.warn("OAuth callback error", { error });
-      return c.html(renderErrorPage(`OAuth login failed: ${error}`), 400);
-    }
-
-    if (!code || !stateParam) {
-      return c.html(
-        renderErrorPage("Missing code or state in OAuth callback"),
-        400
-      );
-    }
-
-    // Consume state
-    const stateData = await stateStore.consume(stateParam);
-    if (!stateData) {
-      return c.html(
-        renderErrorPage("Invalid or expired OAuth state. Please try again."),
-        400
-      );
-    }
-
-    try {
-      // Exchange code for token
-      const credentials = await oauthClient.exchangeCodeForToken(
-        code,
-        stateData.codeVerifier
-      );
-
-      // Fetch user info
-      const userInfo = await oauthClient.fetchUserInfo(credentials.accessToken);
-
-      // Validate OAuth user ID (used as Redis key)
-      if (
-        !userInfo.sub ||
-        typeof userInfo.sub !== "string" ||
-        userInfo.sub.length > 255 ||
-        /[:\s]/.test(userInfo.sub)
-      ) {
-        logger.error("Invalid OAuth user ID", { sub: userInfo.sub });
+      if (!code || !stateParam) {
         return c.html(
-          renderErrorPage("Invalid user identity from OAuth provider."),
-          500
+          renderErrorPage("Missing code or state in OAuth callback"),
+          400
         );
       }
 
-      // Create unified session (24h TTL)
-      const sessionTtlMs = 24 * 60 * 60 * 1000;
-      const session: SettingsTokenPayload = {
-        userId: userInfo.sub,
-        platform: "unknown",
-        oauthUserId: userInfo.sub,
-        email: userInfo.email,
-        name: userInfo.name,
-        exp: Date.now() + sessionTtlMs,
-      };
+      // Consume state
+      const stateData = await stateStore.consume(stateParam);
+      if (!stateData) {
+        return c.html(
+          renderErrorPage("Invalid or expired OAuth state. Please try again."),
+          400
+        );
+      }
 
-      setSettingsSessionCookie(c, session);
-      logger.info("OAuth login successful", {
-        oauthUserId: userInfo.sub,
-        email: userInfo.email,
-      });
+      try {
+        // Exchange code for token
+        const credentials = await oauthClient.exchangeCodeForToken(
+          code,
+          stateData.codeVerifier
+        );
 
-      // Redirect to the original settings URL (with claim/agent params preserved)
-      const safeReturnUrl = isSafeReturnUrl(stateData.returnUrl)
-        ? stateData.returnUrl
-        : "/settings";
-      return c.redirect(safeReturnUrl);
-    } catch (err) {
-      logger.error("OAuth callback failed", { error: err });
-      return c.html(
-        renderErrorPage("OAuth login failed. Please try again."),
-        500
-      );
-    }
-  });
+        // Fetch user info
+        const userInfo = await oauthClient.fetchUserInfo(
+          credentials.accessToken
+        );
+
+        // Validate OAuth user ID (used as Redis key)
+        if (
+          !userInfo.sub ||
+          typeof userInfo.sub !== "string" ||
+          userInfo.sub.length > 255 ||
+          /[:\s]/.test(userInfo.sub)
+        ) {
+          logger.error("Invalid OAuth user ID", { sub: userInfo.sub });
+          return c.html(
+            renderErrorPage("Invalid user identity from OAuth provider."),
+            500
+          );
+        }
+
+        // Create unified session (24h TTL)
+        const sessionTtlMs = 24 * 60 * 60 * 1000;
+        const session: SettingsTokenPayload = {
+          userId: userInfo.sub,
+          platform: "unknown",
+          oauthUserId: userInfo.sub,
+          email: userInfo.email,
+          name: userInfo.name,
+          exp: Date.now() + sessionTtlMs,
+        };
+
+        setSettingsSessionCookie(c, session);
+        logger.info("OAuth login successful", {
+          oauthUserId: userInfo.sub,
+          email: userInfo.email,
+        });
+
+        // Redirect to the original settings URL (with claim/agent params preserved)
+        const safeReturnUrl = isSafeReturnUrl(stateData.returnUrl)
+          ? stateData.returnUrl
+          : "/settings";
+        return c.redirect(safeReturnUrl);
+      } catch (err) {
+        logger.error("OAuth callback failed", { error: err });
+        return c.html(
+          renderErrorPage("OAuth login failed. Please try again."),
+          500
+        );
+      }
+    });
+  } else {
+    // OAuth not configured — return helpful error for OAuth-only paths
+    app.get("/settings/oauth/login", (c) =>
+      c.html(
+        renderErrorPage(
+          "OAuth login is not configured. Use Telegram to access settings."
+        ),
+        501
+      )
+    );
+    app.get("/settings/oauth/callback", (c) =>
+      c.html(renderErrorPage("OAuth login is not configured."), 501)
+    );
+  }
 
   // ====================================================================
   // GET /settings — Main settings page
@@ -670,6 +687,14 @@ export function createSettingsPageRoutes(
 
       // 3. No session + ?claim= → redirect to OAuth login (preserving returnUrl)
       if (c.req.query("claim")) {
+        if (!oauthClient) {
+          return c.html(
+            renderErrorPage(
+              "OAuth login is not configured. Use Telegram to access settings."
+            ),
+            501
+          );
+        }
         const currentUrl = new URL(c.req.url);
         const returnUrl = `${currentUrl.pathname}${currentUrl.search}`;
         return c.redirect(

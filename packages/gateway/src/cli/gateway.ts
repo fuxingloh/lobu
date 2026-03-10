@@ -613,16 +613,11 @@ function setupServer(
       providerConnectedOverrides[mod.providerId] = mod.hasSystemKey();
     }
 
-    // Settings HTML page (requires OAuth client + claim service)
+    // Settings HTML page (requires claim service; OAuth client is optional)
     const settingsOAuthClient = coreServices.getSettingsOAuthClient();
     const settingsOAuthStateStore = coreServices.getSettingsOAuthStateStore();
     const claimServiceForSettings = coreServices.getClaimService();
-    if (
-      agentSettingsStore &&
-      settingsOAuthClient &&
-      settingsOAuthStateStore &&
-      claimServiceForSettings
-    ) {
+    if (agentSettingsStore && claimServiceForSettings) {
       const { createSettingsPageRoutes } = require("../routes/public/settings");
       const settingsPageRouter = createSettingsPageRoutes({
         agentSettingsStore,
@@ -635,13 +630,21 @@ function setupServer(
         connectionManager: coreServices
           .getWorkerGateway()
           ?.getConnectionManager(),
-        settingsOAuthClient,
-        settingsOAuthStateStore,
+        settingsOAuthClient: settingsOAuthClient ?? undefined,
+        settingsOAuthStateStore: settingsOAuthStateStore ?? undefined,
         claimService: claimServiceForSettings,
         platformRegistry,
       });
       app.route("", settingsPageRouter);
-      logger.info("Settings HTML page enabled at :8080/settings");
+      if (settingsOAuthClient) {
+        logger.info(
+          "Settings HTML page enabled at :8080/settings (with OAuth)"
+        );
+      } else {
+        logger.info(
+          "Settings HTML page enabled at :8080/settings (Telegram initData only, OAuth not configured)"
+        );
+      }
 
       // Admin page (system skills registry)
       const systemSkillsService = coreServices.getSystemSkillsService();
@@ -653,7 +656,7 @@ function setupServer(
       }
     } else if (agentSettingsStore) {
       logger.warn(
-        "Settings page disabled: missing OAuth client or claim service configuration"
+        "Settings page disabled: missing claim service configuration"
       );
     }
 
