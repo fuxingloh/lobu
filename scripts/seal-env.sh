@@ -57,10 +57,13 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# Source .env file (handle commented lines)
+# Source .env file (handle commented lines, quote values for special chars)
+TEMP_ENV=$(mktemp)
+grep -v '^#' "$ENV_FILE" | grep -v '^$' | sed 's/^\([^=]*\)=\(.*\)$/\1="\2"/' > "$TEMP_ENV"
 set -a
-source <(grep -v '^#' "$ENV_FILE" | grep -v '^$')
+source "$TEMP_ENV"
 set +a
+rm -f "$TEMP_ENV"
 
 # Build secret from env vars (only include non-empty values)
 SECRET_ARGS=()
@@ -104,7 +107,7 @@ SEALED_SECRET=$(kubectl create secret generic lobu-secrets \
   "${SECRET_ARGS[@]}" \
   --dry-run=client -o yaml | \
 kubeseal --controller-name=sealed-secrets-controller --controller-namespace=kube-system \
-  --format yaml 2>/dev/null)
+  --scope namespace-wide --format yaml 2>/dev/null)
 
 if [[ $? -ne 0 ]]; then
   echo "Error: Failed to seal secrets. Is the Sealed Secrets controller running?" >&2
