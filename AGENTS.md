@@ -2,14 +2,14 @@
 
 ### Package Architecture
 - **`packages/core`**: Shared code between gateway and worker (interfaces, utils, types). Any code reused by both must live here.
-- **`packages/gateway`**: Platform-agnostic gateway. Slack code under `src/slack/`. Orchestration under `src/orchestration/`. Future chat platforms (Discord, Teams) will live alongside as separate modules in dispatcher pattern.
-- **`packages/worker`**: Agent execution via OpenClaw runtime in `src/openclaw/`. Worker talks only to gateway and agent. No Slack/platform knowledge.
+- **`packages/gateway`**: Platform-agnostic gateway. Platform connections managed via Chat SDK adapters in `src/connections/`. Orchestration under `src/orchestration/`.
+- **`packages/worker`**: Agent execution via OpenClaw runtime in `src/openclaw/`. Worker talks only to gateway and agent. No platform knowledge.
 
 ### Module Boundaries
-- Gateway: Slack → `src/slack/`, Telegram → `src/telegram/`, orchestration → `src/orchestration/`, future platforms → `src/dispatcher/{platform}/`
+- Gateway: Connections → `src/connections/`, orchestration → `src/orchestration/`, Slack OAuth routes → `src/routes/public/slack.ts`
 - Worker: Platform-agnostic, agent logic isolated to `src/openclaw/`
 - Core: Shared interfaces, utils, types for gateway+worker
-- **Platform isolation**: InteractionService events (e.g. `link-button:created`) carry an explicit `platform` field. Each platform renderer MUST filter on its own platform identity (`platform === "telegram"`, `platform === "slack"`). Never reference another platform's identifier — a Slack renderer must not check `teamId === "telegram"` or vice versa.
+- **Platform isolation**: InteractionService events (e.g. `link-button:created`) carry an explicit `platform` field. Each platform renderer MUST filter on its own platform identity (`platform === "telegram"`, `platform === "slack"`). Never reference another platform's identifier.
 
 ### Repository Layout
 - Monorepo managed by Bun workspaces: `packages/gateway`, `packages/worker`, `packages/core`.
@@ -22,9 +22,7 @@
 ### Architecture
 
 #### Platform
-We currently use WhatsApp and Telegram as messaging platforms (Slack support also available but not configured).
-Telegram code under `packages/gateway/src/telegram/`. Uses Grammy library with long-polling.
-There is also a public endpoint in gateway to trigger running the agent.
+All messaging platforms (Telegram, Slack, Discord, WhatsApp, Teams) are managed via Chat SDK adapters in `packages/gateway/src/connections/`. Each platform connection is created through the connections API with a typed config schema. There is also a public endpoint in gateway to trigger running the agent.
 Settings page provider order is drag-sortable via handle, with per-provider model selection inline in each provider row.
 
 #### Orchestration
@@ -80,7 +78,7 @@ The script automatically handles sending the message, waiting for response, and 
 
 ## File Upload Support
 
-File attachments are fully supported in all message contexts (DM, app mentions, assistant threads). Gateway fetches complete message details via Slack API to ensure file metadata is captured, downloads files to worker's input directory, and the agent is instructed about file locations.
+File attachments are fully supported in all message contexts (DM, mentions, subscribed threads). The Chat SDK handles file metadata capture, gateway downloads files to worker's input directory, and the agent is instructed about file locations.
 
 ## Development Mode
 
@@ -180,7 +178,7 @@ Worker deployments use persistent volumes for session continuity across scale-to
 
 ## MCP OAuth Authentication
 
-MCP (Model Context Protocol) servers can be authenticated via OAuth. Users authenticate through the Slack home tab.
+MCP (Model Context Protocol) servers can be authenticated via OAuth. Users authenticate through the settings page.
 
 ### Configuration
 
@@ -245,12 +243,12 @@ export GOOGLE_CLIENT_SECRET=your_google_client_secret
 
 ### User Authentication Flow
 
-1. User opens Slack app home tab
+1. User opens settings page
 2. Sees "Login" button for unauthenticated MCPs
-3. Clicks "Login" → receives DM with OAuth link
+3. Clicks "Login" → redirected to OAuth provider
 4. Completes OAuth on MCP provider's site
 5. Redirected back to callback → credentials stored
-6. Home tab updates to show "Connected" with logout button
+6. Settings page updates to show "Connected" with logout button
 
 ### Credential Storage
 
@@ -264,8 +262,7 @@ Use the `test-bot.sh` script for easy bot testing. No manual curl commands neede
 
 **Platform self-testing behavior:**
 - **Slack**: Cannot trigger its own event handlers (Slack filters bot-to-self messages). The test script uses `/api/messaging/send` endpoint which posts via bot token, then gateway receives as normal Slack events.
-- **WhatsApp**: Supports self-chat mode! Set `WHATSAPP_SELF_CHAT=true` and send to the bot's own phone number. The gateway detects self-messages and queues them directly to workers, bypassing event handler filters.
-- **Telegram**: `test-bot.sh` supports Telegram via `TEST_PLATFORM=telegram` and `TEST_CHANNEL=<chat_id|@username>` (or `TELEGRAM_TEST_CHAT_ID`) and sends through `tguser` as a real user account. Requires `TG_API_ID` and `TG_API_HASH` env vars (stored in `.env`). Bot receives via Grammy long-polling. In groups, @mention is always required; in DMs all messages are processed.
+- **Telegram**: `test-bot.sh` supports Telegram via `TEST_PLATFORM=telegram` and `TEST_CHANNEL=<chat_id|@username>` (or `TELEGRAM_TEST_CHAT_ID`) and sends through `tguser` as a real user account. Requires `TG_API_ID` and `TG_API_HASH` env vars (stored in `.env`). In groups, @mention is always required; in DMs all messages are processed.
 
 ### Basic Test
 ```bash
