@@ -54,6 +54,7 @@ export interface DiscoveredOAuthMetadata {
   mcpUrl: string;
   metadata: OAuthServerMetadata;
   clientCredentials?: ClientCredentials;
+  resource?: string;
   discoveredAt: number;
   expiresAt: number;
 }
@@ -294,6 +295,7 @@ export class OAuthDiscoveryService {
         mcpId,
         mcpUrl,
         metadata,
+        resource: prm.resource,
         discoveredAt: Date.now(),
         expiresAt: Date.now() + this.cacheTtl * 1000,
       };

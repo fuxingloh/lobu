@@ -382,13 +382,8 @@ export class IntegrationOAuthModule {
         );
       }
 
-      // No session — show success page with link to settings
-      return c.html(
-        renderOAuthSuccessPage(
-          config.label,
-          `/settings?agent=${encodeURIComponent(agentId)}&open=skills`
-        )
-      );
+      // No session — show success page (no settings link since it requires auth)
+      return c.html(renderOAuthSuccessPage(config.label));
     } catch (error) {
       logger.error("Failed to handle integration OAuth callback", { error });
       return c.html(

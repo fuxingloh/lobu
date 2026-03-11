@@ -130,6 +130,8 @@ export interface McpOAuthStateData {
   mcpId: string;
   nonce: string;
   redirectPath?: string;
+  codeVerifier?: string;
+  resource?: string;
 }
 
 export type McpOAuthState = McpOAuthStateData & { createdAt: number };

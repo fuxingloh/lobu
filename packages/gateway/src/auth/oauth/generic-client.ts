@@ -35,7 +35,8 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
   buildAuthUrl(
     oauth: OAuth2Config,
     state: string,
-    redirectUri: string
+    redirectUri: string,
+    options?: { codeChallenge?: string; resource?: string }
   ): string {
     const url = new URL(oauth.authUrl);
     url.searchParams.set("client_id", oauth.clientId);
@@ -45,6 +46,15 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
 
     if (oauth.scopes && oauth.scopes.length > 0) {
       url.searchParams.set("scope", oauth.scopes.join(" "));
+    }
+
+    if (options?.codeChallenge) {
+      url.searchParams.set("code_challenge", options.codeChallenge);
+      url.searchParams.set("code_challenge_method", "S256");
+    }
+
+    if (options?.resource) {
+      url.searchParams.set("resource", options.resource);
     }
 
     return url.toString();
@@ -57,7 +67,8 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
   async exchangeCodeForToken(
     code: string,
     oauth: OAuth2Config,
-    redirectUri: string
+    redirectUri: string,
+    options?: { codeVerifier?: string; resource?: string }
   ): Promise<McpCredentialRecord> {
     const authMethod = oauth.tokenEndpointAuthMethod || "client_secret_post";
     const isPKCE = authMethod === "none";
@@ -79,6 +90,14 @@ export class GenericOAuth2Client extends BaseOAuth2Client {
       code,
       redirect_uri: redirectUri,
     });
+
+    if (options?.codeVerifier) {
+      body.set("code_verifier", options.codeVerifier);
+    }
+
+    if (options?.resource) {
+      body.set("resource", options.resource);
+    }
 
     // For basic auth, credentials go in the Authorization header, not the body
     const headers: Record<string, string> = {};

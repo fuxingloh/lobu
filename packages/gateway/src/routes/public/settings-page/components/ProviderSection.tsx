@@ -371,38 +371,6 @@ function ProviderCard({
     }
   }
 
-  async function handleDisconnect(profileId?: string) {
-    if (!confirm(`Disconnect from ${pInfo.name || providerId}?`)) return;
-    await api.disconnectProvider(providerId, ctx.agentId, profileId);
-    updatePS({
-      showAuthFlow: false,
-      showCodeInput: false,
-      showDeviceCode: false,
-      showApiKeyInput: false,
-    });
-    // Re-check providers
-    const providers = await api.checkProviders(ctx.agentId);
-    const info = providers[providerId];
-    if (info) {
-      ctx.providerState.value = {
-        ...ctx.providerState.value,
-        [providerId]: {
-          ...ctx.providerState.value[providerId],
-          connected: !!info.connected,
-          userConnected: !!info.userConnected,
-          systemConnected: !!info.systemConnected,
-          activeAuthType: info.activeAuthType || null,
-          authMethods: info.authMethods || [],
-          status: !info.connected
-            ? "Not connected"
-            : info.userConnected
-              ? `Connected (${info.activeAuthType || "unknown"})`
-              : "Using system key",
-        },
-      };
-    }
-  }
-
   async function handleUninstall() {
     if (
       !confirm(
@@ -411,6 +379,9 @@ function ProviderCard({
     )
       return;
     try {
+      if (ps.userConnected) {
+        await api.disconnectProvider(providerId, ctx.agentId);
+      }
       await api.uninstallProvider(ctx.agentId, providerId);
       ctx.successMsg.value = "Provider removed!";
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -531,19 +502,13 @@ function ProviderCard({
               )}
             </div>
           )}
-          {!ps.authMethods?.length && (
+          {!ps.connected && !ps.authMethods?.length && (
             <button
               type="button"
-              onClick={() =>
-                ps.userConnected ? handleDisconnect() : connectProvider()
-              }
-              class={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                ps.userConnected
-                  ? "bg-red-100 text-red-700 hover:bg-red-200"
-                  : "bg-slate-100 text-slate-800 hover:bg-slate-200"
-              }`}
+              onClick={connectProvider}
+              class="bg-slate-100 text-slate-800 hover:bg-slate-200 px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
             >
-              {ps.userConnected ? "Disconnect" : "Connect"}
+              Connect
             </button>
           )}
           <button

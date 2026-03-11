@@ -220,6 +220,10 @@ export function buildGatewayConfig(): GatewayConfig {
             source: "@lobu/owletto-openclaw",
             slot: "memory",
             enabled: defaultOwlettoMemoryEnabled,
+            config: {
+              mcpUrl: "http://gateway:8080/mcp/owletto",
+              tokenCommand: "echo $WORKER_TOKEN",
+            },
           },
         ],
       },

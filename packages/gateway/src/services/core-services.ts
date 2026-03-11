@@ -99,6 +99,7 @@ export class CoreServices {
   // MCP Services
   // ============================================================================
   private mcpConfigService?: McpConfigService;
+  private mcpCredentialStore?: McpCredentialStore;
   private mcpProxy?: McpProxy;
 
   // ============================================================================
@@ -494,7 +495,8 @@ export class CoreServices {
     const redisClient = this.queue.getRedisClient();
 
     // Initialize MCP credential and state management
-    const mcpCredentialStore = new McpCredentialStore(redisClient);
+    this.mcpCredentialStore = new McpCredentialStore(redisClient);
+    const mcpCredentialStore = this.mcpCredentialStore;
     const mcpOAuthStateStore = createMcpOAuthStateStore(redisClient);
     const mcpInputStore = new McpInputStore(this.queue);
 
@@ -590,7 +592,8 @@ export class CoreServices {
       mcpOAuthStateStore,
       mcpInputStore,
       this.config.mcp.publicGatewayUrl,
-      this.config.mcp.callbackUrl
+      this.config.mcp.callbackUrl,
+      this.grantStore
     );
     moduleRegistry.register(this.mcpOAuthModule);
     logger.info("MCP OAuth module registered");
@@ -730,6 +733,10 @@ export class CoreServices {
 
   getMcpConfigService(): McpConfigService | undefined {
     return this.mcpConfigService;
+  }
+
+  getMcpCredentialStore(): McpCredentialStore | undefined {
+    return this.mcpCredentialStore;
   }
 
   getModelPreferenceStore(): ModelPreferenceStore | undefined {

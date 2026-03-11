@@ -328,8 +328,9 @@
         {
           "id": "owletto",
           "name": "Owletto",
-          "url": "https://owletto.com/mcp",
-          "type": "sse"
+          "url": "${env:OWLETTO_MCP_URL}",
+          "type": "sse",
+          "resource": "${env:OWLETTO_MCP_RESOURCE}"
         }
       ]
     },

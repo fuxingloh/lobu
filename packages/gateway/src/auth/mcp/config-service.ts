@@ -34,6 +34,7 @@ interface HttpMcpServerConfig {
   inputs?: McpInput[];
   headers?: Record<string, string>;
   loginUrl?: string; // Simple OAuth marker - indicates MCP requires auth
+  resource?: string; // RFC 8707 resource indicator for OAuth (e.g. org-scoped MCP URL)
 }
 
 interface WorkerMcpConfig {
@@ -551,6 +552,8 @@ function normalizeConfig(config: { mcpServers: Record<string, any> }) {
             : undefined,
         loginUrl:
           typeof cloned.loginUrl === "string" ? cloned.loginUrl : undefined,
+        resource:
+          typeof cloned.resource === "string" ? cloned.resource : undefined,
       });
     }
   }

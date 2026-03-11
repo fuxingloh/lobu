@@ -2,6 +2,7 @@ import { createLogger, decrypt, encrypt } from "@lobu/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { BaseModule } from "../../modules/module-system";
+import type { GrantStore } from "../../permissions/grant-store";
 import { SETTINGS_SESSION_COOKIE_NAME } from "../../routes/public/settings-auth";
 import { GenericOAuth2Client } from "../oauth/generic-client";
 import type { McpOAuthStateStore } from "../oauth/state-store";
@@ -42,7 +43,8 @@ export class McpOAuthModule extends BaseModule {
     private stateStore: McpOAuthStateStore,
     private inputStore: McpInputStore,
     publicGatewayUrl: string,
-    callbackUrl: string
+    callbackUrl: string,
+    private grantStore?: GrantStore
   ) {
     super();
 
@@ -296,11 +298,16 @@ export class McpOAuthModule extends BaseModule {
       }
 
       let oauthConfig = httpServer.oauth;
+      // RFC 8707: resource parameter — prefer explicit config, then PRM discovery
+      let resource = httpServer.resource;
 
       // If no static OAuth config, check for discovered OAuth
       if (!oauthConfig) {
         const discoveredOAuth =
           await this.configService.getDiscoveredOAuth(mcpId);
+        if (!resource) {
+          resource = discoveredOAuth?.resource;
+        }
         if (discoveredOAuth?.metadata) {
           logger.info(
             `Using discovered OAuth for ${mcpId} from ${discoveredOAuth.metadata.issuer}`
@@ -386,18 +393,30 @@ export class McpOAuthModule extends BaseModule {
         );
       }
 
+      // Generate PKCE verifier+challenge if using PKCE (auth method "none")
+      const isPKCE = oauthConfig.tokenEndpointAuthMethod === "none";
+      let codeVerifier: string | undefined;
+      let codeChallenge: string | undefined;
+      if (isPKCE) {
+        codeVerifier = this.oauth2Client.generateCodeVerifier();
+        codeChallenge = this.oauth2Client.generateCodeChallenge(codeVerifier);
+      }
+
       // Generate and store state (include agentId for credential storage)
       const state = await this.stateStore.createWithNonce({
         userId,
         agentId,
         mcpId,
+        codeVerifier,
+        resource,
       });
 
       // Build OAuth URL
       const loginUrl = this.oauth2Client.buildAuthUrl(
         oauthConfig,
         state,
-        this.callbackUrl
+        this.callbackUrl,
+        { codeChallenge, resource }
       );
 
       // Redirect to OAuth provider
@@ -506,11 +525,15 @@ export class McpOAuthModule extends BaseModule {
       }
 
       if (oauthConfig) {
-        // Full OAuth2 token exchange
+        // Full OAuth2 token exchange (pass codeVerifier for PKCE, resource for RFC 8707)
         credentials = await this.oauth2Client.exchangeCodeForToken(
           code,
           oauthConfig,
-          this.callbackUrl
+          this.callbackUrl,
+          {
+            codeVerifier: stateData.codeVerifier,
+            resource: stateData.resource,
+          }
         );
       } else {
         // Fallback: use code as token (for simple cases)
@@ -540,6 +563,17 @@ export class McpOAuthModule extends BaseModule {
         `OAuth successful for space ${stateData.agentId}, MCP ${stateData.mcpId}`
       );
 
+      // Auto-grant all tools for this MCP after successful OAuth
+      if (this.grantStore) {
+        const pattern = `/mcp/${stateData.mcpId}/tools/*`;
+        await this.grantStore.grant(stateData.agentId, pattern, null);
+        logger.info("Auto-granted MCP tool access after OAuth", {
+          agentId: stateData.agentId,
+          mcpId: stateData.mcpId,
+          pattern,
+        });
+      }
+
       // If user has a settings session, redirect to settings page
       const hasSession = !!c.req.raw.headers
         .get("cookie")
@@ -550,13 +584,8 @@ export class McpOAuthModule extends BaseModule {
         );
       }
 
-      // No session — show success page with link to settings
-      return c.html(
-        renderOAuthSuccessPage(
-          mcpName,
-          `/settings?agent=${encodeURIComponent(stateData.agentId)}&open=skills`
-        )
-      );
+      // No session — show success page (no settings link since it requires auth)
+      return c.html(renderOAuthSuccessPage(mcpName));
     } catch (error) {
       logger.error("Failed to handle OAuth callback", {
         error,

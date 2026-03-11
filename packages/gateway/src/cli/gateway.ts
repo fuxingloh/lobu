@@ -242,6 +242,20 @@ function setupServer(
     logger.info("MCP login routes enabled at :8080/internal/mcp-login");
   }
 
+  // MCP token routes (worker can retrieve stored MCP OAuth tokens)
+  if (
+    coreServices?.getMcpCredentialStore() &&
+    coreServices?.getMcpConfigService()
+  ) {
+    const { createMcpTokenRoutes } = require("../routes/internal/mcp-token");
+    const mcpTokenRouter = createMcpTokenRoutes(
+      coreServices.getMcpCredentialStore(),
+      coreServices.getMcpConfigService()
+    );
+    app.route("", mcpTokenRouter);
+    logger.info("MCP token routes enabled at :8080/internal/mcp-token/:mcpId");
+  }
+
   // Integrations discovery routes (unified skills + MCP search for workers)
   {
     const {
