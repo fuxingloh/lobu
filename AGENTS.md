@@ -278,7 +278,7 @@ Use the `test-bot.sh` script for easy bot testing. No manual curl commands neede
 ### Custom Channel and Timeout
 ```bash
 # Set environment variables
-export TEST_PLATFORM="slack"   # or "whatsapp" or "telegram"
+export TEST_PLATFORM="slack"   # or "telegram", "whatsapp", "discord", "teams"
 export TEST_CHANNEL="my-channel"
 export TEST_TIMEOUT=60  # seconds to wait for response
 
