@@ -157,6 +157,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           echo "🚀 Deploying with make deploy..."
           # Login to GitHub Container Registry for OCI charts

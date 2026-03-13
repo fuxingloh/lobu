@@ -127,6 +127,7 @@ deploy:
 			-f "$$VALUES_FILE" \
 			$$IMAGE_OVERRIDES \
 			--set secrets.encryptionKey="$$ENCRYPTION_KEY" \
+			--set secrets.adminPassword="$$ADMIN_PASSWORD" \
 			--set secrets.slackBotToken="$$SLACK_BOT_TOKEN" \
 			--set secrets.slackSigningSecret="$$SLACK_SIGNING_SECRET" \
 			--set secrets.slackAppToken="$$SLACK_APP_TOKEN" \
