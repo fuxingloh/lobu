@@ -9,6 +9,8 @@ import type {
 
 const logger = createLogger("skills-fetcher");
 
+const CLAWHUB_WEB_URL = "https://clawhub.ai/skills";
+
 /**
  * ClawHub list response
  */
@@ -93,13 +95,18 @@ export class ClawHubRegistry implements SkillRegistry {
       const data = (await response.json()) as ClawHubSearchResponse;
       logger.info(`Found ${data.results.length} skills for query: ${query}`);
 
-      return data.results.slice(0, limit).map((result) => ({
-        id: result.slug,
-        name: result.displayName,
-        description: result.summary || undefined,
-        installs: 0,
-        source: this.id,
-      }));
+      return data.results
+        .filter((r) => r.score >= 3)
+        .slice(0, limit)
+        .map((result) => ({
+          id: result.slug,
+          name: result.displayName,
+          description: result.summary || undefined,
+          installs: 0,
+          score: result.score,
+          uri: `${CLAWHUB_WEB_URL}/${result.slug}`,
+          source: this.id,
+        }));
     } catch (error) {
       logger.error("Failed to search ClawHub", { error, query });
       // Fall back to client-side filtering
@@ -202,6 +209,7 @@ export class ClawHubRegistry implements SkillRegistry {
         name: item.displayName,
         description: item.summary || undefined,
         installs: item.stats?.downloads || 0,
+        uri: `${CLAWHUB_WEB_URL}/${item.slug}`,
         source: this.id,
       }));
 

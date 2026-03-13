@@ -3,20 +3,30 @@ export function TerminalLog({ fill }: { fill?: boolean }) {
     { text: "$ lobu dev -d", color: "#4ade80" },
     { text: "[gateway] listening on :8080", color: "#8f96a3" },
     { text: "[gateway] connected to Redis", color: "#8f96a3" },
-    { text: "[gateway] Telegram bot connected", color: "#4ade80" },
+    {
+      text: '[gateway] Telegram connection "Support" connected',
+      color: "#4ade80",
+    },
     { text: "", color: "" },
     {
-      text: '[telegram] message from @alex: "What\'s on my calendar today?"',
+      text: '[telegram] message from Alice Chen to Support: "Can you share the latest incident update?"',
       color: "#67e8f9",
     },
-    { text: "[gateway] spawning worker for chat:482910", color: "#8f96a3" },
-    { text: "[worker] session resumed from /workspace", color: "#8f96a3" },
     {
-      text: "[worker] calling tool: google-workspace.listEvents",
+      text: "[gateway] launching sandbox for chat:8291045832",
+      color: "#8f96a3",
+    },
+    {
+      text: "[sandbox] loading agent, skills, and connection config",
+      color: "#8f96a3",
+    },
+    { text: "[sandbox] session resumed from /workspace", color: "#8f96a3" },
+    {
+      text: "[sandbox] handing message to the Support agent",
       color: "#facc15",
     },
-    { text: "[worker] sending response (142 tokens)", color: "#4ade80" },
-    { text: "[gateway] worker scaled to zero (idle 30s)", color: "#8f96a3" },
+    { text: "[sandbox] sending response (118 tokens)", color: "#4ade80" },
+    { text: "[gateway] sandbox scaled to zero (idle 30s)", color: "#8f96a3" },
   ];
 
   return (
@@ -76,6 +86,18 @@ export function TerminalLog({ fill }: { fill?: boolean }) {
             </div>
           )
         )}
+      </div>
+      <div
+        class="px-3.5 pb-3.5 text-[11px]"
+        style={{ backgroundColor: "#0b0c0f" }}
+      >
+        <a
+          href="/deployment/docker/"
+          class="transition-opacity hover:opacity-80"
+          style={{ color: "#67e8f9" }}
+        >
+          See the Docker deployment docs →
+        </a>
       </div>
     </div>
   );
