@@ -34,6 +34,8 @@ export interface PostedLinkButton {
   url: string;
   label: string;
   linkType: "settings" | "install" | "oauth";
+  /** Open as Telegram Web App (in-app mini app) instead of external browser. */
+  webApp?: boolean;
 }
 
 /**
@@ -63,6 +65,19 @@ export interface PostedPackageRequest {
   teamId?: string;
   packages: string[];
   reason: string;
+}
+
+/**
+ * Payload emitted on "status-message:created" — platform renderers listen for this.
+ */
+export interface PostedStatusMessage {
+  id: string;
+  conversationId: string;
+  channelId: string;
+  teamId?: string;
+  connectionId?: string;
+  platform: string;
+  text: string;
 }
 
 /**
@@ -215,6 +230,12 @@ export class InteractionService extends EventEmitter {
       await this.beforeCreateHook(userId, conversationId);
     }
 
+    // Settings/install links open in Telegram Web App (in-app mini app)
+    // OAuth links point to external providers and must open in a browser
+    const webApp =
+      platform === "telegram" &&
+      (linkType === "settings" || linkType === "install");
+
     const posted: PostedLinkButton = {
       id: `lb_${randomUUID()}`,
       userId,
@@ -226,6 +247,7 @@ export class InteractionService extends EventEmitter {
       url,
       label,
       linkType,
+      webApp,
     };
 
     logger.info(
@@ -233,6 +255,40 @@ export class InteractionService extends EventEmitter {
     );
 
     this.emit("link-button:created", posted);
+    return posted;
+  }
+
+  /**
+   * Post a plain text status message (non-blocking, fire-and-forget).
+   * Emits "status-message:created" for platform renderers.
+   */
+  async postStatusMessage(
+    conversationId: string,
+    channelId: string,
+    teamId: string | undefined,
+    connectionId: string | undefined,
+    platform: string,
+    text: string
+  ): Promise<PostedStatusMessage> {
+    if (this.beforeCreateHook) {
+      await this.beforeCreateHook("", conversationId);
+    }
+
+    const posted: PostedStatusMessage = {
+      id: `sm_${randomUUID()}`,
+      conversationId,
+      channelId,
+      teamId,
+      connectionId,
+      platform,
+      text,
+    };
+
+    logger.info(
+      `Posted status message ${posted.id} for conversation ${conversationId}`
+    );
+
+    this.emit("status-message:created", posted);
     return posted;
   }
 

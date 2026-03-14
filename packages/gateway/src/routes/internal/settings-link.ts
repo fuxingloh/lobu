@@ -196,6 +196,20 @@ export function createSettingsLinkRoutes(
       settingsUrl.searchParams.set("claim", claimCode);
       if (agentId) settingsUrl.searchParams.set("agent", agentId);
 
+      // Thread conversation context so the settings page can send
+      // post-install notifications back to the originating conversation.
+      settingsUrl.searchParams.set("conversationId", worker.conversationId);
+      if (worker.connectionId) {
+        settingsUrl.searchParams.set("connectionId", worker.connectionId);
+      }
+
+      // For webapp-initdata platforms (Telegram), include platform + chat
+      // so the settings page renders the WebApp bootstrap instead of OAuth redirect
+      if (platform === "telegram") {
+        settingsUrl.searchParams.set("platform", platform);
+        settingsUrl.searchParams.set("chat", worker.channelId);
+      }
+
       // For simple prefill data, use query params
       if (skills?.length) {
         settingsUrl.searchParams.set(

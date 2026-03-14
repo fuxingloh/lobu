@@ -4,6 +4,7 @@ import type {
   PostedGrantRequest,
   PostedLinkButton,
   PostedQuestion,
+  PostedStatusMessage,
 } from "../interactions";
 import type { ChatInstanceManager } from "./chat-instance-manager";
 import type { PlatformConnection } from "./types";
@@ -144,11 +145,15 @@ export function registerInteractionBridge(
 
       try {
         const { Card, CardText, Actions, LinkButton } = await import("chat");
+        const linkButton: any = LinkButton({
+          url: event.url,
+          label: event.label,
+        });
+        if (event.webApp) {
+          linkButton.webApp = true;
+        }
         const card = Card({
-          children: [
-            CardText(event.label),
-            Actions([LinkButton({ url: event.url, label: event.label })]),
-          ],
+          children: [CardText(event.label), Actions([linkButton])],
         });
         await thread.post({
           card,
@@ -164,6 +169,32 @@ export function registerInteractionBridge(
         } catch {
           // give up
         }
+      }
+    }
+  );
+
+  interactionService.on(
+    "status-message:created",
+    async (event: PostedStatusMessage) => {
+      if (!shouldHandle(event, platform, connectionId, manager)) return;
+      if (handledEvents.has(event.id)) return;
+      markHandled(event.id);
+
+      const thread = await resolveThread(
+        manager,
+        connectionId,
+        event.channelId,
+        event.conversationId
+      );
+      if (!thread) return;
+
+      try {
+        await thread.post(event.text);
+      } catch (error) {
+        logger.warn(
+          { connectionId, error: String(error) },
+          "Failed to post status message interaction"
+        );
       }
     }
   );

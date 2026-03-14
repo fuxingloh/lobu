@@ -219,63 +219,81 @@ export function PackagesPanel() {
 export function IntegrationsPanel() {
   return (
     <PanelShell title="Skills">
-      <SectionHeader emoji="🔗" label="Skills" />
-      <div class="space-y-2">
-        {/* Skill with nested integrations/MCPs */}
-        <div class="p-2 bg-white rounded border border-gray-100">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-medium text-slate-700">ops-triage</span>
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+      {/* Prefill card — matches the real install flow UI */}
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-3">
+        <div class="flex items-center gap-2">
+          <span class="text-base">⚠️</span>
+          <div>
+            <p class="text-sm font-semibold text-gray-800">
+              Pending changes from your agent
+            </p>
+            <p class="text-xs text-amber-600">
+              Review and approve the requested configuration changes.
+            </p>
+          </div>
+        </div>
+
+        <SectionHeader emoji="⚡" label="Skills" />
+
+        {/* Skill card */}
+        <div class="bg-white border border-amber-200 rounded-lg p-2.5 space-y-1.5">
+          <div class="space-y-0.5">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 shrink-0">
                 skill
               </span>
+              <span class="text-xs font-medium text-gray-800">Ops Triage</span>
             </div>
-            <span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">
-              Enabled
-            </span>
+            <p class="text-[10px] text-amber-500 font-mono ml-1">
+              system/ops-triage
+            </p>
+            <p class="text-xs text-gray-500 ml-1">
+              Triage inbox, PRs, and issues
+            </p>
           </div>
-          <div class="ml-3 space-y-1 border-l-2 border-gray-100 pl-2">
-            <div class="flex items-center gap-2">
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-                mcp
+
+          {/* Nested deps */}
+          <div class="ml-4 pl-2 border-l-2 border-purple-100 space-y-1">
+            <div class="flex items-center gap-2 py-0.5">
+              <span class="text-[9px] uppercase font-bold px-1 py-0.5 rounded bg-gray-100 text-gray-600">
+                oauth
               </span>
-              <span class="text-xs text-gray-600">gmail-mcp</span>
-              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                connected
-              </span>
+              <span class="text-[11px] text-gray-600">Google</span>
             </div>
-            <div class="flex items-center gap-2">
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-                mcp
+            <div class="flex items-center gap-2 py-0.5">
+              <span class="text-[9px] uppercase font-bold px-1 py-0.5 rounded bg-gray-100 text-gray-600">
+                oauth
               </span>
-              <span class="text-xs text-gray-600">github-mcp</span>
-              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                connected
-              </span>
+              <span class="text-[11px] text-gray-600">GitHub</span>
             </div>
-            <div class="flex items-center gap-2">
-              <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                api-key
+            <div class="flex items-center gap-2 py-0.5">
+              <span class="text-[9px] uppercase font-bold px-1 py-0.5 rounded bg-red-50 text-red-600">
+                network
               </span>
-              <span class="text-xs text-gray-600">linear</span>
-              <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                connected
+              <span class="text-[11px] text-gray-600">
+                gmail.googleapis.com, api.github.com
               </span>
             </div>
           </div>
         </div>
 
-        {/* System skill */}
-        <div class="flex items-center justify-between p-2 bg-white rounded border border-gray-100">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-medium text-slate-700">web-search</span>
-            <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-              system
-            </span>
-          </div>
-          <span class="px-2 py-1 text-xs rounded bg-slate-100 text-slate-600">
-            Always on
-          </span>
+        {/* Action buttons */}
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="px-4 py-1.5 text-xs font-semibold rounded-lg text-white"
+            style={{ backgroundColor: "#e67e22" }}
+            disabled
+          >
+            Approve All
+          </button>
+          <button
+            type="button"
+            class="px-4 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600"
+            disabled
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     </PanelShell>

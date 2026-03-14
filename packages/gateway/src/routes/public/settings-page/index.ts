@@ -190,6 +190,8 @@ export function renderSettingsPage(
       return [];
     })(),
     initialRegistries: s.skillRegistries || [],
+    conversationId: payload.sourceContext?.conversationId,
+    connectionId: payload.connectionId,
   };
 
   return `<!DOCTYPE html>

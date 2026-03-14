@@ -262,6 +262,21 @@ export async function disconnectProvider(
   await jsonPost(`/api/v1/auth/${providerId}/logout`, body);
 }
 
+// ─── Install Callback ─────────────────────────────────────────────────────
+
+export async function notifySkillInstalled(
+  agentId: string,
+  payload: {
+    platform: string;
+    channelId: string;
+    conversationId: string;
+    connectionId?: string;
+    skills: string[];
+  }
+): Promise<void> {
+  await jsonPost(apiUrl(agentId, "/install-callback"), payload);
+}
+
 // ─── Integrations ──────────────────────────────────────────────────────────
 
 export async function fetchIntegrationsRegistry(query?: string): Promise<{

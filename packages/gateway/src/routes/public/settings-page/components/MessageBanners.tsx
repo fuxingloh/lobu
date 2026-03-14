@@ -301,7 +301,12 @@ function PrefillBanner() {
         }
       }
 
-      // 6. Dismiss + show result
+      // 6. Record approved skill names for post-save callback
+      ctx.approvedPrefillSkills.value = ctx.prefillSkills.value.map(
+        (s) => s.name || s.repo
+      );
+
+      // 7. Dismiss + show result
       ctx.prefillBannerDismissed.value = true;
       ctx.errorMsg.value = "";
       if (failures.length > 0) {
@@ -554,19 +559,17 @@ function PrefillSkillCard({
 
   return (
     <div class="bg-white border border-amber-200 rounded-lg p-2.5">
-      <div class="flex items-center gap-2">
-        <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-          skill
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="text-xs font-medium text-gray-800 truncate">{skill.name}</p>
-          {skill.description && (
-            <p class="text-xs text-gray-500 truncate">{skill.description}</p>
-          )}
+      <div class="space-y-0.5">
+        <div class="flex items-center gap-1.5">
+          <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 shrink-0">
+            skill
+          </span>
+          <span class="text-xs font-medium text-gray-800">{skill.name}</span>
         </div>
-        <span class="text-xs text-amber-500 font-mono shrink-0">
-          {skill.repo}
-        </span>
+        <p class="text-[10px] text-amber-500 font-mono ml-1">{skill.repo}</p>
+        {skill.description && (
+          <p class="text-xs text-gray-500 truncate ml-1">{skill.description}</p>
+        )}
       </div>
 
       {hasDetails && (
@@ -637,37 +640,47 @@ function PrefillSkillCard({
                 <p class="text-[11px] font-medium text-amber-900">
                   {ig.label || ig.id}
                 </p>
-                <div class="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={cred.clientId}
-                    onInput={(e) => {
-                      oauthCredentials.value = {
-                        ...oauthCredentials.value,
-                        [ig.id]: {
-                          ...cred,
-                          clientId: (e.target as HTMLInputElement).value,
-                        },
-                      };
-                    }}
-                    placeholder="Client ID"
-                    class="flex-1 px-2 py-1.5 border border-amber-200 rounded text-xs bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none"
-                  />
-                  <input
-                    type="password"
-                    value={cred.clientSecret}
-                    onInput={(e) => {
-                      oauthCredentials.value = {
-                        ...oauthCredentials.value,
-                        [ig.id]: {
-                          ...cred,
-                          clientSecret: (e.target as HTMLInputElement).value,
-                        },
-                      };
-                    }}
-                    placeholder="Client Secret"
-                    class="flex-1 px-2 py-1.5 border border-amber-200 rounded text-xs bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none"
-                  />
+                <div class="space-y-1.5">
+                  <label class="block">
+                    <span class="block text-[10px] text-amber-700 mb-0.5">
+                      Client ID
+                    </span>
+                    <input
+                      type="text"
+                      value={cred.clientId}
+                      onInput={(e) => {
+                        oauthCredentials.value = {
+                          ...oauthCredentials.value,
+                          [ig.id]: {
+                            ...cred,
+                            clientId: (e.target as HTMLInputElement).value,
+                          },
+                        };
+                      }}
+                      placeholder="Client ID"
+                      class="w-full px-2 py-1.5 border border-amber-200 rounded text-xs bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none"
+                    />
+                  </label>
+                  <label class="block">
+                    <span class="block text-[10px] text-amber-700 mb-0.5">
+                      Client Secret
+                    </span>
+                    <input
+                      type="password"
+                      value={cred.clientSecret}
+                      onInput={(e) => {
+                        oauthCredentials.value = {
+                          ...oauthCredentials.value,
+                          [ig.id]: {
+                            ...cred,
+                            clientSecret: (e.target as HTMLInputElement).value,
+                          },
+                        };
+                      }}
+                      placeholder="Client Secret"
+                      class="w-full px-2 py-1.5 border border-amber-200 rounded text-xs bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none"
+                    />
+                  </label>
                 </div>
               </div>
             );

@@ -104,6 +104,7 @@ export interface SettingsContextValue {
   prefillProviders: Signal<string[]>;
   prefillBannerDismissed: Signal<boolean>;
   approvingPrefills: Signal<boolean>;
+  approvedPrefillSkills: Signal<string[]>;
 
   openSections: Signal<Record<string, boolean>>;
 
@@ -119,6 +120,8 @@ export interface SettingsContextValue {
   channelId?: string;
   teamId?: string;
   message?: string;
+  conversationId?: string;
+  connectionId?: string;
   showSwitcher: boolean;
   agents: SettingsState["agents"];
   providerIconUrls: Record<string, string>;
@@ -267,6 +270,7 @@ function App() {
     new URL(window.location.href).searchParams.has("dismissed")
   );
   const approvingPrefills = useSignal(false);
+  const approvedPrefillSkills = useSignal<string[]>([]);
 
   // Sections
   const openSections = useSignal<Record<string, boolean>>({});
@@ -574,6 +578,7 @@ function App() {
     prefillProviders,
     prefillBannerDismissed,
     approvingPrefills,
+    approvedPrefillSkills,
 
     openSections,
     initialSettingsSnapshot,
@@ -583,6 +588,8 @@ function App() {
     channelId: state.channelId,
     teamId: state.teamId,
     message: state.message,
+    conversationId: state.conversationId,
+    connectionId: state.connectionId,
     showSwitcher: state.showSwitcher,
     agents: state.agents,
     providerIconUrls: state.providerIconUrls || {},
@@ -787,6 +794,26 @@ async function handleSave(ctx: SettingsContextValue) {
     ctx.successMsg.value = "Settings saved!";
     ctx.initialSettingsSnapshot.value = ctx.buildSettingsSnapshot();
     window.scrollTo({ top: 0, behavior: "smooth" });
+
+    // Fire post-install callback (fire-and-forget) if skills were approved
+    if (
+      ctx.approvedPrefillSkills.value.length > 0 &&
+      ctx.conversationId &&
+      ctx.channelId
+    ) {
+      api
+        .notifySkillInstalled(ctx.agentId, {
+          platform: ctx.platform,
+          channelId: ctx.channelId,
+          conversationId: ctx.conversationId,
+          connectionId: ctx.connectionId,
+          skills: ctx.approvedPrefillSkills.value,
+        })
+        .catch(() => {
+          /* non-fatal */
+        });
+      ctx.approvedPrefillSkills.value = [];
+    }
   } catch (e: unknown) {
     ctx.errorMsg.value = e instanceof Error ? e.message : "Failed to save";
     window.scrollTo({ top: 0, behavior: "smooth" });

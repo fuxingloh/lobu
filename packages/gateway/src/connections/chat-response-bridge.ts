@@ -3,8 +3,8 @@
  * Covers gaps 8 (markdown→HTML) and 9 (message chunking).
  */
 
-import { resolve } from "node:path";
 import { unlink } from "node:fs/promises";
+import { resolve } from "node:path";
 import { createLogger } from "@lobu/core";
 import type { ThreadResponsePayload } from "../infrastructure/queue";
 import { extractSettingsLinkButtons } from "../platform/link-buttons";

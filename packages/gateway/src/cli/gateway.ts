@@ -601,6 +601,8 @@ function setupServer(
         settingsOAuthStateStore: settingsOAuthStateStore ?? undefined,
         claimService: claimServiceForSettings,
         platformRegistry,
+        interactionService,
+        queueProducer: coreServices.getQueueProducer(),
       });
       app.route("", settingsPageRouter);
       if (settingsOAuthClient) {

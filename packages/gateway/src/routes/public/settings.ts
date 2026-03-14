@@ -28,6 +28,10 @@ import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
 import { getAuthMethod } from "../../connections/platform-auth-methods";
 import { getModelProviderModules } from "../../modules/module-system";
+import {
+  buildMessagePayload,
+  resolveAgentOptions,
+} from "../../services/platform-helpers";
 import { platformAgentId } from "../../spaces";
 import { verifyAgentAccess } from "./agent-access";
 import {
@@ -139,6 +143,10 @@ export interface SettingsPageConfig {
   claimService: ClaimService;
   /** Platform registry for dispatching notifications */
   platformRegistry?: { get(platform: string): any };
+  /** Interaction service for posting messages back to conversations */
+  interactionService?: import("../../interactions").InteractionService;
+  /** Queue producer for dispatching messages to workers */
+  queueProducer?: import("../../infrastructure/queue/queue-producer").QueueProducer;
 }
 
 type ProviderCapability =
@@ -1054,6 +1062,16 @@ export function createSettingsPageRoutes(
       prefillProviders: c.req.query("providers")
         ? c.req.query("providers")!.split(",").filter(Boolean)
         : undefined,
+      // Thread source conversation context for post-install callbacks
+      sourceContext: c.req.query("conversationId")
+        ? {
+            conversationId: c.req.query("conversationId")!,
+            channelId: channelParam || session.channelId || "",
+            teamId: session.teamId,
+            platform: effectivePlatform,
+          }
+        : undefined,
+      connectionId: c.req.query("connectionId") || undefined,
     };
 
     // Resolve scoped settings mode from connectionId or sandbox's parent connection
@@ -1137,6 +1155,114 @@ export function createSettingsPageRoutes(
     });
 
     return c.json({ success: true });
+  });
+
+  // POST /api/v1/agents/:agentId/install-callback — Notify conversation after skill install
+  app.post("/api/v1/agents/:agentId/install-callback", async (c) => {
+    const agentId = c.req.param("agentId");
+
+    const body = await c.req
+      .json<{
+        platform: string;
+        channelId: string;
+        conversationId: string;
+        connectionId?: string;
+        skills: string[];
+      }>()
+      .catch(() => null);
+
+    if (!body?.conversationId || !body?.channelId || !body?.skills?.length) {
+      return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    if (!config.interactionService) {
+      return c.json({ error: "Interaction service not configured" }, 500);
+    }
+
+    try {
+      // Check integration deps for each installed skill
+      const settings = await config.agentSettingsStore.getSettings(agentId);
+      const installedSkills = settings?.skillsConfig?.skills || [];
+      const missingIntegrations: string[] = [];
+
+      for (const skillName of body.skills) {
+        const skill = installedSkills.find(
+          (s) => s.name === skillName || s.repo === skillName
+        );
+        if (!skill?.integrations) continue;
+
+        for (const ig of skill.integrations) {
+          if (config.integrationCredentialStore && ig.authType !== "api-key") {
+            const accounts =
+              await config.integrationCredentialStore.listAccounts(
+                agentId,
+                ig.id
+              );
+            if (accounts.length === 0) {
+              missingIntegrations.push(ig.label || ig.id);
+            }
+          }
+        }
+      }
+
+      const skillList = body.skills.join(", ");
+
+      if (missingIntegrations.length > 0) {
+        // Missing deps — send a button so the user can connect them
+        if (config.interactionService) {
+          const baseUrl =
+            process.env.PUBLIC_GATEWAY_URL || "http://localhost:8080";
+          const settingsUrl = new URL("/settings", baseUrl);
+          settingsUrl.searchParams.set("agent", agentId);
+
+          const uniqueMissing = [...new Set(missingIntegrations)];
+          const label = `Connect ${uniqueMissing.join(", ")}`;
+
+          await config.interactionService.postLinkButton(
+            "",
+            body.conversationId,
+            body.channelId,
+            undefined,
+            body.connectionId,
+            body.platform,
+            settingsUrl.toString(),
+            label,
+            "settings"
+          );
+        }
+      } else if (config.queueProducer) {
+        // All deps met — trigger the agent to continue
+        const agentOptions = await resolveAgentOptions(
+          agentId,
+          {},
+          config.agentSettingsStore
+        );
+        const messageId = `install-cb-${Date.now()}`;
+        const payload = buildMessagePayload({
+          platform: body.platform,
+          userId: "system",
+          botId: body.platform,
+          conversationId: body.conversationId,
+          teamId: body.platform,
+          agentId,
+          messageId,
+          messageText: `[System: ${skillList} has been installed and is ready to use. Continue with the task.]`,
+          channelId: body.channelId,
+          platformMetadata: {
+            agentId,
+            source: "install-callback",
+            connectionId: body.connectionId,
+          },
+          agentOptions,
+        });
+        await config.queueProducer.enqueueMessage(payload);
+      }
+
+      return c.json({ success: true });
+    } catch (error) {
+      logger.error("Install callback failed", { error, agentId });
+      return c.json({ error: "Failed to send notification" }, 500);
+    }
   });
 
   // GET /settings/logout — Clear session cookie and redirect to root

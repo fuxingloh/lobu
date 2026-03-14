@@ -827,11 +827,6 @@ export async function installSkill(
       prefill.mcpServers = [result.prefillMcpServer];
     }
 
-    // Add missing info to the message for needs_setup
-    if (result.type === "needs_setup" && result.missing?.length) {
-      prefill.message = `Missing dependencies:\n${result.missing.map((m) => `- ${m}`).join("\n")}`;
-    }
-
     return configure(gw, prefill);
   });
 }

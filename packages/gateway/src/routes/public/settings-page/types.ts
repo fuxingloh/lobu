@@ -202,6 +202,9 @@ export interface SettingsState {
   // Skill registries
   globalRegistries: { id: string; type: string; apiUrl: string }[];
   initialRegistries: { id: string; type: string; apiUrl: string }[];
+  // Source conversation context for post-install callbacks
+  conversationId?: string;
+  connectionId?: string;
 }
 
 export interface Connection {

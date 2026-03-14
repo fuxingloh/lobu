@@ -320,7 +320,7 @@ export function createIntegrationsDiscoveryRoutes(
       // Determine source by searching for the skill ID
       let source = "clawhub";
       try {
-        const searchResults = await coordinator.search(id, 1, extraRegistries);
+        const searchResults = await coordinator.search(id, 5, extraRegistries);
         const exactMatch = searchResults.find((r) => r.id === id);
         if (exactMatch) {
           source = exactMatch.source;
