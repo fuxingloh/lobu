@@ -7,7 +7,6 @@ import {
   askUserQuestion,
   callService,
   cancelReminder,
-  configure,
   connectService,
   disconnectService,
   generateAudio,
@@ -156,113 +155,19 @@ export function createOpenClawCustomTools(params: {
     defineTool({
       name: "InstallSkill",
       description:
-        "Install or upgrade a skill from SearchSkills (pass id), or define an inline skill with its provider/MCP dependencies (pass reason + config). Skills bundle capabilities — use ConnectService to connect individual providers or MCPs.",
+        "Install or upgrade a skill or MCP server. Pass the id from SearchSkills results.",
       parameters: Type.Object({
-        id: Type.Optional(
-          Type.String({
-            description:
-              "Skill or MCP server ID from SearchSkills results (for install/upgrade flow)",
-          })
-        ),
+        id: Type.String({
+          description: "Skill or MCP server ID from SearchSkills results",
+        }),
         upgrade: Type.Optional(
           Type.Boolean({
             description:
               "Set to true to upgrade an already-installed skill to the latest version",
           })
         ),
-        reason: Type.Optional(
-          Type.String({
-            description:
-              "Brief explanation of what the user should approve/configure (required when id is not provided)",
-          })
-        ),
-        message: Type.Optional(
-          Type.String({
-            description:
-              "Optional message to display on the settings page with instructions",
-          })
-        ),
-        providers: Type.Optional(
-          Type.Array(Type.String(), {
-            description:
-              "Provider IDs this skill depends on (e.g., 'openai', 'claude')",
-          })
-        ),
-        skills: Type.Optional(
-          Type.Array(
-            Type.Object({
-              repo: Type.String({
-                description: "Skill repository (e.g., 'anthropics/skills/pdf')",
-              }),
-              name: Type.Optional(
-                Type.String({ description: "Display name for the skill" })
-              ),
-              description: Type.Optional(
-                Type.String({
-                  description: "Brief description of what the skill does",
-                })
-              ),
-            }),
-            { description: "Inline skill definitions to add in settings" }
-          )
-        ),
-        mcpServers: Type.Optional(
-          Type.Array(
-            Type.Object({
-              id: Type.String({
-                description: "Unique identifier for the MCP server",
-              }),
-              name: Type.Optional(
-                Type.String({
-                  description: "Display name for the MCP server",
-                })
-              ),
-              url: Type.Optional(
-                Type.String({ description: "Server URL for SSE-type MCPs" })
-              ),
-              type: Type.Optional(
-                Type.Union([Type.Literal("sse"), Type.Literal("stdio")], {
-                  description: "Server type",
-                })
-              ),
-              command: Type.Optional(
-                Type.String({
-                  description: "Command to run for stdio-type MCPs",
-                })
-              ),
-              args: Type.Optional(
-                Type.Array(Type.String(), {
-                  description: "Arguments for stdio-type MCPs",
-                })
-              ),
-            }),
-            { description: "MCP servers this skill depends on" }
-          )
-        ),
       }),
-      run: (args) => {
-        const id = args.id?.trim();
-        if (id) {
-          return installSkill(gw, { id, upgrade: args.upgrade });
-        }
-        if (!args.reason?.trim()) {
-          return Promise.resolve({
-            content: [
-              {
-                type: "text" as const,
-                text: "Error: InstallSkill requires either an id (to install/upgrade from registry) or a reason (for inline skill setup).",
-              },
-            ],
-          });
-        }
-        return configure(gw, {
-          reason: args.reason!,
-          message: args.message,
-          providers: args.providers,
-          skills: args.skills,
-          mcpServers: args.mcpServers,
-        });
-      },
+      run: (args) => installSkill(gw, args),
     }),
 
     defineTool({

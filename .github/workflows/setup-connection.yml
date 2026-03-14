@@ -24,11 +24,10 @@ jobs:
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           GATEWAY_URL: https://community.lobu.ai
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          # Read bot token from k8s secret
-          BOT_TOKEN=$(kubectl get secret lobu-secrets -n lobu -o jsonpath='{.data.telegram-bot-token}' | base64 -d)
           if [ -z "$BOT_TOKEN" ]; then
-            echo "No telegram-bot-token found in lobu-secrets"
+            echo "TELEGRAM_BOT_TOKEN secret not set"
             exit 1
           fi
           echo "Got bot token (${#BOT_TOKEN} chars)"
