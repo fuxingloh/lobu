@@ -1,16 +1,5 @@
 import { z } from "zod";
 
-// Agent section — identity lives in IDENTITY.md, SOUL.md, USER.md files
-const agentSchema = z.object({
-  name: z
-    .string()
-    .regex(
-      /^[a-z0-9][a-z0-9-]*$/,
-      "Agent name must be lowercase alphanumeric with hyphens, starting with alphanumeric"
-    ),
-  description: z.string().optional(),
-});
-
 // Provider entry
 const providerSchema = z.object({
   id: z.string(),
@@ -40,16 +29,17 @@ const networkSchema = z.object({
 // Worker section
 const workerSchema = z.object({
   nix_packages: z.array(z.string()).optional(),
-  timeout_minutes: z.number().positive().optional(),
 });
 
 // Platforms section — accept any platform name with any config object.
 // Field-level validation happens at the gateway when connections are created.
 const platformsSchema = z.record(z.string(), z.record(z.unknown()));
 
-// Full lobu.toml schema
-export const lobuConfigSchema = z.object({
-  agent: agentSchema,
+// Each [agents.{id}] table
+const agentEntrySchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  dir: z.string(), // path to agent content directory (IDENTITY.md, SOUL.md, USER.md, skills/)
   providers: z.array(providerSchema).default([]),
   skills: skillsSchema.default({ enabled: [] }),
   network: networkSchema.optional(),
@@ -57,7 +47,13 @@ export const lobuConfigSchema = z.object({
   platforms: platformsSchema.optional(),
 });
 
+// Full lobu.toml schema
+export const lobuConfigSchema = z.object({
+  agents: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), agentEntrySchema),
+});
+
 export type LobuTomlConfig = z.infer<typeof lobuConfigSchema>;
+export type AgentEntry = z.infer<typeof agentEntrySchema>;
 
 export type ProviderEntry = z.infer<typeof providerSchema>;
 export type McpServerEntry = z.infer<typeof mcpServerSchema>;

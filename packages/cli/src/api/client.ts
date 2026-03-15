@@ -1,10 +1,5 @@
+import { resolveContext } from "./context.js";
 import { getToken } from "./credentials.js";
-
-const DEFAULT_API_URL = "https://community.lobu.ai/api/v1";
-
-function getApiUrl(): string {
-  return process.env.LOBU_API_URL ?? DEFAULT_API_URL;
-}
 
 export interface ApiResponse<T = unknown> {
   ok: boolean;
@@ -21,7 +16,8 @@ export async function apiRequest<T = unknown>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   const token = await getToken();
-  const url = `${getApiUrl()}${path}`;
+  const context = await resolveContext();
+  const url = `${context.apiUrl}${path}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

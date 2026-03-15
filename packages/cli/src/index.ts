@@ -5,12 +5,6 @@ import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import { Command } from "commander";
 
-// Re-exports for backward compatibility
-export { initCommand } from "./commands/init.js";
-export * from "./types.js";
-export { checkConfigExists } from "./utils/config.js";
-export { renderTemplate } from "./utils/template.js";
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function getPackageVersion(): Promise<string> {
@@ -48,6 +42,22 @@ export async function runCli(
         process.exit(1);
       }
     });
+
+  // ─── chat ──────────────────────────────────────────────────────────
+  program
+    .command("chat <prompt>")
+    .description("Send a prompt to an agent and stream the response")
+    .option("-a, --agent <id>", "Agent ID (defaults to first in lobu.toml)")
+    .option(
+      "-g, --gateway <url>",
+      "Gateway URL (default: http://localhost:8080)"
+    )
+    .action(
+      async (prompt: string, options: { agent?: string; gateway?: string }) => {
+        const { chatCommand } = await import("./commands/chat.js");
+        await chatCommand(process.cwd(), prompt, options);
+      }
+    );
 
   // ─── validate ───────────────────────────────────────────────────────
   program
@@ -91,27 +101,78 @@ export async function runCli(
     .command("login")
     .description("Authenticate with Lobu Cloud")
     .option("--token <token>", "Use API token directly (CI/CD)")
-    .action(async (options: { token?: string }) => {
-      const { loginCommand } = await import("./commands/login.js");
-      await loginCommand(options);
-    });
+    .option(
+      "--admin-password",
+      "Use the development-only admin password fallback"
+    )
+    .option("-c, --context <name>", "Use a named context")
+    .action(
+      async (options: {
+        token?: string;
+        adminPassword?: boolean;
+        context?: string;
+      }) => {
+        const { loginCommand } = await import("./commands/login.js");
+        await loginCommand(options);
+      }
+    );
 
   // ─── logout ─────────────────────────────────────────────────────────
   program
     .command("logout")
     .description("Clear stored credentials")
-    .action(async () => {
+    .option("-c, --context <name>", "Use a named context")
+    .action(async (options: { context?: string }) => {
       const { logoutCommand } = await import("./commands/logout.js");
-      await logoutCommand();
+      await logoutCommand(options);
     });
 
   // ─── whoami ─────────────────────────────────────────────────────────
   program
     .command("whoami")
     .description("Show current user and linked agent")
-    .action(async () => {
+    .option("-c, --context <name>", "Use a named context")
+    .action(async (options: { context?: string }) => {
       const { whoamiCommand } = await import("./commands/whoami.js");
-      await whoamiCommand();
+      await whoamiCommand(options);
+    });
+
+  // ─── context ────────────────────────────────────────────────────────
+  const context = program
+    .command("context")
+    .description("Manage Lobu API contexts");
+
+  context
+    .command("list")
+    .description("List configured contexts")
+    .action(async () => {
+      const { contextListCommand } = await import("./commands/context.js");
+      await contextListCommand();
+    });
+
+  context
+    .command("current")
+    .description("Show the active context")
+    .action(async () => {
+      const { contextCurrentCommand } = await import("./commands/context.js");
+      await contextCurrentCommand();
+    });
+
+  context
+    .command("add <name>")
+    .description("Add a named context")
+    .requiredOption("--api-url <url>", "API base URL for this context")
+    .action(async (name: string, options: { apiUrl: string }) => {
+      const { contextAddCommand } = await import("./commands/context.js");
+      await contextAddCommand({ name, apiUrl: options.apiUrl });
+    });
+
+  context
+    .command("use <name>")
+    .description("Set the active context")
+    .action(async (name: string) => {
+      const { contextUseCommand } = await import("./commands/context.js");
+      await contextUseCommand(name);
     });
 
   // ─── status ─────────────────────────────────────────────────────────

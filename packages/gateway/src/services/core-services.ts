@@ -49,6 +49,7 @@ import {
 import { GrantStore } from "../permissions/grant-store";
 import { SecretProxy } from "../proxy/secret-proxy";
 import { TokenRefreshJob } from "../proxy/token-refresh-job";
+import { seedAgentsFromManifest } from "./agent-seeder";
 import { ImageGenerationService } from "./image-generation-service";
 import { InstructionService } from "./instruction-service";
 import { RedisSessionStore, SessionManager } from "./session-manager";
@@ -316,6 +317,12 @@ export class CoreServices {
     this.adminStatusCache = new AdminStatusCache(redisClient);
     logger.info(
       "✅ Agent settings, channel binding, user agents & metadata stores initialized"
+    );
+
+    // Seed agents from .lobu/agents.json manifest (CLI-managed projects)
+    await seedAgentsFromManifest(
+      this.agentSettingsStore,
+      this.agentMetadataStore
     );
 
     // Initialize claim service (always available, used by OAuth settings flow)

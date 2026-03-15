@@ -1,17 +1,14 @@
 import chalk from "chalk";
+import inquirer from "inquirer";
 import open from "open";
+import ora from "ora";
+import { resolveContext } from "../api/context.js";
 import { loadCredentials, saveCredentials } from "../api/credentials.js";
-
-const LOGIN_URL = "https://community.lobu.ai/cli/login";
-const DEFAULT_API_URL = "https://community.lobu.ai/api/v1";
-
-function apiUrl(path: string): string {
-  const baseUrl = process.env.LOBU_API_URL ?? DEFAULT_API_URL;
-  return `${baseUrl}${path}`;
-}
 
 function extractIdentity(payload: unknown): {
   email?: string;
+  name?: string;
+  userId?: string;
   agentId?: string;
 } {
   if (!payload || typeof payload !== "object") return {};
@@ -28,6 +25,20 @@ function extractIdentity(payload: unknown): {
       : typeof user?.email === "string"
         ? user.email
         : undefined;
+  const name =
+    typeof record.name === "string"
+      ? record.name
+      : typeof user?.name === "string"
+        ? user.name
+        : undefined;
+  const userId =
+    typeof record.userId === "string"
+      ? record.userId
+      : typeof record.id === "string"
+        ? record.id
+        : typeof user?.id === "string"
+          ? user.id
+          : undefined;
 
   const agentId =
     typeof record.agentId === "string"
@@ -36,13 +47,20 @@ function extractIdentity(payload: unknown): {
         ? record.agent_id
         : undefined;
 
-  return { email, agentId };
+  return { email, name, userId, agentId };
 }
 
 async function validateToken(
-  token: string
+  token: string,
+  apiBaseUrl: string
 ): Promise<
-  | { status: "valid"; email?: string; agentId?: string }
+  | {
+      status: "valid";
+      email?: string;
+      name?: string;
+      userId?: string;
+      agentId?: string;
+    }
   | { status: "invalid"; error: string }
   | { status: "unverified"; warning: string }
 > {
@@ -50,7 +68,7 @@ async function validateToken(
 
   for (const endpoint of endpoints) {
     try {
-      const response = await fetch(apiUrl(endpoint), {
+      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -88,7 +106,20 @@ async function validateToken(
   };
 }
 
-export async function loginCommand(options: { token?: string }): Promise<void> {
+export async function loginCommand(options: {
+  token?: string;
+  adminPassword?: boolean;
+  context?: string;
+}): Promise<void> {
+  const target = await resolveContext(options.context);
+
+  if (options.token && options.adminPassword) {
+    console.log(
+      chalk.red("\n  Use either `--token` or `--admin-password`, not both.\n")
+    );
+    return;
+  }
+
   if (options.token) {
     const token = options.token.trim();
     if (!token) {
@@ -96,55 +127,315 @@ export async function loginCommand(options: { token?: string }): Promise<void> {
       return;
     }
 
-    const existing = await loadCredentials();
+    const existing = await loadCredentials(target.name);
     if (existing) {
       console.log(
-        chalk.dim(`\n  Already logged in as ${existing.email ?? "user"}.`)
+        chalk.dim(
+          `\n  Already logged in to ${target.name} as ${existing.email ?? "user"}.`
+        )
       );
       console.log(chalk.dim("  Run `lobu logout` first to switch accounts.\n"));
       return;
     }
 
-    const validation = await validateToken(token);
+    const validation = await validateToken(token, target.apiUrl);
     if (validation.status === "invalid") {
       console.log(chalk.red(`\n  ${validation.error}`));
       console.log(chalk.dim("  Check LOBU_API_URL or generate a new token.\n"));
       return;
     }
 
-    await saveCredentials({
-      token,
-      email: validation.status === "valid" ? validation.email : undefined,
-      agentId: validation.status === "valid" ? validation.agentId : undefined,
-    });
+    await saveCredentials(
+      {
+        accessToken: token,
+        email: validation.status === "valid" ? validation.email : undefined,
+        name: validation.status === "valid" ? validation.name : undefined,
+        userId: validation.status === "valid" ? validation.userId : undefined,
+        agentId: validation.status === "valid" ? validation.agentId : undefined,
+      },
+      target.name
+    );
 
     if (validation.status === "valid") {
-      console.log(chalk.green("\n  Logged in with API token.\n"));
+      console.log(
+        chalk.green(`\n  Logged in to ${target.name} with API token.\n`)
+      );
     } else {
       console.log(chalk.yellow(`\n  ${validation.warning}`));
-      console.log(chalk.green("  Logged in with API token.\n"));
+      console.log(
+        chalk.green(`  Logged in to ${target.name} with API token.\n`)
+      );
     }
     return;
   }
 
-  const existing = await loadCredentials();
+  if (options.adminPassword) {
+    const existing = await loadCredentials(target.name);
+    if (existing) {
+      console.log(
+        chalk.dim(
+          `\n  Already logged in to ${target.name} as ${existing.email ?? existing.name ?? "user"}.`
+        )
+      );
+      console.log(chalk.dim("  Run `lobu logout` first to switch accounts.\n"));
+      return;
+    }
+
+    const answers = await inquirer.prompt([
+      {
+        type: "password",
+        name: "password",
+        message: `Admin password for ${target.name}:`,
+        mask: "*",
+      },
+    ]);
+    const password =
+      answers && typeof answers.password === "string"
+        ? answers.password.trim()
+        : "";
+
+    if (!password) {
+      console.log(chalk.red("\n  Password cannot be empty.\n"));
+      return;
+    }
+
+    const response = await fetch(`${target.apiUrl}/auth/cli/admin-login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Lobu-Org": "default",
+      },
+      body: JSON.stringify({ password }),
+    }).catch(() => null);
+
+    if (!response) {
+      console.log(chalk.red("  Failed to reach the Lobu API.\n"));
+      return;
+    }
+
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: number;
+      user?: {
+        userId?: string;
+        email?: string;
+        name?: string;
+      };
+    };
+
+    if (!response.ok || !body.accessToken || !body.refreshToken) {
+      const error =
+        body && typeof body.error === "string"
+          ? body.error
+          : "Admin password login failed.";
+      console.log(chalk.red(`\n  ${error}\n`));
+      return;
+    }
+
+    await saveCredentials(
+      {
+        accessToken: body.accessToken,
+        refreshToken: body.refreshToken,
+        expiresAt: body.expiresAt,
+        userId: body.user?.userId,
+        email: body.user?.email,
+        name: body.user?.name,
+      },
+      target.name
+    );
+
+    console.log(
+      chalk.yellow(
+        `\n  Logged in to ${target.name} using the development admin password fallback.\n`
+      )
+    );
+    return;
+  }
+
+  const existing = await loadCredentials(target.name);
   if (existing) {
     console.log(
-      chalk.dim(`\n  Already logged in as ${existing.email ?? "user"}.`)
+      chalk.dim(
+        `\n  Already logged in to ${target.name} as ${existing.email ?? "user"}.`
+      )
     );
     console.log(chalk.dim("  Run `lobu logout` first to switch accounts.\n"));
     return;
   }
 
   console.log(chalk.bold.cyan("\n  Lobu Cloud is in early access.\n"));
-  console.log(chalk.dim("  Opening browser to request access...\n"));
+  console.log(chalk.dim(`  Context: ${target.name}`));
+  console.log(chalk.dim(`  API URL: ${target.apiUrl}`));
 
-  try {
-    await open(LOGIN_URL);
-    console.log(chalk.dim(`  If the browser didn't open, visit:`));
-    console.log(chalk.cyan(`  ${LOGIN_URL}\n`));
-  } catch {
-    console.log(chalk.dim(`  Open this URL in your browser:`));
-    console.log(chalk.cyan(`  ${LOGIN_URL}\n`));
+  const startResponse = await fetch(`${target.apiUrl}/auth/cli/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Lobu-Org": "default",
+    },
+  }).catch(() => null);
+
+  if (!startResponse) {
+    console.log(chalk.red("  Failed to reach the Lobu API.\n"));
+    return;
   }
+
+  if (!startResponse.ok) {
+    const body = await startResponse
+      .json()
+      .catch(() => ({ error: "CLI login is unavailable." }));
+    const error =
+      body && typeof body === "object" && "error" in body
+        ? String(body.error)
+        : "CLI login is unavailable.";
+    console.log(chalk.red(`  ${error}\n`));
+    return;
+  }
+
+  const startBody = (await startResponse.json()) as {
+    mode: "browser" | "device";
+    requestId?: string;
+    loginUrl?: string;
+    pollIntervalMs?: number;
+    deviceAuthId?: string;
+    userCode?: string;
+    verificationUri?: string;
+    verificationUriComplete?: string;
+    interval?: number;
+    expiresAt?: number;
+  };
+
+  let spinnerMessage = "Waiting for login...";
+  let pollBodyInput: { requestId?: string; deviceAuthId?: string };
+  let pollIntervalMs = 2000;
+
+  if (startBody.mode === "device" && startBody.deviceAuthId) {
+    const verificationUrl =
+      startBody.verificationUriComplete || startBody.verificationUri;
+    console.log(chalk.dim("\n  Device login required."));
+    if (startBody.userCode) {
+      console.log(chalk.dim(`  Code: ${chalk.bold.white(startBody.userCode)}`));
+    }
+    if (verificationUrl) {
+      console.log(chalk.dim("  Visit:"));
+      console.log(chalk.cyan(`  ${verificationUrl}`));
+    }
+    if (
+      startBody.verificationUri &&
+      verificationUrl !== startBody.verificationUri
+    ) {
+      console.log(chalk.dim("  Alternate URL:"));
+      console.log(chalk.cyan(`  ${startBody.verificationUri}`));
+    }
+    console.log();
+
+    if (verificationUrl) {
+      try {
+        await open(verificationUrl);
+      } catch {
+        // Printed above.
+      }
+    }
+
+    spinnerMessage = "Waiting for device authorization...";
+    pollBodyInput = { deviceAuthId: startBody.deviceAuthId };
+    pollIntervalMs = Math.max((startBody.interval ?? 5) * 1000, 1000);
+  } else if (
+    startBody.mode === "browser" &&
+    startBody.requestId &&
+    startBody.loginUrl
+  ) {
+    console.log(chalk.dim("  Opening browser to authenticate...\n"));
+
+    try {
+      await open(startBody.loginUrl);
+      console.log(chalk.dim(`  If the browser didn't open, visit:`));
+      console.log(chalk.cyan(`  ${startBody.loginUrl}\n`));
+    } catch {
+      console.log(chalk.dim(`  Open this URL in your browser:`));
+      console.log(chalk.cyan(`  ${startBody.loginUrl}\n`));
+    }
+
+    spinnerMessage = "Waiting for browser login...";
+    pollBodyInput = { requestId: startBody.requestId };
+    pollIntervalMs = Math.max(startBody.pollIntervalMs ?? 2000, 1000);
+  } else {
+    console.log(chalk.red("  CLI login is unavailable.\n"));
+    return;
+  }
+
+  const spinner = ora(spinnerMessage).start();
+  const deadline = startBody.expiresAt ?? Date.now() + 10 * 60 * 1000;
+
+  while (Date.now() < deadline) {
+    await delay(pollIntervalMs);
+
+    const pollResponse = await fetch(`${target.apiUrl}/auth/cli/poll`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Lobu-Org": "default",
+      },
+      body: JSON.stringify(pollBodyInput),
+    }).catch(() => null);
+
+    if (!pollResponse) {
+      spinner.fail("Lost connection to the Lobu API.");
+      console.log();
+      return;
+    }
+
+    const pollBody = (await pollResponse.json().catch(() => ({}))) as {
+      status?: string;
+      error?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: number;
+      user?: {
+        userId?: string;
+        email?: string;
+        name?: string;
+      };
+    };
+
+    if (pollBody.status === "pending") {
+      continue;
+    }
+
+    if (pollBody.status === "error") {
+      spinner.fail(pollBody.error || "Authentication failed.");
+      console.log();
+      return;
+    }
+
+    if (
+      pollBody.status === "complete" &&
+      pollBody.accessToken &&
+      pollBody.refreshToken
+    ) {
+      await saveCredentials(
+        {
+          accessToken: pollBody.accessToken,
+          refreshToken: pollBody.refreshToken,
+          expiresAt: pollBody.expiresAt,
+          userId: pollBody.user?.userId,
+          email: pollBody.user?.email,
+          name: pollBody.user?.name,
+        },
+        target.name
+      );
+      spinner.succeed(`Authenticated with Lobu Cloud (${target.name}).`);
+      console.log();
+      return;
+    }
+  }
+
+  spinner.fail("Login request expired. Run `lobu login` again.");
+  console.log();
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

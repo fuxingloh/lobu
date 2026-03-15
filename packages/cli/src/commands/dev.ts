@@ -1,21 +1,24 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import chalk from "chalk";
 import ora from "ora";
-import { isLoadError, loadConfig } from "../config/loader.js";
-import { transformConfig } from "../config/transformer.js";
+import { loadSkillsRegistry } from "../commands/skills/registry.js";
+import type {
+  AgentManifestEntry,
+  AgentsManifest,
+} from "../config/agents-manifest.js";
+import {
+  isLoadError,
+  loadAgentMarkdown,
+  loadConfig,
+  loadSkillFiles,
+} from "../config/loader.js";
+import type { AgentEntry } from "../config/schema.js";
 
 /**
  * `lobu dev` — smart wrapper around `docker compose up`.
- * Reads lobu.toml, seeds .env + MCP config, then passes all args through.
- *
- * Examples:
- *   lobu dev                    → docker compose up
- *   lobu dev -d                 → docker compose up -d
- *   lobu dev --build            → docker compose up --build
- *   lobu dev -d --build         → docker compose up -d --build
- *   lobu dev --force-recreate   → docker compose up --force-recreate
+ * Reads lobu.toml, seeds .env + agents manifest, then passes all args through.
  */
 export async function devCommand(
   cwd: string,
@@ -38,7 +41,15 @@ export async function devCommand(
   const spinner = ora("Preparing local dev environment...").start();
 
   try {
-    const { envVars, mcpConfig } = transformConfig(config);
+    const lobuDir = join(cwd, ".lobu");
+    await mkdir(lobuDir, { recursive: true });
+
+    const { manifest, envVars } = await buildManifest(cwd, config.agents);
+
+    await writeFile(
+      join(lobuDir, "agents.json"),
+      JSON.stringify(manifest, null, 2)
+    );
 
     // Write .env from lobu.toml-derived vars (merge with existing .env to preserve secrets)
     const envPath = join(cwd, ".env");
@@ -49,27 +60,11 @@ export async function devCommand(
       // No existing .env, start fresh
     }
 
-    const existingVars = parseEnvFile(existingEnv);
-    // Keep unknown existing vars (secrets) but let lobu.toml-derived managed vars win.
-    const mergedVars = { ...existingVars, ...envVars };
-
+    const mergedVars = { ...parseEnvFile(existingEnv), ...envVars };
     const envContent = Object.entries(mergedVars)
       .map(([k, v]) => `${k}=${v}`)
       .join("\n");
     await writeFile(envPath, `${envContent}\n`);
-
-    // Write MCP config if needed
-    if (mcpConfig) {
-      const lobuDir = join(cwd, ".lobu");
-      await mkdir(lobuDir, { recursive: true });
-      await writeFile(
-        join(lobuDir, "mcp.config.json"),
-        JSON.stringify({ mcpServers: mcpConfig }, null, 2)
-      );
-    }
-
-    // Load IDENTITY.md, SOUL.md, USER.md if they exist
-    await seedMarkdownFiles(cwd, mergedVars);
 
     spinner.succeed("Environment prepared from lobu.toml");
 
@@ -86,10 +81,10 @@ export async function devCommand(
       process.exit(1);
     }
 
-    // Pass everything through to docker compose up
-    console.log(chalk.cyan(`\n  Starting ${config.agent.name}...\n`));
-    const composeArgs = ["compose", "up", ...passthroughArgs];
-    const child = spawn("docker", composeArgs, {
+    console.log(
+      chalk.cyan(`\n  Starting ${manifest.agents.length} agent(s)...\n`)
+    );
+    const child = spawn("docker", ["compose", "up", ...passthroughArgs], {
       cwd,
       stdio: "inherit",
     });
@@ -115,29 +110,116 @@ export async function devCommand(
 }
 
 /**
- * Read IDENTITY.md, SOUL.md, USER.md and add their content as env vars
- * so the gateway can seed agent settings on startup.
+ * Build agents manifest and merged env vars from [agents.*] config.
  */
-async function seedMarkdownFiles(
+async function buildManifest(
   cwd: string,
-  envVars: Record<string, string>
-): Promise<void> {
-  const files = [
-    { path: "IDENTITY.md", envKey: "AGENT_IDENTITY_MD" },
-    { path: "SOUL.md", envKey: "AGENT_SOUL_MD" },
-    { path: "USER.md", envKey: "AGENT_USER_MD" },
-  ];
+  agents: Record<string, AgentEntry>
+): Promise<{ manifest: AgentsManifest; envVars: Record<string, string> }> {
+  const entries: AgentManifestEntry[] = [];
+  const rootSkillsDir = join(cwd, "skills");
+  const registrySkills = new Map(
+    loadSkillsRegistry().map((skill) => [skill.id, skill])
+  );
 
-  for (const { path, envKey } of files) {
-    try {
-      const content = await readFile(join(cwd, path), "utf-8");
-      if (content.trim()) {
-        envVars[envKey] = content.trim();
+  for (const [agentId, agentConfig] of Object.entries(agents)) {
+    const agentDir = resolve(cwd, agentConfig.dir);
+    const markdown = await loadAgentMarkdown(agentDir);
+    const skillFiles = await loadSkillFiles([
+      rootSkillsDir,
+      join(agentDir, "skills"),
+    ]);
+    const systemSkills = agentConfig.skills.enabled
+      .map((skillId) => registrySkills.get(skillId))
+      .filter((skill): skill is NonNullable<typeof skill> => !!skill)
+      .map((skill) => ({
+        repo: `system/${skill.id}`,
+        name: skill.name,
+        description: skill.description,
+        enabled: true,
+        system: true,
+        content: "",
+        integrations: skill.integrations?.map((integration) => ({
+          id: integration.id,
+          label: integration.label,
+          authType: integration.authType,
+          scopesConfig: integration.scopesConfig,
+          apiDomains: integration.apiDomains,
+        })),
+        mcpServers: skill.mcpServers?.map((mcp) => ({
+          id: mcp.id,
+          name: mcp.name,
+          url: mcp.url,
+          type: mcp.type,
+          command: mcp.command,
+          args: mcp.args,
+        })),
+        nixPackages: skill.nixPackages,
+        permissions: skill.permissions,
+        providers: skill.providers?.length ? [skill.id] : undefined,
+      }));
+    const localSkills = skillFiles.map((skillFile) => ({
+      repo: `local/${skillFile.name}`,
+      name: skillFile.name,
+      content: skillFile.content,
+      enabled: true,
+    }));
+
+    const entry: AgentManifestEntry = {
+      agentId,
+      name: agentConfig.name,
+      description: agentConfig.description,
+      settings: { ...markdown },
+    };
+
+    if (agentConfig.providers.length > 0) {
+      entry.settings.installedProviders = agentConfig.providers.map((p) => ({
+        providerId: p.id,
+      }));
+      entry.settings.modelSelection = { mode: "auto" };
+      const providerModelPreferences = Object.fromEntries(
+        agentConfig.providers
+          .filter((provider) => !!provider.model?.trim())
+          .map((provider) => [provider.id, provider.model!.trim()])
+      );
+      if (Object.keys(providerModelPreferences).length > 0) {
+        entry.settings.providerModelPreferences = providerModelPreferences;
       }
-    } catch {
-      // File doesn't exist, skip
     }
+
+    if (systemSkills.length > 0 || localSkills.length > 0) {
+      entry.settings.skillsConfig = {
+        skills: [...systemSkills, ...localSkills],
+      };
+    }
+
+    if (agentConfig.network) {
+      entry.settings.networkConfig = {
+        allowedDomains: agentConfig.network.allowed,
+        deniedDomains: agentConfig.network.denied,
+      };
+    }
+
+    if (agentConfig.worker?.nix_packages?.length) {
+      entry.settings.nixConfig = {
+        packages: agentConfig.worker.nix_packages,
+      };
+    }
+
+    if (agentConfig.skills.mcp) {
+      entry.settings.mcpServers = agentConfig.skills.mcp;
+    }
+
+    entries.push(entry);
   }
+
+  const envVars: Record<string, string> = {
+    COMPOSE_PROJECT_NAME: entries[0]?.name
+      ? entries[0].name.toLowerCase().replace(/\s+/g, "-")
+      : basename(cwd),
+  };
+
+  return { manifest: { version: 1, agents: entries }, envVars };
 }
 
 function parseEnvFile(content: string): Record<string, string> {
@@ -147,9 +229,7 @@ function parseEnvFile(content: string): Record<string, string> {
     if (!trimmed || trimmed.startsWith("#")) continue;
     const eqIdx = trimmed.indexOf("=");
     if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx);
-    const value = trimmed.slice(eqIdx + 1);
-    vars[key] = value;
+    vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
   }
   return vars;
 }

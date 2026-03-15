@@ -20,7 +20,11 @@ export interface RegistrySkill {
     name?: string;
     url?: string;
     type?: string;
+    command?: string;
+    args?: string[];
   }>;
+  nixPackages?: string[];
+  permissions?: string[];
   providers?: Array<{
     displayName: string;
     envVarName: string;

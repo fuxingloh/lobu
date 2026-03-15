@@ -272,6 +272,11 @@ function setupServer(
     logger.info("Messaging routes enabled at :8080/api/v1/messaging/send");
   }
 
+  // Compute adminPassword once — used by both Agent API and CLI auth
+  const crypto = require("node:crypto");
+  const adminPassword: string =
+    process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString("base64url");
+
   // Agent API routes (direct API access)
   if (coreServices) {
     const queueProducer = coreServices.getQueueProducer();
@@ -280,9 +285,18 @@ function setupServer(
     const publicUrl = coreServices.getPublicGatewayUrl();
 
     if (queueProducer && sessionMgr && interactionSvc) {
-      // Agent API (Hono with OpenAPI docs)
+      const { CliTokenService } = require("../auth/cli/token-service");
+      const redisClient = coreServices.getQueue().getRedisClient();
+      const cliTokenService = new CliTokenService(redisClient);
+
       const { createAgentApi } = require("../routes/public/agent");
-      const agentApi = createAgentApi(queueProducer, sessionMgr, publicUrl);
+      const agentApi = createAgentApi({
+        queueProducer,
+        sessionManager: sessionMgr,
+        publicGatewayUrl: publicUrl,
+        adminPassword,
+        cliTokenService,
+      });
       app.route("", agentApi);
       logger.info(
         "Agent API enabled at :8080/api/v1/agents/* with docs at :8080/api/docs"
@@ -294,6 +308,18 @@ function setupServer(
     // Mount OAuth modules under unified auth router
     const authRouter = new OpenAPIHono();
     const registeredProviders: string[] = [];
+
+    {
+      const { createCliAuthRoutes } = require("../routes/public/cli-auth");
+      const cliAuthRouter = createCliAuthRoutes({
+        queue: coreServices.getQueue(),
+        externalAuthClient: coreServices.getSettingsOAuthClient(),
+        allowAdminPasswordLogin: process.env.NODE_ENV !== "production",
+        adminPassword,
+      });
+      authRouter.route("", cliAuthRouter);
+      registeredProviders.push("cli-auth");
+    }
 
     // Dynamically mount model provider auth routes
     const providerModules = getModelProviderModules();
@@ -629,10 +655,6 @@ function setupServer(
         });
         setEnvResolver((key: string) => systemEnvStore.resolve(key));
 
-        const crypto = require("node:crypto");
-        const adminPassword =
-          process.env.ADMIN_PASSWORD ||
-          crypto.randomBytes(16).toString("base64url");
         if (!process.env.ADMIN_PASSWORD) {
           logger.info("═══════════════════════════════════════════════");
           logger.info(`Admin password (auto-generated): ${adminPassword}`);

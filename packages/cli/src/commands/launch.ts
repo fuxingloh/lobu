@@ -6,7 +6,6 @@ export async function launchCommand(
   cwd: string,
   options: { dryRun?: boolean; env?: string; message?: string }
 ): Promise<void> {
-  // Validate first
   const valid = await validateCommand(cwd);
   if (!valid) {
     process.exit(1);
@@ -17,19 +16,8 @@ export async function launchCommand(
     process.exit(1);
   }
 
-  const { config } = result;
-
-  const skillCount = config.skills.enabled.length;
-  const mcpCount = config.skills.mcp
-    ? Object.keys(config.skills.mcp).length
-    : 0;
-  const totalSkills = skillCount + mcpCount;
-
-  console.log(
-    chalk.dim(
-      `  Agent: ${config.agent.name} (${config.providers.length} providers, ${totalSkills} skills)`
-    )
-  );
+  const agentCount = Object.keys(result.config.agents).length;
+  console.log(chalk.dim(`  ${agentCount} agent(s) configured`));
 
   if (options.dryRun) {
     console.log(chalk.dim("\n  Dry run — no changes applied.\n"));

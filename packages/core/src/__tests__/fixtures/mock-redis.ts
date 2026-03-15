@@ -73,6 +73,17 @@ export class MockRedisClient {
     this.store.set(key, { value, ttl });
   }
 
+  async incr(key: string): Promise<number> {
+    const current = await this.get(key);
+    const nextValue = (current ? Number.parseInt(current, 10) : 0) + 1;
+    const entry = this.store.get(key);
+    this.store.set(key, {
+      value: String(nextValue),
+      ttl: entry?.ttl,
+    });
+    return nextValue;
+  }
+
   async del(...keys: string[]): Promise<number> {
     let deleted = 0;
     for (const key of keys) {
@@ -101,6 +112,17 @@ export class MockRedisClient {
       return 1;
     }
     return 0;
+  }
+
+  async ttl(key: string): Promise<number> {
+    const entry = this.store.get(key);
+    if (!entry) return -2;
+    if (!entry.ttl) return -1;
+    if (entry.ttl < this.currentTime) {
+      this.store.delete(key);
+      return -2;
+    }
+    return Math.max(0, Math.ceil((entry.ttl - this.currentTime) / 1000));
   }
 
   // --- Set operations ---

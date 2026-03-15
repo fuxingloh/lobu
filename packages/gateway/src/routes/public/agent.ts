@@ -1,4 +1,4 @@
-import crypto, { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import {
   createLogger,
@@ -7,11 +7,11 @@ import {
   type McpServerConfig,
   type NetworkConfig,
   verifyWorkerToken,
-  type WorkerTokenData,
 } from "@lobu/core";
-import type { Context } from "hono";
+import type { Context, Next } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import type { CliTokenService } from "../../auth/cli/token-service";
 import type { QueueProducer } from "../../infrastructure/queue/queue-producer";
 import type { ISessionManager, ThreadSession } from "../../session";
 
@@ -377,42 +377,75 @@ const sendMessageRoute = createRoute({
 // Create OpenAPI Hono App
 // =============================================================================
 
+export interface AgentApiConfig {
+  queueProducer: QueueProducer;
+  sessionManager: ISessionManager;
+  publicGatewayUrl: string;
+  adminPassword?: string;
+  cliTokenService?: CliTokenService;
+}
+
+export function createAgentApi(config: AgentApiConfig): OpenAPIHono;
 export function createAgentApi(
   queueProducer: QueueProducer,
   sessionManager: ISessionManager,
   publicGatewayUrl: string
+): OpenAPIHono;
+export function createAgentApi(
+  configOrQueue: AgentApiConfig | QueueProducer,
+  sessionManager?: ISessionManager,
+  publicGatewayUrl?: string
 ): OpenAPIHono {
+  const config: AgentApiConfig =
+    configOrQueue instanceof Object && "queueProducer" in configOrQueue
+      ? configOrQueue
+      : {
+          queueProducer: configOrQueue as QueueProducer,
+          sessionManager: sessionManager!,
+          publicGatewayUrl: publicGatewayUrl!,
+        };
+
+  const { queueProducer, adminPassword, cliTokenService } = config;
+  const sessMgr = config.sessionManager;
+  const pubUrl = config.publicGatewayUrl;
   const app = new OpenAPIHono();
 
-  // Auth helper
-  const authenticateAgent = async (
-    c: Context,
-    agentId: string
-  ): Promise<WorkerTokenData | null> => {
+  // Unified auth middleware for all agent API routes
+  app.use("/api/v1/agents/*", async (c: Context, next: Next) => {
     const authHeader = c.req.header("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return null;
+      return c.json({ success: false, error: "Unauthorized" }, 401);
     }
     const token = authHeader.substring(7);
-    const tokenData = verifyWorkerToken(token);
-    if (!tokenData) return null;
-    if (tokenData.sessionKey !== agentId) return null;
-    const tokenAge = Date.now() - tokenData.timestamp;
-    if (tokenAge > TOKEN_EXPIRATION_MS) return null;
-    return tokenData;
-  };
 
-  const checkApiKey = (c: Context): boolean => {
-    const apiKey = process.env.LOBU_API_KEY;
-    if (!apiKey) return true;
-    const providedKey = c.req.header("X-API-Key");
-    if (!providedKey) return false;
-    if (providedKey.length !== apiKey.length) return false;
-    return crypto.timingSafeEqual(
-      Buffer.from(providedKey),
-      Buffer.from(apiKey)
-    );
-  };
+    // 1. Try CLI JWT
+    if (cliTokenService) {
+      const identity = await cliTokenService.verifyAccessToken(token);
+      if (identity) {
+        return next();
+      }
+    }
+
+    // 2. Try admin password
+    if (adminPassword) {
+      const a = Buffer.from(token);
+      const b = Buffer.from(adminPassword);
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        return next();
+      }
+    }
+
+    // 3. Try worker token (covers SSE/messages/status/delete after create)
+    const workerData = verifyWorkerToken(token);
+    if (workerData) {
+      const tokenAge = Date.now() - workerData.timestamp;
+      if (tokenAge <= TOKEN_EXPIRATION_MS) {
+        return next();
+      }
+    }
+
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  });
 
   // =============================================================================
   // Route Handlers
@@ -420,13 +453,6 @@ export function createAgentApi(
 
   // POST /api/v1/agents - Create agent
   app.openapi(createAgentRoute, async (c): Promise<any> => {
-    if (!checkApiKey(c)) {
-      return c.json(
-        { success: false, error: "Invalid or missing API key" },
-        401
-      );
-    }
-
     const body = c.req.valid("json");
     const {
       provider = "claude",
@@ -489,11 +515,11 @@ export function createAgentApi(
         : undefined,
       nixConfig,
     };
-    await sessionManager.setSession(session);
+    await sessMgr.setSession(session);
 
     logger.info(`Created API agent: ${agentId}`);
 
-    const baseUrl = publicGatewayUrl || "http://localhost:8080";
+    const baseUrl = pubUrl || "http://localhost:8080";
     return c.json(
       {
         success: true,
@@ -510,12 +536,8 @@ export function createAgentApi(
   // GET /api/v1/agents/:agentId - Get status
   app.openapi(getAgentRoute, async (c): Promise<any> => {
     const { agentId } = c.req.valid("param");
-    const tokenData = await authenticateAgent(c, agentId);
-    if (!tokenData) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
 
-    const session = await sessionManager.getSession(agentId);
+    const session = await sessMgr.getSession(agentId);
     if (!session) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
@@ -540,10 +562,6 @@ export function createAgentApi(
   // DELETE /api/v1/agents/:agentId
   app.openapi(deleteAgentRoute, async (c): Promise<any> => {
     const { agentId } = c.req.valid("param");
-    const tokenData = await authenticateAgent(c, agentId);
-    if (!tokenData) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
 
     const connections = sseConnections.get(agentId);
     if (connections) {
@@ -568,7 +586,7 @@ export function createAgentApi(
       sseConnections.delete(agentId);
     }
 
-    await sessionManager.deleteSession(agentId);
+    await sessMgr.deleteSession(agentId);
     logger.info(`Deleted agent ${agentId}`);
 
     return c.json({ success: true, message: "Agent deleted", agentId });
@@ -577,12 +595,8 @@ export function createAgentApi(
   // GET /api/v1/agents/:agentId/events - SSE stream
   app.openapi(getAgentEventsRoute, async (c): Promise<any> => {
     const { agentId } = c.req.valid("param");
-    const tokenData = await authenticateAgent(c, agentId);
-    if (!tokenData) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
 
-    const session = await sessionManager.getSession(agentId);
+    const session = await sessMgr.getSession(agentId);
     if (!session) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
@@ -651,10 +665,6 @@ export function createAgentApi(
   // POST /api/v1/agents/:agentId/messages - Send message
   app.openapi(sendMessageRoute, async (c): Promise<any> => {
     const { agentId } = c.req.valid("param");
-    const tokenData = await authenticateAgent(c, agentId);
-    if (!tokenData) {
-      return c.json({ success: false, error: "Unauthorized" }, 401);
-    }
 
     const body = c.req.valid("json");
     const { content, messageId = randomUUID() } = body;
@@ -663,12 +673,12 @@ export function createAgentApi(
       return c.json({ success: false, error: "content is required" }, 400);
     }
 
-    const session = await sessionManager.getSession(agentId);
+    const session = await sessMgr.getSession(agentId);
     if (!session) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    await sessionManager.touchSession(agentId);
+    await sessMgr.touchSession(agentId);
 
     const { span: rootSpan, traceparent } = createRootSpan("message_received", {
       "lobu.agent_id": agentId,
@@ -676,13 +686,14 @@ export function createAgentApi(
     });
 
     try {
+      const channelId = session.channelId || `api-${agentId.slice(0, 8)}`;
       const jobId = await queueProducer.enqueueMessage({
-        userId: tokenData.userId,
-        conversationId: tokenData.conversationId || agentId,
+        userId: session.userId,
+        conversationId: session.conversationId || agentId,
         messageId,
-        channelId: tokenData.channelId,
-        teamId: tokenData.teamId || "api",
-        agentId: tokenData.agentId || `api-${tokenData.userId}`,
+        channelId,
+        teamId: "api",
+        agentId: agentId,
         botId: "lobu-api",
         platform: "api",
         messageText: content,

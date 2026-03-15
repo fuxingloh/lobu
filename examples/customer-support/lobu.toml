@@ -1,0 +1,27 @@
+# lobu.toml — Customer Support (standalone single-agent project)
+
+[agents.customer-support]
+name = "Customer Support"
+description = "Customer-facing support bot for tickets, FAQ, and escalation"
+dir = "."
+
+[[agents.customer-support.providers]]
+id = "groq"
+model = "llama-3.3-70b-versatile"
+
+[agents.customer-support.skills]
+enabled = ["github", "linear"]
+
+[agents.customer-support.network]
+allowed = [
+  "api.linear.app",          # Linear API (ticket management)
+  "api.zendesk.com",         # Zendesk API (ticket sync)
+]
+
+[agents.customer-support.worker]
+timeout_minutes = 5
+
+[agents.customer-support.platforms.slack]
+
+[agents.customer-support.platforms.telegram]
+mode = "auto"

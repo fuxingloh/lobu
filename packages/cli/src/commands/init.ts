@@ -413,9 +413,10 @@ export async function initCommand(
 
     // Generate MCP config if servers were selected
     if (answers.selectedMcpServers.length > 0) {
-      const mcpConfig: { mcpServers: Record<string, any> } = {
-        mcpServers: {},
-      };
+      const mcpConfig: { mcpServers: Record<string, Record<string, unknown>> } =
+        {
+          mcpServers: {},
+        };
 
       for (const server of answers.selectedMcpServers) {
         // Clone the config and replace PUBLIC_URL placeholder
@@ -494,21 +495,27 @@ export async function initCommand(
       join(projectDir, "README.md")
     );
 
-    // Create agent instruction files
+    // Create agent directory with instruction files
+    const agentDir = join(projectDir, "agents", projectName);
+    await mkdir(agentDir, { recursive: true });
     await writeFile(
-      join(projectDir, "IDENTITY.md"),
+      join(agentDir, "IDENTITY.md"),
       `# Identity\n\nYou are ${projectName}, a helpful AI assistant.\n`
     );
     await writeFile(
-      join(projectDir, "SOUL.md"),
+      join(agentDir, "SOUL.md"),
       `# Instructions\n\nBe concise and helpful. Ask clarifying questions when the request is ambiguous.\n`
     );
     await writeFile(
-      join(projectDir, "USER.md"),
+      join(agentDir, "USER.md"),
       `# User Context\n\n<!-- Add user-specific preferences, timezone, environment details here -->\n`
     );
 
-    // Create skills directory for custom skills
+    // Create agent-specific skills directory
+    await mkdir(join(agentDir, "skills"), { recursive: true });
+    await writeFile(join(agentDir, "skills", ".gitkeep"), "");
+
+    // Create shared skills directory
     await mkdir(join(projectDir, "skills"), { recursive: true });
     await writeFile(join(projectDir, "skills", ".gitkeep"), "");
 
@@ -554,21 +561,24 @@ export async function initCommand(
     console.log(chalk.dim(`     cd ${projectName}\n`));
     console.log(chalk.cyan("  2. Review your configuration:"));
     console.log(
-      chalk.dim("     - lobu.toml          (providers, skills, network)")
+      chalk.dim(
+        "     - lobu.toml                    (agents, providers, skills, network)"
+      )
     );
-    console.log(chalk.dim("     - IDENTITY.md        (who the agent is)"));
-    console.log(chalk.dim("     - SOUL.md            (behavior rules)"));
-    console.log(chalk.dim("     - USER.md            (user-specific context)"));
     console.log(
-      chalk.dim("     - skills/            (custom skills — auto-discovered)")
+      chalk.dim(
+        `     - agents/${projectName}/   (IDENTITY.md, SOUL.md, USER.md, skills/)`
+      )
     );
-    console.log(chalk.dim("     - .env               (secrets)"));
+    console.log(
+      chalk.dim(
+        "     - skills/                      (shared skills — all agents)"
+      )
+    );
+    console.log(chalk.dim("     - .env                         (secrets)"));
     console.log(chalk.dim(`     - ${composeFilename}`));
     if (answers.deploymentMode === "docker") {
       console.log(chalk.dim("     - Dockerfile.worker"));
-    }
-    if (answers.selectedMcpServers.length > 0) {
-      console.log(chalk.dim("     - .lobu/mcp.config.json"));
     }
     console.log();
 
@@ -644,27 +654,27 @@ async function generateLobuToml(
     allowedDomains: string;
   }
 ): Promise<void> {
+  const id = options.agentName;
   const lines: string[] = [
     "# lobu.toml — Agent configuration",
     "# Docs: https://lobu.ai/docs/getting-started",
     "#",
-    "# Agent identity lives in markdown files:",
-    "#   IDENTITY.md  — Who the agent is",
-    "#   SOUL.md      — Behavior rules & instructions",
-    "#   USER.md      — User-specific context",
-    "#   skills/*.md  — Custom capabilities (auto-discovered)",
+    "# Each [agents.{id}] defines an agent. The dir field points to a directory",
+    "# containing IDENTITY.md, SOUL.md, USER.md, and optionally skills/.",
+    "# Shared skills in the root skills/ directory are available to all agents.",
     "",
-    "[agent]",
-    `name = "${options.agentName}"`,
+    `[agents.${id}]`,
+    `name = "${id}"`,
     `description = ""`,
+    `dir = "./agents/${id}"`,
     "",
     "# LLM providers (order = priority)",
-    "[[providers]]",
+    `[[agents.${id}.providers]]`,
     'id = "groq"',
     'model = "llama-3.3-70b-versatile"',
     "",
     "# Skills from the registry",
-    "[skills]",
+    `[agents.${id}.skills]`,
     'enabled = ["github"]',
   ];
 
@@ -676,7 +686,7 @@ async function generateLobuToml(
     lines.push("");
     for (const mcp of customMcps) {
       if (mcp.config?.url) {
-        lines.push(`[skills.mcp.${mcp.id}]`);
+        lines.push(`[agents.${id}.skills.mcp.${mcp.id}]`);
         lines.push(`url = "${mcp.config.url}"`);
       }
     }
@@ -688,12 +698,12 @@ async function generateLobuToml(
       .split(",")
       .map((d) => `"${d.trim()}"`)
       .join(", ");
-    lines.push("", "[network]", `allowed = [${domains}]`);
+    lines.push("", `[agents.${id}.network]`, `allowed = [${domains}]`);
   }
 
-  // Platforms — declare which connections to enable
+  // Platforms
   for (const platform of options.platforms) {
-    lines.push("", `[platforms.${platform}]`);
+    lines.push("", `[agents.${id}.platforms.${platform}]`);
     if (platform === "telegram") {
       lines.push('mode = "auto"');
     }
@@ -720,11 +730,6 @@ function generateDockerCompose(options: {
   const { projectName, gatewayPort, hasMcpServers, deploymentMode } = options;
   const gatewayImage = `ghcr.io/lobu-ai/lobu-gateway:latest`;
   const workerImage = `ghcr.io/lobu-ai/lobu-worker-base:latest`;
-
-  const mcpConfigMount = hasMcpServers
-    ? `
-      - ./.lobu/mcp.config.json:/app/.lobu/mcp.config.json:ro`
-    : "";
 
   const mcpEnvVars = hasMcpServers
     ? `
@@ -772,6 +777,7 @@ services:
 
   gateway:
     image: ${gatewayImage}
+    pull_policy: always
     ports:
       - "${gatewayPort}:8080"${proxyPort}
     environment:
@@ -783,7 +789,8 @@ services:
       COMPOSE_PROJECT_NAME: ${projectName}${mcpEnvVars}
       WORKER_ALLOWED_DOMAINS: \${WORKER_ALLOWED_DOMAINS:-}
       WORKER_DISALLOWED_DOMAINS: \${WORKER_DISALLOWED_DOMAINS:-}
-    volumes:${dockerSocketMount}${mcpConfigMount}
+    volumes:${dockerSocketMount}
+      - ./.lobu:/app/.lobu:ro
       - env_storage:/app/.lobu/env
     networks:
       - lobu-public

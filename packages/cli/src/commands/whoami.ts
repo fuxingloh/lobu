@@ -1,8 +1,15 @@
 import chalk from "chalk";
-import { loadCredentials } from "../api/credentials.js";
+import { resolveContext } from "../api/context.js";
+import { loadCredentials, refreshCredentials } from "../api/credentials.js";
 
-export async function whoamiCommand(): Promise<void> {
-  const creds = await loadCredentials();
+export async function whoamiCommand(options?: {
+  context?: string;
+}): Promise<void> {
+  const target = await resolveContext(options?.context);
+  const creds = await refreshCredentials(
+    await loadCredentials(target.name),
+    target.name
+  );
 
   if (!creds) {
     const envToken = process.env.LOBU_API_TOKEN;
@@ -10,17 +17,29 @@ export async function whoamiCommand(): Promise<void> {
       console.log(
         chalk.dim("\n  Authenticated via LOBU_API_TOKEN environment variable.")
       );
+      console.log(chalk.dim(`  Context: ${target.name}`));
+      console.log(chalk.dim(`  API URL: ${target.apiUrl}`));
       console.log(chalk.dim("  Lobu Cloud is in early access.\n"));
       return;
     }
     console.log(chalk.dim("\n  Not logged in."));
+    console.log(chalk.dim(`  Context: ${target.name}`));
+    console.log(chalk.dim(`  API URL: ${target.apiUrl}`));
     console.log(chalk.dim("  Run `lobu login` to authenticate.\n"));
     return;
   }
 
   console.log(chalk.bold("\n  Lobu CLI"));
+  console.log(chalk.dim(`  Context: ${target.name}`));
+  console.log(chalk.dim(`  API URL: ${target.apiUrl}`));
+  if (creds.name) {
+    console.log(chalk.dim(`  Name: ${creds.name}`));
+  }
   if (creds.email) {
     console.log(chalk.dim(`  User: ${creds.email}`));
+  }
+  if (creds.userId) {
+    console.log(chalk.dim(`  User ID: ${creds.userId}`));
   }
   if (creds.agentId) {
     console.log(chalk.dim(`  Linked agent: ${creds.agentId}`));
