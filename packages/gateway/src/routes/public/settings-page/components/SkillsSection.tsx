@@ -347,14 +347,14 @@ function SkillRegistriesSubsection() {
             key={`custom-${r.id}`}
             registry={r}
             kind="custom"
-            onRemove={() => removeRegistry(r.id)}
+            onRemove={ctx.isSandbox ? undefined : () => removeRegistry(r.id)}
           />
         ))}
         {!hasEntries && !showAdd.value && (
           <p class="text-xs text-gray-500">No skill registries configured.</p>
         )}
 
-        {showAdd.value ? (
+        {showAdd.value && !ctx.isSandbox ? (
           <div class="bg-gray-50 rounded-lg p-2.5 space-y-2">
             <div class="flex items-center gap-2">
               <input
@@ -415,7 +415,7 @@ function SkillRegistriesSubsection() {
               </button>
             </div>
           </div>
-        ) : (
+        ) : !ctx.isSandbox ? (
           <button
             type="button"
             class="w-full py-1.5 text-xs font-medium rounded-lg border border-dashed border-gray-300 text-gray-500 hover:border-slate-400 hover:text-slate-600 transition-colors"
@@ -425,6 +425,11 @@ function SkillRegistriesSubsection() {
           >
             + Add Registry
           </button>
+        ) : (
+          <p class="text-xs text-gray-500">
+            Manage registries from the base agent. Sandbox pages show the active
+            registry set but do not create new ones.
+          </p>
         )}
       </div>
     </div>

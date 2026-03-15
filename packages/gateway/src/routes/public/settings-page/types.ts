@@ -199,6 +199,8 @@ export interface SettingsState {
   isSandbox?: boolean;
   // Platform of the sandbox agent's owner (for displaying platform icon)
   ownerPlatform?: string;
+  // Template/base agent this sandbox promotes into
+  templateAgentId?: string;
   // Skill registries
   globalRegistries: { id: string; type: string; apiUrl: string }[];
   initialRegistries: { id: string; type: string; apiUrl: string }[];

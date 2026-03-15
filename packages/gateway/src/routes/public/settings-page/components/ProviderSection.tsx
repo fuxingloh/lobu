@@ -505,27 +505,29 @@ function ProviderCard({
               Connect
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleUninstall}
-            title={`Remove ${pInfo.name}`}
-            class="p-1.5 text-xs rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
-          >
-            <svg
-              class="w-3.5 h-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
+          {!ctx.isSandbox && (
+            <button
+              type="button"
+              onClick={handleUninstall}
+              title={`Remove ${pInfo.name}`}
+              class="p-1.5 text-xs rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -731,6 +733,16 @@ function AuthFlowContent({
 function ProviderCatalog() {
   const ctx = useSettings();
   if (ctx.catalogProviders.value.length === 0) return null;
+  if (ctx.isSandbox) {
+    return (
+      <div class="mt-3 pt-3 border-t border-gray-200">
+        <p class="text-xs text-gray-500">
+          Add or remove providers from the base agent, then promote sandbox
+          changes back when you are ready.
+        </p>
+      </div>
+    );
+  }
 
   function handleAddProvider(cp: CatalogProvider) {
     triggerProviderAuth(ctx, cp.id);

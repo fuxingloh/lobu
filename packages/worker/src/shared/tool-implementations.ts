@@ -524,7 +524,7 @@ export async function searchSkills(
           id: s.id,
           name: s.name,
           description: s.description || "",
-          source: s.source || "clawhub",
+          source: s.source || "registry",
           score: s.score,
           uri: s.uri,
           integrations: s.integrations,

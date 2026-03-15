@@ -174,6 +174,7 @@ export function renderSettingsPage(
     isAdmin: !!payload.isAdmin,
     isSandbox: !!options?.isSandbox,
     ownerPlatform: options?.ownerPlatform || "",
+    templateAgentId: s.templateAgentId,
     globalRegistries: (() => {
       try {
         const configPath = path.resolve(

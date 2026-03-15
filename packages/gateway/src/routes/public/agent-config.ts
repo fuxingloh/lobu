@@ -24,6 +24,7 @@ import {
   type ProviderModelPreferences,
   reconcileModelSelectionForInstalledProviders,
 } from "../../auth/settings/model-selection";
+import { buildPromotedSettingsFromSource } from "../../auth/settings/template-utils";
 import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { WorkerConnectionManager } from "../../gateway/connection-manager";
@@ -170,6 +171,16 @@ const updateConfigRoute = createRoute({
                 ),
               })
               .optional(),
+            skillRegistries: z
+              .array(
+                z.object({
+                  id: z.string(),
+                  type: z.string(),
+                  apiUrl: z.string(),
+                })
+              )
+              .nullable()
+              .optional(),
             verboseLogging: z.boolean().optional(),
           }),
         },
@@ -191,6 +202,40 @@ const updateConfigRoute = createRoute({
     },
     401: {
       description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+  },
+});
+
+const promoteSandboxRoute = createRoute({
+  method: "post",
+  path: "/promote",
+  tags: [TAG],
+  summary: "Promote sandbox configuration back to its template agent",
+  request: { query: TokenQuery },
+  responses: {
+    200: {
+      description: "Promoted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.boolean(),
+            sourceAgentId: z.string(),
+            targetAgentId: z.string(),
+          }),
+        },
+      },
+    },
+    400: {
+      description: "Invalid",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponse } },
+    },
+    403: {
+      description: "Forbidden",
       content: { "application/json": { schema: ErrorResponse } },
     },
   },
@@ -229,6 +274,47 @@ export interface AgentConfigRoutesConfig {
   queue?: IMessageQueue;
   connectionManager?: WorkerConnectionManager;
   grantStore?: GrantStore;
+}
+
+async function syncPromotedGrants(
+  grantStore: GrantStore,
+  sourceAgentId: string,
+  targetAgentId: string
+): Promise<void> {
+  const sourceGrants = await grantStore.listGrants(sourceAgentId);
+  const targetGrants = await grantStore.listGrants(targetAgentId);
+
+  const sourceByPattern = new Map(
+    sourceGrants.map((grant) => [grant.pattern, grant])
+  );
+  const targetByPattern = new Map(
+    targetGrants.map((grant) => [grant.pattern, grant])
+  );
+
+  for (const [pattern] of targetByPattern) {
+    if (!sourceByPattern.has(pattern)) {
+      await grantStore.revoke(targetAgentId, pattern);
+    }
+  }
+
+  for (const [pattern, grant] of sourceByPattern) {
+    const existing = targetByPattern.get(pattern);
+    if (
+      !existing ||
+      existing.expiresAt !== grant.expiresAt ||
+      !!existing.denied !== !!grant.denied
+    ) {
+      if (existing) {
+        await grantStore.revoke(targetAgentId, pattern);
+      }
+      await grantStore.grant(
+        targetAgentId,
+        pattern,
+        grant.expiresAt,
+        grant.denied
+      );
+    }
+  }
 }
 
 function buildConfigChanges(
@@ -560,6 +646,7 @@ export function createAgentConfigRoutes(
           delete body.skillsConfig;
           delete body.pluginsConfig;
           delete body.nixConfig;
+          delete body.skillRegistries;
         }
       }
 
@@ -569,6 +656,10 @@ export function createAgentConfigRoutes(
       if (body.nixConfig === null) {
         updates.nixConfig = undefined;
         delete body.nixConfig;
+      }
+      if (body.skillRegistries === null) {
+        updates.skillRegistries = [];
+        delete body.skillRegistries;
       }
 
       if (Object.keys(body).length > 0) {
@@ -656,6 +747,85 @@ export function createAgentConfigRoutes(
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : "Invalid" }, 400);
     }
+  });
+
+  app.openapi(promoteSandboxRoute, async (c): Promise<any> => {
+    const sourceAgentId = c.req.param("agentId") || "";
+    const payload = await verifyToken(verifySettingsSession(c), sourceAgentId);
+    if (!payload) return c.json({ error: "Unauthorized" }, 401);
+    if (!payload.isAdmin) {
+      return c.json({ error: "Admin access required" }, 403);
+    }
+
+    const sourceSettings =
+      await config.agentSettingsStore.getSettings(sourceAgentId);
+    const targetAgentId = sourceSettings?.templateAgentId?.trim();
+    if (!targetAgentId) {
+      return c.json(
+        { error: "Sandbox is not linked to a template agent" },
+        400
+      );
+    }
+
+    const sourceMetadata = config.agentMetadataStore
+      ? await config.agentMetadataStore.getMetadata(sourceAgentId)
+      : null;
+    if (config.agentMetadataStore && !sourceMetadata?.parentConnectionId) {
+      return c.json({ error: "Only sandbox agents can be promoted" }, 400);
+    }
+
+    const targetMetadata = config.agentMetadataStore
+      ? await config.agentMetadataStore.getMetadata(targetAgentId)
+      : null;
+    if (
+      sourceMetadata?.owner &&
+      targetMetadata?.owner &&
+      (sourceMetadata.owner.platform !== targetMetadata.owner.platform ||
+        sourceMetadata.owner.userId !== targetMetadata.owner.userId)
+    ) {
+      return c.json(
+        { error: "Sandbox target does not match the owning agent" },
+        403
+      );
+    }
+
+    const targetSettings =
+      await config.agentSettingsStore.getSettings(targetAgentId);
+    const promotedSettings = buildPromotedSettingsFromSource(sourceSettings);
+    const changes = buildConfigChanges(targetSettings, promotedSettings);
+
+    await config.agentSettingsStore.updateSettings(
+      targetAgentId,
+      promotedSettings
+    );
+
+    await autoRegisterSkillIntegrations(
+      config.agentSettingsStore,
+      targetAgentId,
+      sourceSettings?.skillsConfig?.skills || []
+    );
+    await cleanupOrphanedSkillDependencies(
+      config.agentSettingsStore,
+      targetAgentId,
+      targetSettings?.skillsConfig?.skills || [],
+      sourceSettings?.skillsConfig?.skills || []
+    );
+
+    if (config.grantStore) {
+      await syncPromotedGrants(config.grantStore, sourceAgentId, targetAgentId);
+    }
+
+    if (changes.length > 0) {
+      config.connectionManager?.notifyAgent(targetAgentId, "config_changed", {
+        changes,
+      });
+    }
+
+    return c.json({
+      success: true,
+      sourceAgentId,
+      targetAgentId,
+    });
   });
 
   // GET /packages/search?q=python
@@ -1349,6 +1519,25 @@ async function validateSettings(
 
   if (input.skillsConfig) {
     settings.skillsConfig = input.skillsConfig;
+  }
+
+  if (Array.isArray(input.skillRegistries)) {
+    settings.skillRegistries = input.skillRegistries
+      .filter(
+        (
+          entry
+        ): entry is NonNullable<AgentSettings["skillRegistries"]>[number] =>
+          !!entry &&
+          typeof entry.id === "string" &&
+          typeof entry.type === "string" &&
+          typeof entry.apiUrl === "string"
+      )
+      .map((entry) => ({
+        id: entry.id.trim(),
+        type: entry.type.trim(),
+        apiUrl: entry.apiUrl.trim(),
+      }))
+      .filter((entry) => entry.id && entry.type && entry.apiUrl);
   }
 
   if (input.pluginsConfig) {

@@ -106,6 +106,19 @@ export async function saveSettings(
   }
 }
 
+export async function promoteSandboxSettings(agentId: string): Promise<{
+  success: boolean;
+  sourceAgentId: string;
+  targetAgentId: string;
+}> {
+  const resp = await jsonPost(apiUrl(agentId, "/config/promote"), {});
+  const data = await parseJsonSafe(resp);
+  if (!resp.ok) {
+    throw new Error(data.error || "Failed to promote sandbox settings");
+  }
+  return data;
+}
+
 export async function checkProviders(agentId: string): Promise<
   Record<
     string,

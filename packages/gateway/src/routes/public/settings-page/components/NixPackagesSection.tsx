@@ -110,73 +110,83 @@ export function NixPackagesSection() {
           </div>
         ))}
 
-        <div class="relative">
-          <input
-            type="text"
-            value={nixPackageQuery.value}
-            onInput={(e) =>
-              handleSearchInput((e.target as HTMLInputElement).value)
-            }
-            onFocus={() => {
-              if (nixPackageQuery.value.trim())
-                nixPackageSuggestionsVisible.value = true;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addNixPackage(nixPackageQuery.value);
-              }
-            }}
-            placeholder="Search Nix packages (e.g. python311)"
-            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none"
-          />
+        {!ctx.isSandbox && (
+          <>
+            <div class="relative">
+              <input
+                type="text"
+                value={nixPackageQuery.value}
+                onInput={(e) =>
+                  handleSearchInput((e.target as HTMLInputElement).value)
+                }
+                onFocus={() => {
+                  if (nixPackageQuery.value.trim())
+                    nixPackageSuggestionsVisible.value = true;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addNixPackage(nixPackageQuery.value);
+                  }
+                }}
+                placeholder="Search Nix packages (e.g. python311)"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-mono focus:border-slate-600 focus:ring-1 focus:ring-slate-200 outline-none"
+              />
 
-          {nixPackageSuggestionsVisible.value && (
-            <div class="absolute z-10 left-2 right-2 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-              {nixPackageSearchLoading.value && (
-                <div class="px-3 py-2 text-xs text-gray-500">
-                  Searching packages...
+              {nixPackageSuggestionsVisible.value && (
+                <div class="absolute z-10 left-2 right-2 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {nixPackageSearchLoading.value && (
+                    <div class="px-3 py-2 text-xs text-gray-500">
+                      Searching packages...
+                    </div>
+                  )}
+                  {nixPackageSuggestions.value.map((suggestion) => (
+                    <button
+                      key={suggestion.name}
+                      type="button"
+                      onClick={() => addNixPackage(suggestion.name)}
+                      class="w-full text-left px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-slate-50 transition-colors"
+                    >
+                      <div class="text-xs font-mono text-gray-800">
+                        {suggestion.name}
+                      </div>
+                      <div class="text-[11px] text-gray-500 truncate">
+                        {suggestion.description || suggestion.pname || ""}
+                      </div>
+                    </button>
+                  ))}
+                  {!nixPackageSearchLoading.value &&
+                    nixPackageQuery.value.trim() &&
+                    nixPackageSuggestions.value.length === 0 && (
+                      <div class="px-3 py-2 text-xs text-gray-500">
+                        No matching packages.
+                      </div>
+                    )}
                 </div>
               )}
-              {nixPackageSuggestions.value.map((suggestion) => (
-                <button
-                  key={suggestion.name}
-                  type="button"
-                  onClick={() => addNixPackage(suggestion.name)}
-                  class="w-full text-left px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-slate-50 transition-colors"
-                >
-                  <div class="text-xs font-mono text-gray-800">
-                    {suggestion.name}
-                  </div>
-                  <div class="text-[11px] text-gray-500 truncate">
-                    {suggestion.description || suggestion.pname || ""}
-                  </div>
-                </button>
-              ))}
-              {!nixPackageSearchLoading.value &&
-                nixPackageQuery.value.trim() &&
-                nixPackageSuggestions.value.length === 0 && (
-                  <div class="px-3 py-2 text-xs text-gray-500">
-                    No matching packages.
-                  </div>
-                )}
             </div>
-          )}
-        </div>
-        <p class="text-xs text-gray-400 mt-1">
-          Install system tools from{" "}
-          <a
-            href="https://search.nixos.org/packages"
-            onClick={(e) => {
-              e.preventDefault();
-              ctx.openExternal("https://search.nixos.org/packages");
-            }}
-            class="text-blue-600 hover:underline cursor-pointer"
-          >
-            Nix Packages
-          </a>{" "}
-          to make them available in your workspace.
-        </p>
+            <p class="text-xs text-gray-400 mt-1">
+              Install system tools from{" "}
+              <a
+                href="https://search.nixos.org/packages"
+                onClick={(e) => {
+                  e.preventDefault();
+                  ctx.openExternal("https://search.nixos.org/packages");
+                }}
+                class="text-blue-600 hover:underline cursor-pointer"
+              >
+                Nix Packages
+              </a>{" "}
+              to make them available in your workspace.
+            </p>
+          </>
+        )}
+        {ctx.isSandbox && (
+          <p class="text-xs text-gray-500">
+            Add new system packages from the base agent, then use promotion to
+            sync sandbox edits back.
+          </p>
+        )}
       </div>
     </Section>
   );

@@ -203,6 +203,14 @@ export function AdminBar() {
       </div>
       {ctx.isAdmin && (
         <div class="flex items-center gap-3 text-xs text-gray-400 flex-shrink-0">
+          {ctx.isSandbox && ctx.templateAgentId && (
+            <a
+              href={`/settings?agent=${encodeURIComponent(ctx.templateAgentId)}&back=${encodeURIComponent(`${location.pathname}${location.search}`)}`}
+              class="hover:text-slate-600 transition-colors"
+            >
+              Open Agent
+            </a>
+          )}
           <a
             href={`/agent/${ctx.agentId}/history`}
             class="hover:text-slate-600 transition-colors"

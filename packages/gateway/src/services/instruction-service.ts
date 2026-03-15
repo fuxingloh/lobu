@@ -92,14 +92,13 @@ ${this.getGenericSkillsInstructions()}`;
   private getGenericSkillsInstructions(): string {
     return `## Skills
 
-You can extend your capabilities by installing skills from [ClawHub](https://clawhub.ai), the OpenClaw skill registry.
+You can extend your capabilities by searching for installable skills and MCP servers with the built-in tools.
 
-**Available commands:**
-- \`npx clawhub search [query]\` - Search for skills by keyword
-- \`npx clawhub install <slug>\` - Install a skill
-- \`npx clawhub list\` - List installed skills
+**Available tools:**
+- \`SearchSkills\` - Search for skills and MCP servers by keyword
+- \`InstallSkill\` - Install or upgrade a skill or MCP server from search results
 
-When the user asks about adding capabilities, finding tools, or extending functionality, search for relevant skills first using \`npx clawhub search\`.`;
+When the user asks about adding capabilities, finding tools, or extending functionality, search for relevant skills first using \`SearchSkills\`.`;
   }
 }
 

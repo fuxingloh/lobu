@@ -132,6 +132,8 @@ export interface SettingsContextValue {
   isAdmin: boolean;
   isSandbox: boolean;
   ownerPlatform: string;
+  templateAgentId?: string;
+  promoting: Signal<boolean>;
   isScopeAllowed(scope: string): boolean;
 
   // Actions
@@ -163,6 +165,7 @@ function App() {
   const successMsg = useSignal("");
   const errorMsg = useSignal("");
   const saving = useSignal(false);
+  const promoting = useSignal(false);
 
   const verboseLogging = useSignal(!!state.verboseLogging);
   const identityMd = useSignal(state.identityMd || "");
@@ -599,6 +602,8 @@ function App() {
     isAdmin: !!state.isAdmin,
     isSandbox: !!state.isSandbox,
     ownerPlatform: state.ownerPlatform || "",
+    templateAgentId: state.templateAgentId,
+    promoting,
     isScopeAllowed(scope: string): boolean {
       if (state.settingsMode !== "user") return true;
       if (!state.allowedScopes?.length) return false;
@@ -680,7 +685,11 @@ function App() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={ctx.saving.value || !hasPendingSettingsChanges()}
+            disabled={
+              ctx.saving.value ||
+              ctx.promoting.value ||
+              !hasPendingSettingsChanges()
+            }
             class="w-full py-3 bg-gradient-to-r from-slate-700 to-slate-800 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
           >
             {ctx.saving.value
@@ -689,10 +698,140 @@ function App() {
                 ? "Save Settings"
                 : "No Changes"}
           </button>
+          {ctx.isAdmin && ctx.isSandbox && ctx.templateAgentId && (
+            <div class="space-y-2">
+              <button
+                type="button"
+                disabled={ctx.saving.value || ctx.promoting.value}
+                onClick={() => {
+                  void handlePromote(ctx);
+                }}
+                class="w-full py-3 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:border-slate-400 hover:bg-slate-50 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {ctx.promoting.value
+                  ? "Promoting..."
+                  : hasPendingSettingsChanges()
+                    ? "Save And Promote To Agent"
+                    : "Promote To Agent"}
+              </button>
+              <p class="text-xs text-gray-500 text-center">
+                Updates the base agent config used for future sandbox sessions.
+              </p>
+            </div>
+          )}
         </form>
       </div>
     </SettingsContext.Provider>
   );
+}
+
+async function syncPermissionGrants(
+  agentId: string,
+  desiredGrants: PermissionGrant[]
+): Promise<void> {
+  const serverGrants = await api.fetchGrants(agentId);
+  const serverByPattern = new Map(serverGrants.map((g) => [g.pattern, g]));
+  const currentByPattern = new Map(desiredGrants.map((g) => [g.pattern, g]));
+
+  for (const [pattern] of serverByPattern) {
+    if (!currentByPattern.has(pattern)) {
+      await api.removeGrant(agentId, pattern);
+    }
+  }
+
+  for (const [pattern, grant] of currentByPattern) {
+    const serverGrant = serverByPattern.get(pattern);
+    if (
+      !serverGrant ||
+      serverGrant.expiresAt !== grant.expiresAt ||
+      !!serverGrant.denied !== !!grant.denied
+    ) {
+      if (serverGrant) {
+        await api.removeGrant(agentId, pattern);
+      }
+      await api.addGrant(agentId, pattern, grant.expiresAt, grant.denied);
+    }
+  }
+}
+
+async function persistCurrentSettings(
+  ctx: SettingsContextValue
+): Promise<void> {
+  if (ctx.providerOrder.value.length > 0 && ctx.primaryProvider.value) {
+    const orderedIds = [
+      ctx.primaryProvider.value,
+      ...ctx.providerOrder.value.filter(
+        (pid) => pid !== ctx.primaryProvider.value
+      ),
+    ];
+    try {
+      await api.reorderProviders(ctx.agentId, orderedIds);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  const providerModelPreferences: Record<string, string> = {};
+  for (const providerId of ctx.providerOrder.value) {
+    const selectedModel = (
+      ctx.providerState.value[providerId]?.selectedModel || ""
+    ).trim();
+    if (!selectedModel) continue;
+    providerModelPreferences[providerId] = selectedModel;
+  }
+
+  const settings: Record<string, unknown> = {
+    modelSelection: { mode: "auto" },
+    providerModelPreferences,
+    identityMd: ctx.identityMd.value || "",
+    soulMd: ctx.soulMd.value || "",
+    userMd: ctx.userMd.value || "",
+    verboseLogging: !!ctx.verboseLogging.value,
+    skillRegistries: ctx.registries.value.length ? ctx.registries.value : null,
+  };
+
+  const nixPkgs = ctx.nixPackages.value
+    .map((pkg) => (pkg || "").trim())
+    .filter(Boolean);
+  settings.nixConfig = nixPkgs.length ? { packages: nixPkgs } : null;
+
+  await api.saveSettings(ctx.agentId, settings);
+
+  const snap = ctx.initialSettingsSnapshot.value;
+  const currentSnap = ctx.buildSettingsSnapshot();
+
+  if (!snap || snap.skills !== currentSnap.skills) {
+    await api.saveSkills(ctx.agentId, ctx.skills.value);
+  }
+
+  if (!snap || snap.mcpServers !== currentSnap.mcpServers) {
+    await api.saveMcpServers(ctx.agentId, ctx.mcpServers.value);
+  }
+
+  if (!snap || snap.permissions !== currentSnap.permissions) {
+    await syncPermissionGrants(ctx.agentId, ctx.permissionGrants.value);
+  }
+
+  ctx.initialSettingsSnapshot.value = ctx.buildSettingsSnapshot();
+
+  if (
+    ctx.approvedPrefillSkills.value.length > 0 &&
+    ctx.conversationId &&
+    ctx.channelId
+  ) {
+    api
+      .notifySkillInstalled(ctx.agentId, {
+        platform: ctx.platform,
+        channelId: ctx.channelId,
+        conversationId: ctx.conversationId,
+        connectionId: ctx.connectionId,
+        skills: ctx.approvedPrefillSkills.value,
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+    ctx.approvedPrefillSkills.value = [];
+  }
 }
 
 async function handleSave(ctx: SettingsContextValue) {
@@ -701,124 +840,37 @@ async function handleSave(ctx: SettingsContextValue) {
   ctx.errorMsg.value = "";
 
   try {
-    // Reorder providers
-    if (ctx.providerOrder.value.length > 0 && ctx.primaryProvider.value) {
-      const orderedIds = [
-        ctx.primaryProvider.value,
-        ...ctx.providerOrder.value.filter(
-          (pid) => pid !== ctx.primaryProvider.value
-        ),
-      ];
-      try {
-        await api.reorderProviders(ctx.agentId, orderedIds);
-      } catch {
-        // Non-fatal
-      }
-    }
-
-    const providerModelPreferences: Record<string, string> = {};
-    for (const providerId of ctx.providerOrder.value) {
-      const selectedModel = (
-        ctx.providerState.value[providerId]?.selectedModel || ""
-      ).trim();
-      if (!selectedModel) continue;
-      providerModelPreferences[providerId] = selectedModel;
-    }
-
-    // Core settings
-    const settings: Record<string, unknown> = {
-      modelSelection: { mode: "auto" },
-      providerModelPreferences,
-      identityMd: ctx.identityMd.value || "",
-      soulMd: ctx.soulMd.value || "",
-      userMd: ctx.userMd.value || "",
-      verboseLogging: !!ctx.verboseLogging.value,
-    };
-
-    const nixPkgs = ctx.nixPackages.value
-      .map((pkg) => (pkg || "").trim())
-      .filter(Boolean);
-    settings.nixConfig = nixPkgs.length ? { packages: nixPkgs } : null;
-
-    // Per-agent skill registries
-    settings.skillRegistries = ctx.registries.value.length
-      ? ctx.registries.value
-      : null;
-
-    await api.saveSettings(ctx.agentId, settings);
-
-    const snap = ctx.initialSettingsSnapshot.value;
-    const currentSnap = ctx.buildSettingsSnapshot();
-
-    // Save skills (only if changed)
-    if (!snap || snap.skills !== currentSnap.skills) {
-      await api.saveSkills(ctx.agentId, ctx.skills.value);
-    }
-
-    // Save MCPs (only if changed)
-    if (!snap || snap.mcpServers !== currentSnap.mcpServers) {
-      await api.saveMcpServers(ctx.agentId, ctx.mcpServers.value);
-    }
-
-    // Save permissions (only if changed)
-    if (snap && snap.permissions !== currentSnap.permissions) {
-      // Fetch server state to diff against
-      const serverGrants = await api.fetchGrants(ctx.agentId);
-      const currentPerms = ctx.permissionGrants.value;
-
-      const serverByPattern = new Map(serverGrants.map((g) => [g.pattern, g]));
-      const currentByPattern = new Map(currentPerms.map((g) => [g.pattern, g]));
-
-      // Remove grants that were deleted locally
-      for (const [pattern] of serverByPattern) {
-        if (!currentByPattern.has(pattern)) {
-          await api.removeGrant(ctx.agentId, pattern);
-        }
-      }
-
-      // Add or update grants
-      for (const [pattern, g] of currentByPattern) {
-        const server = serverByPattern.get(pattern);
-        if (
-          !server ||
-          server.expiresAt !== g.expiresAt ||
-          !!server.denied !== !!g.denied
-        ) {
-          // Remove first if it exists with different properties
-          if (server) await api.removeGrant(ctx.agentId, pattern);
-          await api.addGrant(ctx.agentId, pattern, g.expiresAt, g.denied);
-        }
-      }
-    }
-
+    await persistCurrentSettings(ctx);
     ctx.successMsg.value = "Settings saved!";
-    ctx.initialSettingsSnapshot.value = ctx.buildSettingsSnapshot();
     window.scrollTo({ top: 0, behavior: "smooth" });
-
-    // Fire post-install callback (fire-and-forget) if skills were approved
-    if (
-      ctx.approvedPrefillSkills.value.length > 0 &&
-      ctx.conversationId &&
-      ctx.channelId
-    ) {
-      api
-        .notifySkillInstalled(ctx.agentId, {
-          platform: ctx.platform,
-          channelId: ctx.channelId,
-          conversationId: ctx.conversationId,
-          connectionId: ctx.connectionId,
-          skills: ctx.approvedPrefillSkills.value,
-        })
-        .catch(() => {
-          /* non-fatal */
-        });
-      ctx.approvedPrefillSkills.value = [];
-    }
   } catch (e: unknown) {
     ctx.errorMsg.value = e instanceof Error ? e.message : "Failed to save";
     window.scrollTo({ top: 0, behavior: "smooth" });
   } finally {
     ctx.saving.value = false;
+  }
+}
+
+async function handlePromote(ctx: SettingsContextValue) {
+  if (!ctx.templateAgentId) return;
+
+  ctx.promoting.value = true;
+  ctx.successMsg.value = "";
+  ctx.errorMsg.value = "";
+
+  try {
+    if (ctx.hasPendingSettingsChanges()) {
+      await persistCurrentSettings(ctx);
+    }
+    await api.promoteSandboxSettings(ctx.agentId);
+    ctx.successMsg.value = "Sandbox settings promoted to the base agent.";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (e: unknown) {
+    ctx.errorMsg.value =
+      e instanceof Error ? e.message : "Failed to promote sandbox settings";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } finally {
+    ctx.promoting.value = false;
   }
 }
 
