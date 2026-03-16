@@ -31,10 +31,6 @@ const workerSchema = z.object({
   nix_packages: z.array(z.string()).optional(),
 });
 
-// Platforms section — accept any platform name with any config object.
-// Field-level validation happens at the gateway when connections are created.
-const platformsSchema = z.record(z.string(), z.record(z.unknown()));
-
 // Each [agents.{id}] table
 const agentEntrySchema = z.object({
   name: z.string(),
@@ -44,7 +40,6 @@ const agentEntrySchema = z.object({
   skills: skillsSchema.default({ enabled: [] }),
   network: networkSchema.optional(),
   worker: workerSchema.optional(),
-  platforms: platformsSchema.optional(),
 });
 
 // Full lobu.toml schema

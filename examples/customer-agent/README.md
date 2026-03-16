@@ -1,6 +1,6 @@
-# {{PROJECT_NAME}}
+# customer-agent
 
-Lobu instance created with `@lobu/cli` v{{CLI_VERSION}}
+Lobu instance created with `@lobu/cli` v3.0.3
 
 ## Quick Start
 

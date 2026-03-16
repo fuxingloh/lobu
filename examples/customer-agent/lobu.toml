@@ -1,0 +1,23 @@
+# lobu.toml — Agent configuration
+# Docs: https://lobu.ai/docs/getting-started
+#
+# Each [agents.{id}] defines an agent. The dir field points to a directory
+# containing IDENTITY.md, SOUL.md, USER.md, and optionally skills/.
+# Shared skills in the root skills/ directory are available to all agents.
+
+[agents.customer-agent]
+name = "customer-agent"
+description = ""
+dir = "./agents/customer-agent"
+
+# LLM providers (order = priority)
+[[agents.customer-agent.providers]]
+id = "groq"
+model = "llama-3.3-70b-versatile"
+
+# Skills from the registry
+[agents.customer-agent.skills]
+enabled = ["github"]
+
+[agents.customer-agent.network]
+allowed = ["registry.npmjs.org", ".npmjs.org", "github.com", ".github.com", ".githubusercontent.com", "cdn.jsdelivr.net", "unpkg.com", "pypi.org", "files.pythonhosted.org"]
