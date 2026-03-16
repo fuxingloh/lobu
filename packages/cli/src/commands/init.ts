@@ -130,8 +130,9 @@ export async function initCommand(
   const spinner = ora("Creating Lobu project...").start();
 
   try {
-    // Create .lobu directory in project directory
+    // Create .lobu and data directories in project directory
     await mkdir(join(projectDir, ".lobu"), { recursive: true });
+    await mkdir(join(projectDir, "data"), { recursive: true });
 
     // Generate lobu.toml
     await generateLobuToml(projectDir, {
