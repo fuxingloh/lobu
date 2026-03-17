@@ -605,13 +605,15 @@ export class ChatInstanceManager {
         }
       };
 
-      // Populate metadata (bot username etc.)
+      // Populate metadata (bot username etc.) from adapter properties
       if (!connection.metadata.botUsername) {
         try {
-          const botInfo = await adapter.getBotInfo?.();
-          if (botInfo) {
-            connection.metadata.botUsername = botInfo.userName;
-            connection.metadata.botDisplayName = botInfo.fullName;
+          const userName = adapter.userName || adapter.botUsername;
+          if (userName) {
+            connection.metadata.botUsername = userName;
+            await this.updateConnection(connection.id, {
+              metadata: { botUsername: userName },
+            });
           }
         } catch {
           // non-critical

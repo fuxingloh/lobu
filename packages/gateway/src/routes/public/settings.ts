@@ -429,6 +429,24 @@ async function renderSettingsForPayload(
     }
   }
 
+  // Determine config-managed providers from manifest credentials
+  let configManagedProviders: string[] = [];
+  try {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const manifestRaw = readFileSync(
+      resolve(process.cwd(), ".lobu/agents.json"),
+      "utf-8"
+    );
+    const manifest = JSON.parse(manifestRaw);
+    const entry = manifest.agents?.find((a: any) => a.agentId === agentId);
+    if (entry?.credentials?.length) {
+      configManagedProviders = entry.credentials.map((c: any) => c.providerId);
+    }
+  } catch {
+    // Not a CLI-managed project or manifest not found
+  }
+
   // Resolve base agent's provider names for sandbox agents with no own providers
   let baseProviderNames: string[] = [];
   if (installedProviders.length === 0) {
@@ -463,6 +481,7 @@ async function renderSettingsForPayload(
       ownerPlatform: agentMetadata?.owner?.platform || "",
       integrationStatus,
       baseProviderNames,
+      configManagedProviders,
     })
   );
 }

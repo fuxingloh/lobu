@@ -42,7 +42,6 @@ const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
       type: "password",
       placeholder: "Webhook secret",
     },
-    { key: "userName", label: "Username", type: "text", placeholder: "mybot" },
     {
       key: "apiBaseUrl",
       label: "API Base URL",

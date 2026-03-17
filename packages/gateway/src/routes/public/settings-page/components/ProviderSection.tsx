@@ -376,6 +376,7 @@ function ProviderCard({
 
   const iconUrl = ctx.providerIconUrls[providerId] || "";
   const models = ctx.providerModels[providerId] || [];
+  const isConfigManaged = ctx.configManagedProviders.includes(providerId);
 
   function updatePS(update: Partial<ProviderState>) {
     ctx.providerState.value = {
@@ -468,7 +469,7 @@ function ProviderCard({
           <div class="min-w-0">
             <p class="text-sm font-medium text-gray-800">{pInfo.name}</p>
             <CapabilityChips capabilities={pInfo.capabilities || []} />
-            {!ps.connected && ps.status && (
+            {!isConfigManaged && !ps.connected && ps.status && (
               <p class="text-xs truncate max-w-[120px] sm:max-w-none text-red-500">
                 {ps.status}
               </p>
@@ -536,7 +537,12 @@ function ProviderCard({
               )}
             </div>
           )}
-          {!ps.connected && !ps.authMethods?.length && (
+          {isConfigManaged && (
+            <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+              from config
+            </span>
+          )}
+          {!isConfigManaged && !ps.connected && !ps.authMethods?.length && (
             <button
               type="button"
               onClick={connectProvider}
@@ -545,7 +551,7 @@ function ProviderCard({
               Connect
             </button>
           )}
-          {(!ctx.isSandbox || ctx.isUserScope("model")) && (
+          {!isConfigManaged && (!ctx.isSandbox || ctx.isUserScope("model")) && (
             <button
               type="button"
               onClick={handleUninstall}

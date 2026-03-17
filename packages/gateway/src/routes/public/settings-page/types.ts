@@ -188,6 +188,7 @@ export interface SettingsState {
   agents: AgentInfo[];
   hasNoProviders: boolean;
   baseProviderNames: string[];
+  configManagedProviders: string[];
   // Provider icon URLs for rendering
   providerIconUrls: Record<string, string>;
   // Integration connection status keyed by integration ID

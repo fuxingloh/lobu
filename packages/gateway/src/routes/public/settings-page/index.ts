@@ -51,6 +51,7 @@ export interface SettingsPageOptions {
   isSandbox?: boolean;
   ownerPlatform?: string;
   baseProviderNames?: string[];
+  configManagedProviders?: string[];
   integrationStatus?: Record<
     string,
     {
@@ -170,6 +171,7 @@ export function renderSettingsPage(
     hasNoProviders:
       providers.length === 0 && !options?.baseProviderNames?.length,
     baseProviderNames: options?.baseProviderNames || [],
+    configManagedProviders: options?.configManagedProviders || [],
     providerIconUrls: Object.fromEntries(
       providers.map((p) => [p.id, p.iconUrl])
     ),

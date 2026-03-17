@@ -136,6 +136,7 @@ export interface SettingsContextValue {
   ownerPlatform: string;
   templateAgentId?: string;
   baseProviderNames: string[];
+  configManagedProviders: string[];
   promoting: Signal<boolean>;
   isScopeAllowed(scope: string): boolean;
   isUserScope(scope: string): boolean;
@@ -609,6 +610,7 @@ function App() {
     ownerPlatform: state.ownerPlatform || "",
     templateAgentId: state.templateAgentId,
     baseProviderNames: state.baseProviderNames || [],
+    configManagedProviders: state.configManagedProviders || [],
     promoting,
     isUserScope(scope: string): boolean {
       if (state.settingsMode !== "user") return true;

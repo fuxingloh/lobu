@@ -12,9 +12,8 @@ dir = "./agents/customer-agent"
 
 # LLM providers (order = priority, key = API key or $ENV_VAR)
 [[agents.customer-agent.providers]]
-id = "groq"
-model = "llama-3.3-70b-versatile"
-key = "$GROQ_API_KEY"
+id = "z-ai"
+key = "$Z_AI_API_KEY"
 
 # Platform connections (config values can reference $ENV_VAR)
 [[agents.customer-agent.connections]]
