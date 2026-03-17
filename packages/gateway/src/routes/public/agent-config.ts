@@ -510,6 +510,9 @@ export function createAgentConfigRoutes(
   ): Promise<SettingsTokenPayload | null> => {
     if (!payload) return null;
 
+    // Admin sessions can manage any agent
+    if (payload.isAdmin) return payload;
+
     if (payload.agentId) {
       if (payload.agentId !== agentId) return null;
     } else {
