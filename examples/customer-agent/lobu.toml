@@ -11,14 +11,15 @@ description = ""
 dir = "./agents/customer-agent"
 
 # LLM providers (order = priority, key = API key or $ENV_VAR)
-[[agents.customer-agent.providers]]
-id = "z-ai"
-key = "$Z_AI_API_KEY"
+# Add providers via the admin page or uncomment below:
+# [[agents.customer-agent.providers]]
+# id = "anthropic"
+# key = "$ANTHROPIC_API_KEY"
 
-# Platform connections (config values can reference $ENV_VAR)
-[[agents.customer-agent.connections]]
-type = "telegram"
-config = { botToken = "$TELEGRAM_BOT_TOKEN" }
+# Telegram connection (add via admin page or set bot token in .env):
+# [[agents.customer-agent.connections]]
+# platform = "telegram"
+# bot_token = "$TELEGRAM_BOT_TOKEN"
 
 # Skills from the registry
 [agents.customer-agent.skills]

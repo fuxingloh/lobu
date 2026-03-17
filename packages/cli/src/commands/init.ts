@@ -302,9 +302,15 @@ async function generateLobuToml(
     `dir = "./agents/${id}"`,
     "",
     "# LLM providers (order = priority, key = API key or $ENV_VAR)",
-    `[[agents.${id}.providers]]`,
-    'id = "z-ai"',
-    'key = "$Z_AI_API_KEY"',
+    "# Add providers via the admin page or uncomment below:",
+    `# [[agents.${id}.providers]]`,
+    '# id = "anthropic"',
+    '# key = "$ANTHROPIC_API_KEY"',
+    "",
+    "# Telegram connection (add via admin page or set bot token in .env):",
+    `# [[agents.${id}.connections]]`,
+    '# platform = "telegram"',
+    '# bot_token = "$TELEGRAM_BOT_TOKEN"',
     "",
     "# Skills from the registry",
     `[agents.${id}.skills]`,
@@ -368,6 +374,7 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --save 60 1 --dir /data
+    working_dir: /tmp
     volumes:
       - ./data:/data
     healthcheck:
