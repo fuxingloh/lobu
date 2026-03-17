@@ -319,12 +319,6 @@ export class CoreServices {
       "Agent settings, channel binding, user agents & metadata stores initialized"
     );
 
-    // Seed agents from .lobu/agents.json manifest (CLI-managed projects)
-    await seedAgentsFromManifest(
-      this.agentSettingsStore,
-      this.agentMetadataStore
-    );
-
     // Initialize claim service (always available, used by OAuth settings flow)
     this.claimService = new ClaimService(redisClient);
     logger.debug("Claim service initialized");
@@ -372,6 +366,16 @@ export class CoreServices {
       this.authProfilesManager
     );
     this.modelPreferenceStore = new ModelPreferenceStore(redisClient, "claude");
+
+    // Seed agents from .lobu/agents.json manifest (CLI-managed projects)
+    if (this.agentMetadataStore) {
+      await seedAgentsFromManifest(
+        this.agentSettingsStore,
+        this.agentMetadataStore,
+        this.authProfilesManager
+      );
+    }
+
     logger.debug(
       "Auth profile, model preference, transcription, and image generation services initialized"
     );

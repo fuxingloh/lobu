@@ -4,6 +4,13 @@ import { z } from "zod";
 const providerSchema = z.object({
   id: z.string(),
   model: z.string().optional(),
+  key: z.string().optional(), // API key or $ENV_VAR reference
+});
+
+// Connection entry (platform-specific config is dynamic)
+const connectionSchema = z.object({
+  type: z.string(), // "telegram" | "slack" | "discord" | "whatsapp" | "teams"
+  config: z.record(z.string()), // platform-specific config (e.g. { botToken: "$BOT_TOKEN" })
 });
 
 // Skills section
@@ -37,6 +44,7 @@ const agentEntrySchema = z.object({
   description: z.string().optional(),
   dir: z.string(), // path to agent content directory (IDENTITY.md, SOUL.md, USER.md, skills/)
   providers: z.array(providerSchema).default([]),
+  connections: z.array(connectionSchema).default([]),
   skills: skillsSchema.default({ enabled: [] }),
   network: networkSchema.optional(),
   worker: workerSchema.optional(),
@@ -51,6 +59,7 @@ export type LobuTomlConfig = z.infer<typeof lobuConfigSchema>;
 export type AgentEntry = z.infer<typeof agentEntrySchema>;
 
 export type ProviderEntry = z.infer<typeof providerSchema>;
+export type ConnectionEntry = z.infer<typeof connectionSchema>;
 export type McpServerEntry = z.infer<typeof mcpServerSchema>;
 export type SkillsEntry = z.infer<typeof skillsSchema>;
 export type NetworkEntry = z.infer<typeof networkSchema>;

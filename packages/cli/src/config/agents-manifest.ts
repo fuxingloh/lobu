@@ -75,4 +75,12 @@ export interface AgentManifestEntry {
       }
     >;
   };
+  credentials?: Array<{
+    providerId: string;
+    key: string;
+  }>;
+  connections?: Array<{
+    type: string;
+    config: Record<string, string>;
+  }>;
 }

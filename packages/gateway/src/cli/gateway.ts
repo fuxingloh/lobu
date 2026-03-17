@@ -1278,8 +1278,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   await orchestrator.injectCoreServices(
     coreServices.getQueue().getRedisClient(),
     coreServices.getProviderCatalogService(),
-    coreServices.getGrantStore() ?? undefined,
-    coreServices.getClaimService()
+    coreServices.getGrantStore() ?? undefined
   );
   logger.debug("Orchestrator configured with core services");
 
@@ -1294,6 +1293,12 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
       adapter.setManager(chatInstanceManager);
     }
     logger.debug("ChatInstanceManager initialized");
+
+    // Seed connections from manifest (CLI-managed projects)
+    const { seedConnectionsFromManifest } = await import(
+      "../services/agent-seeder"
+    );
+    await seedConnectionsFromManifest(chatInstanceManager);
 
     // Wire ChatResponseBridge into unified thread consumer
     const unifiedConsumer = gateway.getUnifiedConsumer();

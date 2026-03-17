@@ -10,21 +10,11 @@ import {
   SpanStatusCode,
 } from "@lobu/core";
 import * as Sentry from "@sentry/node";
-import type { ProviderCatalogService } from "../auth/provider-catalog";
-import {
-  buildClaimSettingsUrl,
-  type ClaimService,
-} from "../auth/settings/claim-service";
 import type {
   IMessageQueue,
   QueueJob as SharedQueueJob,
 } from "../infrastructure/queue";
 import { RedisQueue, type RedisQueueConfig } from "../infrastructure/queue";
-import { SystemMessageLimiter } from "../infrastructure/redis/system-message-limiter";
-import {
-  getModelProviderModules,
-  type ModelProviderModule,
-} from "../modules/module-system";
 import {
   type BaseDeploymentManager,
   buildCanonicalConversationKey,
@@ -40,19 +30,12 @@ export class MessageConsumer {
   private deploymentManager: BaseDeploymentManager;
   private config: OrchestratorConfig;
   private isRunning = false;
-  private providerModules: ModelProviderModule[];
-  private providerCatalogService?: ProviderCatalogService;
-  private systemMessageLimiter?: SystemMessageLimiter;
-  private claimService?: ClaimService;
-
   constructor(
     config: OrchestratorConfig,
     deploymentManager: BaseDeploymentManager
   ) {
     this.config = config;
     this.deploymentManager = deploymentManager;
-    this.providerModules = getModelProviderModules();
-
     // Parse Redis connection string
     const url = new URL(config.queues.connectionString);
     if (url.protocol !== "redis:") {
@@ -117,45 +100,6 @@ export class MessageConsumer {
   }
 
   /**
-   * Refresh provider modules after module registry initialization.
-   */
-  setProviderModules(providerModules: ModelProviderModule[]): void {
-    this.providerModules = providerModules;
-  }
-
-  setProviderCatalogService(service: ProviderCatalogService): void {
-    this.providerCatalogService = service;
-  }
-
-  setClaimService(service: ClaimService | undefined): void {
-    this.claimService = service;
-  }
-
-  private async getEffectiveProviders(
-    agentId: string
-  ): Promise<ModelProviderModule[]> {
-    if (this.providerCatalogService) {
-      // When the catalog is active, only use explicitly installed providers.
-      // Do NOT fall back to global modules — that would bypass the installable
-      // provider system and pick up providers from env vars the user never chose.
-      return this.providerCatalogService.getInstalledModules(agentId);
-    }
-    return this.providerModules;
-  }
-
-  private getSystemMessageLimiter(): SystemMessageLimiter {
-    if (!this.systemMessageLimiter) {
-      // RedisQueue provides a shared ioredis client.
-      const redis = this.queue.getRedisClient();
-      this.systemMessageLimiter = new SystemMessageLimiter(
-        redis,
-        "lobu:sysmsg"
-      );
-    }
-    return this.systemMessageLimiter;
-  }
-
-  /**
    * Handle all messages - creates deployment for new threads or routes to existing thread queues
    */
   private async handleMessage(
@@ -209,128 +153,6 @@ export class MessageConsumer {
           { messageId: data.messageId, userId: data.userId },
           true
         );
-      }
-
-      // Check if the provider for this agent's model has credentials
-      // Only gate if there are registered providers to check
-      const agentModel = data.agentOptions?.model as string | undefined;
-
-      // Resolve per-agent installed providers
-      const effectiveProviders = await this.getEffectiveProviders(data.agentId);
-
-      // When no providers are installed at all, block early with a setup prompt
-      const noProvidersInstalled = effectiveProviders.length === 0;
-
-      if (
-        noProvidersInstalled ||
-        !(await this.hasAnyProviderAuth(
-          data.agentId,
-          agentModel,
-          effectiveProviders
-        ))
-      ) {
-        logger.info(
-          noProvidersInstalled
-            ? `Agent ${data.agentId} has no providers installed - sending setup prompt`
-            : `Agent ${data.agentId} has no credentials for model ${agentModel || "any"} - sending authentication prompt`
-        );
-
-        // Prevent resending the same setup/auth prompt in tight loops.
-        // Default: one prompt per (platform, channel, agent) per hour.
-        const parsedThrottleSeconds = Number.parseInt(
-          process.env.AUTH_PROMPT_DEBOUNCE_SECONDS || "3600",
-          10
-        );
-        const throttleSeconds = Number.isFinite(parsedThrottleSeconds)
-          ? parsedThrottleSeconds
-          : 3600;
-
-        const parsedLockSeconds = Number.parseInt(
-          process.env.AUTH_PROMPT_LOCK_SECONDS || "30",
-          10
-        );
-        const lockSeconds = Number.isFinite(parsedLockSeconds)
-          ? parsedLockSeconds
-          : 30;
-
-        const dedupeKey = [
-          "auth_required",
-          data.platform,
-          data.channelId,
-          data.agentId,
-        ].join(":");
-
-        // Reset suppression so each new user message re-triggers the auth prompt
-        // (the lock still prevents concurrent sends within lockTtlSeconds)
-        await this.queue.getRedisClient().del(`lobu:sysmsg:sent:${dedupeKey}`);
-
-        let didSend = false;
-        try {
-          didSend = await this.getSystemMessageLimiter().sendOnce(
-            dedupeKey,
-            async () => {
-              const unauthenticatedProviders =
-                await this.getUnauthenticatedProviders(
-                  data.agentId,
-                  agentModel
-                );
-              const authPrompt = await this.buildAuthPromptContent(
-                data,
-                unauthenticatedProviders
-              );
-
-              // Send ephemeral auth prompt via response queue
-              const responseQueue = "thread_response";
-              await this.queue.createQueue(responseQueue);
-              await this.queue.send(responseQueue, {
-                messageId: data.messageId,
-                userId: data.userId,
-                channelId: data.channelId,
-                conversationId: effectiveConversationId,
-                platform: data.platform,
-                platformMetadata: data.platformMetadata,
-                ephemeral: true,
-                content: authPrompt,
-                processedMessageIds: [data.messageId],
-              });
-              logger.info(`✅ Sent auth prompt for agent ${data.agentId}`);
-            },
-            {
-              sentTtlSeconds: throttleSeconds,
-              lockTtlSeconds: lockSeconds,
-              failOpen: false,
-            }
-          );
-        } catch (error) {
-          // Treat as processed. Without credentials we can't proceed anyway, and retries can spam.
-          logger.error(
-            {
-              error: error instanceof Error ? error.message : String(error),
-              platform: data.platform,
-              channelId: data.channelId,
-              agentId: data.agentId,
-            },
-            "Failed to send auth prompt"
-          );
-          return;
-        }
-
-        if (!didSend) {
-          logger.info(
-            {
-              dedupeKey,
-              throttleSeconds,
-              lockSeconds,
-              platform: data.platform,
-              channelId: data.channelId,
-              agentId: data.agentId,
-            },
-            "Suppressing repeated auth prompt"
-          );
-          return; // Don't create worker
-        }
-
-        return; // Don't create worker
       }
 
       const canonicalConversationKey = buildCanonicalConversationKey({
@@ -679,116 +501,6 @@ export class MessageConsumer {
       // Don't fail the main flow if tracking fails
       logger.error("Failed to track deployment failure:", trackError);
     }
-  }
-
-  /**
-   * Check if any registered model provider has auth (system key or per-agent credentials)
-   */
-  private async findProviderForModel(
-    model: string,
-    providers?: ModelProviderModule[]
-  ): Promise<ModelProviderModule | undefined> {
-    if (this.providerCatalogService) {
-      return this.providerCatalogService.findProviderForModel(model, providers);
-    }
-    // Fallback when catalog service is not yet injected
-    for (const provider of providers || this.providerModules) {
-      if (!provider.getModelOptions) continue;
-      const options = await provider.getModelOptions("", "");
-      if (options.some((opt) => opt.value === model)) {
-        return provider;
-      }
-    }
-    return undefined;
-  }
-
-  private async hasAnyProviderAuth(
-    agentId: string,
-    model?: string,
-    providers?: ModelProviderModule[]
-  ): Promise<boolean> {
-    const effectiveProviders = providers || this.providerModules;
-    // If a specific model is configured, only check the provider that owns it
-    if (model) {
-      const provider = await this.findProviderForModel(
-        model,
-        effectiveProviders
-      );
-      if (provider) {
-        return provider.hasSystemKey() || provider.hasCredentials(agentId);
-      }
-    }
-    // Fallback: check all effective providers
-    for (const provider of effectiveProviders) {
-      if (provider.hasSystemKey()) return true;
-      if (await provider.hasCredentials(agentId)) return true;
-    }
-    return false;
-  }
-
-  /**
-   * Get list of providers that have no auth for the given agent
-   */
-  private async getUnauthenticatedProviders(
-    agentId: string,
-    model?: string
-  ): Promise<Array<{ id: string; name: string }>> {
-    // If a specific model is configured, only report the provider that owns it
-    if (model) {
-      const provider = await this.findProviderForModel(model);
-      if (
-        provider &&
-        !provider.hasSystemKey() &&
-        !(await provider.hasCredentials(agentId))
-      ) {
-        return [
-          { id: provider.providerId, name: provider.providerDisplayName },
-        ];
-      }
-      if (provider) return [];
-    }
-    const unauthProviders: Array<{ id: string; name: string }> = [];
-    for (const provider of this.providerModules) {
-      if (
-        !provider.hasSystemKey() &&
-        !(await provider.hasCredentials(agentId))
-      ) {
-        unauthProviders.push({
-          id: provider.providerId,
-          name: provider.providerDisplayName,
-        });
-      }
-    }
-    return unauthProviders;
-  }
-
-  private async buildAuthPromptContent(
-    data: MessagePayload,
-    unauthenticatedProviders: Array<{ id: string; name: string }>
-  ): Promise<string> {
-    const providerNames = unauthenticatedProviders.map(
-      (provider) => provider.name
-    );
-    const providerLabel =
-      providerNames.length > 0 ? providerNames.join(", ") : "a model provider";
-    const message = `Setup required: add ${providerLabel} in settings before this bot can respond.`;
-
-    if (!this.claimService) {
-      return message;
-    }
-
-    const claimCode = await this.claimService.createClaim(
-      data.platform,
-      data.channelId,
-      data.userId
-    );
-    const settingsUrl = new URL(
-      buildClaimSettingsUrl(claimCode, { agentId: data.agentId })
-    );
-
-    settingsUrl.searchParams.set("open", "model");
-
-    return `${message}\n\n[Open Settings](${settingsUrl.toString()})`;
   }
 
   /**

@@ -10,6 +10,7 @@ import type {
   AgentSettings,
   AgentSettingsStore,
 } from "../auth/settings/agent-settings-store";
+import type { AuthProfilesManager } from "../auth/settings/auth-profiles-manager";
 
 const logger = createLogger("agent-seeder");
 
@@ -62,6 +63,14 @@ interface AgentManifestEntry {
       }
     >;
   };
+  credentials?: Array<{
+    providerId: string;
+    key: string;
+  }>;
+  connections?: Array<{
+    type: string;
+    config: Record<string, string>;
+  }>;
 }
 
 interface AgentsManifest {
@@ -80,7 +89,8 @@ interface AgentsManifest {
  */
 export async function seedAgentsFromManifest(
   agentSettingsStore: AgentSettingsStore,
-  agentMetadataStore: AgentMetadataStore
+  agentMetadataStore: AgentMetadataStore,
+  authProfilesManager?: AuthProfilesManager
 ): Promise<void> {
   const manifestPath = resolve(process.cwd(), ".lobu/agents.json");
 
@@ -146,10 +156,92 @@ export async function seedAgentsFromManifest(
           `Settings already match manifest for agent "${entry.agentId}"`
         );
       }
+
+      // Seed provider credentials as auth profiles
+      if (authProfilesManager && entry.credentials?.length) {
+        for (const cred of entry.credentials) {
+          await authProfilesManager.upsertProfile({
+            agentId: entry.agentId,
+            provider: cred.providerId,
+            credential: cred.key,
+            authType: "api-key",
+            label: `${cred.providerId} (from lobu.toml)`,
+            makePrimary: true,
+          });
+        }
+        logger.debug(
+          `Seeded ${entry.credentials.length} credential(s) for agent "${entry.agentId}"`
+        );
+      }
     } catch (err) {
       logger.error(`Failed to seed agent "${entry.agentId}"`, {
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+}
+
+/**
+ * Seed connections from the manifest after ChatInstanceManager is ready.
+ * Skips connections that already exist for the agent on the same platform.
+ */
+export async function seedConnectionsFromManifest(chatInstanceManager: {
+  listConnections(filter?: {
+    platform?: string;
+    templateAgentId?: string;
+  }): Promise<Array<{ platform: string; templateAgentId?: string }>>;
+  addConnection(
+    platform: string,
+    templateAgentId: string | undefined,
+    config: any,
+    settings?: { allowGroups?: boolean }
+  ): Promise<unknown>;
+}): Promise<void> {
+  const manifestPath = resolve(process.cwd(), ".lobu/agents.json");
+
+  let raw: string;
+  try {
+    raw = readFileSync(manifestPath, "utf-8");
+  } catch {
+    return;
+  }
+
+  let manifest: AgentsManifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch {
+    return;
+  }
+
+  if (!manifest.agents) return;
+
+  for (const entry of manifest.agents) {
+    if (!entry.connections?.length) continue;
+
+    for (const conn of entry.connections) {
+      // Skip if a connection already exists for this agent + platform
+      const existing = await chatInstanceManager.listConnections({
+        platform: conn.type,
+        templateAgentId: entry.agentId,
+      });
+      if (existing.length > 0) continue;
+
+      try {
+        await chatInstanceManager.addConnection(
+          conn.type,
+          entry.agentId,
+          { platform: conn.type, ...conn.config },
+          { allowGroups: true }
+        );
+        logger.debug(
+          `Created ${conn.type} connection for agent "${entry.agentId}"`
+        );
+      } catch (err) {
+        logger.error(
+          `Failed to create ${conn.type} connection for agent "${entry.agentId}"`,
+          { error: err instanceof Error ? err.message : String(err) }
+        );
+      }
     }
   }
 }

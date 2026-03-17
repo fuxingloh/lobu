@@ -44,14 +44,7 @@ export async function devCommand(
     const lobuDir = join(cwd, ".lobu");
     await mkdir(lobuDir, { recursive: true });
 
-    const { manifest, envVars } = await buildManifest(cwd, config.agents);
-
-    await writeFile(
-      join(lobuDir, "agents.json"),
-      JSON.stringify(manifest, null, 2)
-    );
-
-    // Write .env from lobu.toml-derived vars (merge with existing .env to preserve secrets)
+    // Parse .env first so we can resolve $VAR references in lobu.toml
     const envPath = join(cwd, ".env");
     let existingEnv = "";
     try {
@@ -59,8 +52,21 @@ export async function devCommand(
     } catch {
       // No existing .env, start fresh
     }
+    const dotenvVars = parseEnvFile(existingEnv);
 
-    const mergedVars = { ...parseEnvFile(existingEnv), ...envVars };
+    const { manifest, envVars } = await buildManifest(
+      cwd,
+      config.agents,
+      dotenvVars
+    );
+
+    await writeFile(
+      join(lobuDir, "agents.json"),
+      JSON.stringify(manifest, null, 2)
+    );
+
+    // Write .env from lobu.toml-derived vars (merge with existing .env to preserve secrets)
+    const mergedVars = { ...dotenvVars, ...envVars };
     const envContent = Object.entries(mergedVars)
       .map(([k, v]) => `${k}=${v}`)
       .join("\n");
@@ -166,7 +172,8 @@ export async function devCommand(
  */
 async function buildManifest(
   cwd: string,
-  agents: Record<string, AgentEntry>
+  agents: Record<string, AgentEntry>,
+  dotenvVars: Record<string, string>
 ): Promise<{ manifest: AgentsManifest; envVars: Record<string, string> }> {
   const entries: AgentManifestEntry[] = [];
   const rootSkillsDir = join(cwd, "skills");
@@ -262,6 +269,36 @@ async function buildManifest(
       entry.settings.mcpServers = agentConfig.skills.mcp;
     }
 
+    // Resolve provider credentials from $ENV_VAR references
+    const credentials = agentConfig.providers
+      .filter((p) => p.key)
+      .map((p) => ({
+        providerId: p.id,
+        key: resolveEnvVar(p.key!, dotenvVars),
+      }))
+      .filter((c) => c.key); // skip if env var not found
+
+    if (credentials.length > 0) {
+      entry.credentials = credentials;
+    }
+
+    // Resolve connection configs from $ENV_VAR references
+    const connections = agentConfig.connections
+      .map((conn) => ({
+        type: conn.type,
+        config: Object.fromEntries(
+          Object.entries(conn.config).map(([k, v]) => [
+            k,
+            resolveEnvVar(v, dotenvVars),
+          ])
+        ),
+      }))
+      .filter((conn) => Object.values(conn.config).every((v) => v !== "")); // skip if any env var missing
+
+    if (connections.length > 0) {
+      entry.connections = connections;
+    }
+
     entries.push(entry);
   }
 
@@ -272,6 +309,18 @@ async function buildManifest(
   };
 
   return { manifest: { version: 1, agents: entries }, envVars };
+}
+
+/**
+ * Resolve a value that may be a $ENV_VAR reference.
+ * Returns the resolved value, or empty string if the env var is not set.
+ */
+function resolveEnvVar(value: string, envVars: Record<string, string>): string {
+  if (value.startsWith("$")) {
+    const varName = value.slice(1);
+    return envVars[varName] || process.env[varName] || "";
+  }
+  return value;
 }
 
 function parseEnvFile(content: string): Record<string, string> {
