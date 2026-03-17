@@ -149,6 +149,6 @@ export function createImageRoutes(
     }
   });
 
-  logger.info("Internal image routes registered");
+  logger.debug("Internal image routes registered");
   return router;
 }

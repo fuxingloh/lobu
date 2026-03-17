@@ -106,7 +106,7 @@ export async function seedAgentsFromManifest(
     return;
   }
 
-  logger.info(`Seeding ${manifest.agents.length} agent(s) from manifest`);
+  logger.debug(`Seeding ${manifest.agents.length} agent(s) from manifest`);
 
   for (const entry of manifest.agents) {
     try {
@@ -121,7 +121,7 @@ export async function seedAgentsFromManifest(
           "manifest",
           { description: entry.description }
         );
-        logger.info(`Created metadata for agent "${entry.agentId}"`);
+        logger.debug(`Created metadata for agent "${entry.agentId}"`);
       } else if (
         existingMetadata.name !== entry.name ||
         existingMetadata.description !== entry.description
@@ -130,7 +130,7 @@ export async function seedAgentsFromManifest(
           name: entry.name,
           description: entry.description,
         });
-        logger.info(`Updated metadata for agent "${entry.agentId}"`);
+        logger.debug(`Updated metadata for agent "${entry.agentId}"`);
       }
 
       const existingSettings = await agentSettingsStore.getSettings(
@@ -140,9 +140,9 @@ export async function seedAgentsFromManifest(
 
       if (settingsDiffer(existingSettings, nextSettings)) {
         await agentSettingsStore.saveSettings(entry.agentId, nextSettings);
-        logger.info(`Reconciled settings for agent "${entry.agentId}"`);
+        logger.debug(`Reconciled settings for agent "${entry.agentId}"`);
       } else {
-        logger.info(
+        logger.debug(
           `Settings already match manifest for agent "${entry.agentId}"`
         );
       }

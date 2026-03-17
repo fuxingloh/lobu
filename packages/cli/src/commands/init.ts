@@ -367,7 +367,7 @@ name: ${projectName}
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1 --dir /data
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --save 60 1 --dir /data
     volumes:
       - ./data:/data
     healthcheck:

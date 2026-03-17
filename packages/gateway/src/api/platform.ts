@@ -43,7 +43,7 @@ export class ApiPlatform implements PlatformAdapter {
    * Initialize with core services
    */
   async initialize(services: CoreServices): Promise<void> {
-    logger.info("Initializing API platform...");
+    logger.debug("Initializing API platform...");
 
     this.services = services;
 
@@ -60,7 +60,7 @@ export class ApiPlatform implements PlatformAdapter {
       }
     });
 
-    logger.info("✅ API platform initialized");
+    logger.debug("✅ API platform initialized");
   }
 
   /**
@@ -69,7 +69,7 @@ export class ApiPlatform implements PlatformAdapter {
    */
   async start(): Promise<void> {
     this.isRunning = true;
-    logger.info("✅ API platform started");
+    logger.debug("✅ API platform started");
   }
 
   /**
@@ -77,7 +77,7 @@ export class ApiPlatform implements PlatformAdapter {
    */
   async stop(): Promise<void> {
     this.isRunning = false;
-    logger.info("✅ API platform stopped");
+    logger.debug("✅ API platform stopped");
   }
 
   /**

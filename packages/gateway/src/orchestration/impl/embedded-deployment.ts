@@ -55,7 +55,7 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
         `Worker entry point not found: ${entryPoint}. Run from the project root.`
       );
     }
-    logger.info(`Worker entry point verified: ${entryPoint}`);
+    logger.debug(`Worker entry point verified: ${entryPoint}`);
   }
 
   async createDeployment(

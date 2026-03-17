@@ -138,7 +138,7 @@ export class ScheduledWakeupService {
     );
 
     this.isInitialized = true;
-    logger.info("Scheduled wakeup service started");
+    logger.debug("Scheduled wakeup service started");
   }
 
   /**

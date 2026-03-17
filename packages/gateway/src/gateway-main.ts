@@ -46,7 +46,7 @@ export class Gateway {
     this.platforms.set(platform.name, platform);
     // Also register in global platform registry for deployment managers
     platformRegistry.register(platform);
-    logger.info(`Platform registered: ${platform.name}`);
+    logger.debug(`Platform registered: ${platform.name}`);
     return this;
   }
 
@@ -58,21 +58,18 @@ export class Gateway {
    * 4. Start all platforms
    */
   async start(): Promise<void> {
-    logger.info("Starting gateway...");
+    logger.debug("Starting gateway...");
 
     // 1. Initialize core services (Redis, MCP, Anthropic, etc.)
-    logger.info("Step 1/4: Initializing core services");
     await this.coreServices.initialize();
 
     // 2. Initialize each platform with core services
-    logger.info(`Step 2/4: Initializing ${this.platforms.size} platform(s)`);
     for (const [name, platform] of this.platforms) {
-      logger.info(`Initializing platform: ${name}`);
+      logger.debug(`Initializing platform: ${name}`);
       await platform.initialize(this.coreServices);
     }
 
     // 3. Register instruction providers from platforms
-    logger.info("Step 3/4: Registering instruction providers");
     const instructionService = this.coreServices.getInstructionService();
     if (instructionService) {
       for (const [name, platform] of this.platforms) {
@@ -86,26 +83,20 @@ export class Gateway {
     }
 
     // 4. Start all platforms
-    logger.info(`Step 4/4: Starting ${this.platforms.size} platform(s)`);
     for (const [name, platform] of this.platforms) {
-      logger.info(`Starting platform: ${name}`);
+      logger.debug(`Starting platform: ${name}`);
       await platform.start();
     }
 
     // 5. Start unified thread response consumer
     // Single consumer routes responses to platforms via registry
-    logger.info("Starting unified thread response consumer");
     this.unifiedConsumer = new UnifiedThreadResponseConsumer(
       this.coreServices.getQueue(),
       platformRegistry
     );
     await this.unifiedConsumer.start();
-    logger.info("Unified thread response consumer started");
 
     this.isRunning = true;
-    logger.info(
-      `Gateway started successfully with ${this.platforms.size} platform(s)`
-    );
   }
 
   /**

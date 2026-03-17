@@ -50,7 +50,7 @@ export class ChatInstanceManager {
 
     // Load all connections from Redis and start active ones
     const connectionIds = await this.redis.smembers("connections:all");
-    logger.info(
+    logger.debug(
       { count: connectionIds.length },
       "Loading connections from Redis"
     );

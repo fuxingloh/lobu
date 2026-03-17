@@ -36,7 +36,7 @@ export async function initSentry() {
       ],
     });
 
-    getLogger().info("✅ Sentry monitoring initialized");
+    getLogger().debug("Sentry monitoring initialized");
   } catch (error) {
     getLogger().warn(
       "⚠️ Sentry initialization failed (continuing without monitoring):",

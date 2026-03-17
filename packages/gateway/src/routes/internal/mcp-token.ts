@@ -142,6 +142,6 @@ export function createMcpTokenRoutes(
     return c.text(credentials.accessToken);
   });
 
-  logger.info("Internal MCP token routes registered");
+  logger.debug("Internal MCP token routes registered");
   return router;
 }

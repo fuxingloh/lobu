@@ -73,11 +73,9 @@ export class Orchestrator {
     const providerModules = getModelProviderModules();
     this.deploymentManager.setProviderModules(providerModules);
     this.queueConsumer.setProviderModules(providerModules);
-    logger.info(
-      `✅ Provider modules injected into orchestrator (${providerModules.length})`
+    logger.debug(
+      `Provider modules injected into orchestrator (${providerModules.length})`
     );
-
-    logger.info("✅ Core services injected into orchestrator");
   }
 
   private createDeploymentManager(
@@ -115,7 +113,7 @@ export class Orchestrator {
     }
 
     if (deploymentMode === "embedded") {
-      logger.info("⚡ Using embedded deployment mode (in-process workers)");
+      logger.debug("Using embedded deployment mode (in-process workers)");
       return new EmbeddedDeploymentManager(
         config,
         buildModuleEnvVars,
@@ -198,16 +196,11 @@ export class Orchestrator {
     try {
       // Initialize modules
       await moduleRegistry.initAll();
-      logger.info("✅ Modules initialized for orchestration");
-
       // Module registration can happen during initAll(); refresh providers
       // so deployment/message processing uses the latest auth modules.
       const providerModules = getModelProviderModules();
       this.deploymentManager.setProviderModules(providerModules);
       this.queueConsumer.setProviderModules(providerModules);
-      logger.info(
-        `✅ Refreshed provider modules for orchestrator (${providerModules.length})`
-      );
 
       // Validate configured worker runtime/image before consuming messages.
       await this.deploymentManager.validateWorkerImage();
@@ -225,7 +218,7 @@ export class Orchestrator {
       this.setupIdleCleanup();
 
       this.isRunning = true;
-      logger.info("✅ Orchestrator started successfully");
+      logger.debug("Orchestrator started");
     } catch (error) {
       logger.error("❌ Failed to start orchestrator:", error);
       throw error;

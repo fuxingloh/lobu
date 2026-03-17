@@ -104,6 +104,6 @@ export function createInteractionRoutes(
     }
   });
 
-  logger.info("Internal interaction routes registered");
+  logger.debug("Internal interaction routes registered");
   return router;
 }

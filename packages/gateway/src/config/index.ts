@@ -137,7 +137,7 @@ export interface GatewayConfig {
  */
 export function loadEnvFile(envPath?: string): void {
   if (process.env.NODE_ENV === "production") {
-    logger.info("Production mode - skipping .env file");
+    logger.debug("Production mode - skipping .env file");
     return;
   }
 
@@ -163,14 +163,14 @@ export function loadEnvFile(envPath?: string): void {
  * This is the SINGLE source of truth for all configuration
  */
 export function buildGatewayConfig(): GatewayConfig {
-  logger.info("Building gateway configuration from environment variables");
+  logger.debug("Building gateway configuration from environment variables");
 
   // Required variables
   const connectionString = getRequiredEnv("QUEUE_URL");
 
   // Log warning if no system key is available (providers check their own env vars)
   if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    logger.warn(
+    logger.debug(
       "No system ANTHROPIC_API_KEY configured. " +
         "Users will need to authenticate via OAuth."
     );
@@ -382,7 +382,7 @@ export function buildGatewayConfig(): GatewayConfig {
     },
   };
 
-  logger.info("Gateway configuration built successfully");
+  logger.debug("Gateway configuration built successfully");
 
   return config;
 }

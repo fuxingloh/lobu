@@ -22,6 +22,7 @@ export class SystemSkillsService {
   private configUrl?: string;
   private loaded?: SystemSkillsConfigFile;
   private rawLoaded?: SystemSkillsConfigFile;
+  private loadAttempted = false;
 
   constructor(configUrl?: string) {
     this.configUrl = configUrl;
@@ -195,7 +196,7 @@ export class SystemSkillsService {
 
   private async loadConfig(): Promise<SystemSkillsConfigFile | null> {
     if (this.loaded) return this.loaded;
-    if (!this.configUrl) return null;
+    if (this.loadAttempted || !this.configUrl) return null;
     try {
       let raw: string;
       if (
@@ -242,7 +243,8 @@ export class SystemSkillsService {
       }
       return parsed;
     } catch (error) {
-      logger.error("Failed to load system skills config", { error });
+      this.loadAttempted = true;
+      logger.debug("System skills config not available", { error });
       return null;
     }
   }

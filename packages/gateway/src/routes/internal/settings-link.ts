@@ -283,7 +283,7 @@ export function createSettingsLinkRoutes(
     }
   });
 
-  logger.info("Internal settings link routes registered");
+  logger.debug("Internal settings link routes registered");
 
   return router;
 }

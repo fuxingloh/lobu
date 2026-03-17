@@ -24,7 +24,7 @@ index 2d48f2187a6f56d896a3459018ea53f637981484..a34bbcaeb2abf207524617b724cc2d89
      }
    }
    return row;
-@@ -524,7 +531,7 @@ var TelegramAdapter = class {
+@@ -524,10 +531,10 @@ var TelegramAdapter = class {
      const parsedThread = this.resolveThreadId(threadId);
      const card = extractCard(message);
      const replyMarkup = card ? cardToTelegramInlineKeyboard(card) : void 0;
@@ -37,7 +37,7 @@ index 2d48f2187a6f56d896a3459018ea53f637981484..a34bbcaeb2abf207524617b724cc2d89
          "gchat"
        )
      );
-@@ -590,7 +597,7 @@ var TelegramAdapter = class {
+@@ -590,10 +597,10 @@ var TelegramAdapter = class {
      } = this.decodeCompositeMessageId(messageId, parsedThread.chatId);
      const card = extractCard(message);
      const replyMarkup = card ? cardToTelegramInlineKeyboard(card) : void 0;

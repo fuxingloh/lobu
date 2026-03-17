@@ -19,7 +19,7 @@ export function loadAllowedDomains(): string[] {
 
     // Special case: * means unrestricted access
     if (trimmed === "*") {
-      logger.info("🌐 WORKER_ALLOWED_DOMAINS=* - unrestricted internet access");
+      logger.debug("WORKER_ALLOWED_DOMAINS=* - unrestricted internet access");
       return ["*"];
     }
 
@@ -29,8 +29,8 @@ export function loadAllowedDomains(): string[] {
       .filter((d) => d.length > 0);
 
     domains.push(...parsed);
-    logger.info(
-      `🔒 Loaded ${parsed.length} allowed domains from WORKER_ALLOWED_DOMAINS`
+    logger.debug(
+      `Loaded ${parsed.length} allowed domains from WORKER_ALLOWED_DOMAINS`
     );
   } else {
     logger.warn(
@@ -62,7 +62,7 @@ export function loadDisallowedDomains(): string[] {
       .filter((d) => d.length > 0);
 
     domains.push(...parsed);
-    logger.info(
+    logger.debug(
       `Loaded ${parsed.length} disallowed domains from WORKER_DISALLOWED_DOMAINS`
     );
   }

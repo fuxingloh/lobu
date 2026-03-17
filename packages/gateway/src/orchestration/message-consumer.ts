@@ -79,7 +79,7 @@ export class MessageConsumer {
 
       // Create the messages queue if it doesn't exist
       await this.queue.createQueue("messages");
-      logger.info("✅ Created/verified messages queue");
+      logger.debug("Created/verified messages queue");
 
       // Subscribe to the single messages queue for all messages
       await this.queue.work(
@@ -100,7 +100,7 @@ export class MessageConsumer {
         }
       );
 
-      logger.info("✅ Queue consumer started - listening for messages");
+      logger.debug("Queue consumer started");
     } catch (error) {
       throw new OrchestratorError(
         ErrorCode.QUEUE_JOB_PROCESSING_FAILED,

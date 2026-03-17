@@ -803,7 +803,7 @@ export abstract class BaseDeploymentManager {
     try {
       const maxDeployments = this.config.worker.maxDeployments;
 
-      logger.info("🔄 Running deployment cleanup...");
+      logger.debug("Running deployment cleanup...");
 
       // Get all worker deployments from the backend
       const activeDeployments = await this.listDeployments();

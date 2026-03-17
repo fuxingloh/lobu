@@ -700,7 +700,7 @@ export function createAgentApi(
     }
   });
 
-  logger.info("Hono Agent API routes registered");
+  logger.debug("Hono Agent API routes registered");
 
   return app;
 }

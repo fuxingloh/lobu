@@ -78,9 +78,7 @@ export class McpProxy {
     this.toolCache = toolCache;
     this.app = new Hono();
     this.setupRoutes();
-    logger.info("MCP proxy initialized with Redis session storage", {
-      ttlMinutes: this.SESSION_TTL_SECONDS / 60,
-    });
+    logger.debug("MCP proxy initialized");
   }
 
   getApp(): Hono {

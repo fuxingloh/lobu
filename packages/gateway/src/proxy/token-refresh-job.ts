@@ -51,7 +51,7 @@ export class TokenRefreshJob {
    */
   setMcpDeps(deps: McpRefreshDeps): void {
     this.mcpDeps = deps;
-    logger.info("MCP credential refresh enabled");
+    logger.debug("MCP credential refresh enabled");
   }
 
   start(): void {
@@ -61,7 +61,7 @@ export class TokenRefreshJob {
         logger.error("Token refresh tick failed:", err)
       );
     }, REFRESH_INTERVAL_MS);
-    logger.info("Token refresh job started (interval: 2m)");
+    logger.debug("Token refresh job started");
   }
 
   stop(): void {

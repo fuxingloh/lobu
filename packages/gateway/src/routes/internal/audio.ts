@@ -162,7 +162,7 @@ export function createAudioRoutes(
     }
   });
 
-  logger.info("Internal audio routes registered");
+  logger.debug("Internal audio routes registered");
 
   return router;
 }

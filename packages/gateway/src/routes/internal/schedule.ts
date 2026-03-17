@@ -252,6 +252,6 @@ export function createScheduleRoutes(
     }
   });
 
-  logger.info("Internal schedule routes registered");
+  logger.debug("Internal schedule routes registered");
   return router;
 }

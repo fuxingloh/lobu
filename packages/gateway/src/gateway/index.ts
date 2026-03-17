@@ -121,7 +121,7 @@ export class WorkerGateway {
       this.handleSessionContextRequest(c)
     );
 
-    logger.info("Worker gateway routes registered");
+    logger.debug("Worker gateway routes registered");
   }
 
   /**

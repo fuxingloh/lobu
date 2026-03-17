@@ -51,7 +51,7 @@ export async function startFilteringProxy(): Promise<void> {
 
     proxyServer = await startHttpProxy(port, host);
 
-    logger.info(`✅ HTTP proxy started successfully on ${host}:${port}`);
+    logger.debug(`HTTP proxy started on ${host}:${port}`);
   } catch (error) {
     logger.error("Failed to start HTTP proxy:", error);
     throw error;

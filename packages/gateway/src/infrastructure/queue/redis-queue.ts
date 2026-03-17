@@ -47,7 +47,7 @@ export class RedisQueue implements IMessageQueue {
     });
 
     this.isConnected = true;
-    logger.info("✅ Redis queue started successfully");
+    logger.debug("Redis queue started");
   }
 
   async stop(): Promise<void> {
@@ -57,7 +57,7 @@ export class RedisQueue implements IMessageQueue {
     for (const [name, worker] of this.workers.entries()) {
       try {
         await worker.close();
-        logger.info(`Closed worker for queue: ${name}`);
+        logger.debug(`Closed worker for queue: ${name}`);
       } catch (error) {
         logger.error(`Error closing worker ${name}:`, error);
       }
@@ -67,7 +67,7 @@ export class RedisQueue implements IMessageQueue {
     for (const [name, events] of this.queueEvents.entries()) {
       try {
         await events.close();
-        logger.info(`Closed events for queue: ${name}`);
+        logger.debug(`Closed events for queue: ${name}`);
       } catch (error) {
         logger.error(`Error closing events ${name}:`, error);
       }
@@ -77,7 +77,7 @@ export class RedisQueue implements IMessageQueue {
     for (const [name, queue] of this.queues.entries()) {
       try {
         await queue.close();
-        logger.info(`Closed queue: ${name}`);
+        logger.debug(`Closed queue: ${name}`);
       } catch (error) {
         logger.error(`Error closing queue ${name}:`, error);
       }
@@ -93,7 +93,7 @@ export class RedisQueue implements IMessageQueue {
       this.redisClient = undefined;
     }
 
-    logger.info("✅ Redis queue stopped");
+    logger.debug("Redis queue stopped");
   }
 
   async createQueue(queueName: string): Promise<void> {
@@ -108,7 +108,7 @@ export class RedisQueue implements IMessageQueue {
       });
 
       this.queues.set(queueName, queue);
-      logger.info(`Created queue: ${queueName}`);
+      logger.debug(`Created queue: ${queueName}`);
     }
   }
 
@@ -164,7 +164,7 @@ export class RedisQueue implements IMessageQueue {
     }
 
     const job = await queue.add(queueName, data, jobOptions);
-    logger.info(`Enqueued job ${job.id} to queue ${queueName}`);
+    logger.debug(`Enqueued job ${job.id} to queue ${queueName}`);
 
     return job.id || "unknown";
   }
@@ -192,7 +192,7 @@ export class RedisQueue implements IMessageQueue {
       const worker = new Worker(
         queueName,
         async (job) => {
-          logger.info(`Processing job ${job.id} from queue ${queueName}`);
+          logger.debug(`Processing job ${job.id} from queue ${queueName}`);
 
           const queueJob: QueueJob<T> = {
             id: job.id || "unknown",
@@ -211,7 +211,7 @@ export class RedisQueue implements IMessageQueue {
 
       // Add event listeners for worker
       worker.on("completed", (job) => {
-        logger.info(`Job ${job.id} completed in queue ${queueName}`);
+        logger.debug(`Job ${job.id} completed in queue ${queueName}`);
       });
 
       worker.on("failed", (job, err) => {
@@ -229,8 +229,8 @@ export class RedisQueue implements IMessageQueue {
       if (startPaused) {
         this.pendingWorkers.add(queueName);
       }
-      logger.info(
-        `Created worker for queue: ${queueName}${startPaused ? " (paused, awaiting resumeWorker)" : ""}`
+      logger.debug(
+        `Created worker for queue: ${queueName}${startPaused ? " (paused)" : ""}`
       );
     }
   }
@@ -283,7 +283,7 @@ export class RedisQueue implements IMessageQueue {
     }
 
     await worker.pause();
-    logger.info(`⏸️  Paused worker for queue ${queueName}`);
+    logger.debug(`Paused worker for queue ${queueName}`);
   }
 
   async resumeWorker(queueName: string): Promise<void> {
@@ -299,7 +299,7 @@ export class RedisQueue implements IMessageQueue {
     if (this.pendingWorkers.has(queueName)) {
       this.pendingWorkers.delete(queueName);
       worker.run();
-      logger.info(`▶️  Started worker for queue ${queueName} (first run)`);
+      logger.debug(`Started worker for queue ${queueName} (first run)`);
       return;
     }
 
@@ -309,7 +309,7 @@ export class RedisQueue implements IMessageQueue {
     }
 
     worker.resume();
-    logger.info(`▶️  Resumed worker for queue ${queueName}`);
+    logger.debug(`Resumed worker for queue ${queueName}`);
   }
 
   /**

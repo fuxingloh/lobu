@@ -337,6 +337,6 @@ export function createAgentRoutes(config: AgentRoutesConfig): Hono {
     }
   });
 
-  logger.info("Agent management routes registered");
+  logger.debug("Agent management routes registered");
   return router;
 }

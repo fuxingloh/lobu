@@ -48,7 +48,7 @@ export class UnifiedThreadResponseConsumer {
       );
 
       this.isRunning = true;
-      logger.info("Unified thread response consumer started");
+      logger.debug("Unified thread response consumer started");
     } catch (error) {
       logger.error("Failed to start unified thread response consumer:", error);
       throw error;

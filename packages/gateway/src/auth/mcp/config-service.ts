@@ -79,9 +79,7 @@ export class McpConfigService {
     this.inputStore = options.inputStore;
     this.agentSettingsStore = options.agentSettingsStore;
     this.configResolver = options.configResolver;
-    logger.info(
-      `McpConfigService initialized with discovery: ${!!this.discoveryService}, credential store: ${!!this.credentialStore}, input store: ${!!this.inputStore}, config resolver: ${!!this.configResolver}`
-    );
+    logger.debug(`McpConfigService initialized`);
   }
 
   /**
@@ -420,10 +418,10 @@ export class McpConfigService {
       return;
     }
 
-    logger.info("Starting OAuth discovery for all MCP servers...");
+    logger.debug("Starting OAuth discovery for all MCP servers...");
 
     const config = await this.loadConfig();
-    logger.info(`Found ${config.httpServers.size} HTTP MCP servers to check`);
+    logger.debug(`Found ${config.httpServers.size} HTTP MCP servers to check`);
 
     const discoveredOAuth = new Map<string, DiscoveredOAuthMetadata>();
     const discoveryPromises: Promise<void>[] = [];
@@ -481,7 +479,7 @@ export class McpConfigService {
     }
 
     this.discoveryEnriched = true;
-    logger.info(
+    logger.debug(
       `Discovery completed. OAuth discovered: ${discoveredOAuth.size}`
     );
   }

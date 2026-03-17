@@ -83,7 +83,7 @@ export class SkillRegistryCoordinator {
       this.registries = this.loadFromConfig();
     }
 
-    logger.info(
+    logger.debug(
       `Initialized with ${this.registries.length} registry(ies): ${this.registries.map((r) => r.id).join(", ")}`
     );
   }
@@ -112,7 +112,7 @@ export class SkillRegistryCoordinator {
     }
 
     // Fallback: default ClawHub
-    logger.info("No config found, using default ClawHub registry");
+    logger.debug("No config found, using default ClawHub registry");
     return [this.createDefaultClawHub()];
   }
 

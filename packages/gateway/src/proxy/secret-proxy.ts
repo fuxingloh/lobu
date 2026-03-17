@@ -45,7 +45,7 @@ export class SecretProxy {
     this.slugMap = new Map();
     for (const upstream of config.providerUpstreams ?? []) {
       this.slugMap.set(upstream.slug, upstream.upstreamBaseUrl);
-      logger.info(
+      logger.debug(
         `Registered provider upstream: ${upstream.slug} -> ${upstream.upstreamBaseUrl}`
       );
     }
@@ -73,7 +73,7 @@ export class SecretProxy {
     if (providerId) {
       this.slugToProviderId.set(upstream.slug, providerId);
     }
-    logger.info(
+    logger.debug(
       `Registered provider upstream: ${upstream.slug} -> ${upstream.upstreamBaseUrl}${providerId ? ` (providerId: ${providerId})` : ""}`
     );
   }

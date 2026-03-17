@@ -80,19 +80,23 @@ export async function devCommand(
       process.exit(1);
     }
 
-    // Read gateway port from .env (already merged)
-    const gatewayPort = mergedVars.GATEWAY_PORT || "8080";
-    const gatewayUrl = `http://localhost:${gatewayPort}`;
+    const fallbackPort = mergedVars.GATEWAY_PORT || "8080";
 
     console.log(
       chalk.cyan(`\n  Starting ${manifest.agents.length} agent(s)...\n`)
     );
-    const child = spawn("docker", ["compose", "up", ...passthroughArgs], {
-      cwd,
-      stdio: "inherit",
-    });
 
-    child.on("error", (err) => {
+    const explicitDetach =
+      passthroughArgs.includes("-d") || passthroughArgs.includes("--detach");
+
+    // Always start detached so we can print the banner before logs
+    const upArgs = explicitDetach
+      ? ["compose", "up", ...passthroughArgs]
+      : ["compose", "up", "-d", ...passthroughArgs];
+
+    const up = spawn("docker", upArgs, { cwd, stdio: "inherit" });
+
+    up.on("error", (err) => {
       console.error(
         chalk.red(`\n  Failed to start docker compose: ${err.message}`)
       );
@@ -100,14 +104,53 @@ export async function devCommand(
       process.exit(1);
     });
 
-    child.on("exit", (code) => {
-      if (code === 0 && passthroughArgs.includes("-d")) {
+    up.on("exit", (code) => {
+      if (code !== 0) {
+        process.exit(code ?? 1);
+      }
+
+      // Detect actual host port from the running container
+      const portProbe = spawn(
+        "docker",
+        ["compose", "port", "gateway", "8080"],
+        { cwd, stdio: ["ignore", "pipe", "ignore"] }
+      );
+
+      let portOutput = "";
+      portProbe.stdout.on("data", (data: Buffer) => {
+        portOutput += data.toString();
+      });
+
+      portProbe.on("exit", () => {
+        const match = portOutput.trim().match(/:(\d+)$/);
+        const port = match ? match[1] : fallbackPort;
+        const gatewayUrl = `http://localhost:${port}`;
+
         console.log(chalk.green("\n  Lobu is running!\n"));
         console.log(chalk.cyan(`  Admin page:    ${gatewayUrl}/agents`));
-        console.log(chalk.dim(`\n  View logs:     docker compose logs -f`));
-        console.log(chalk.dim(`  Stop:          docker compose down\n`));
-      }
-      process.exit(code ?? 0);
+        console.log(chalk.dim(`\n  Stop:          docker compose down`));
+
+        if (explicitDetach) {
+          console.log(
+            chalk.dim(`  View logs:     docker compose logs -f gateway\n`)
+          );
+          process.exit(0);
+        }
+
+        console.log(
+          chalk.dim(`  Ctrl+C stops log tail, containers keep running.\n`)
+        );
+
+        // Tail only gateway logs (skip redis noise)
+        const logs = spawn("docker", ["compose", "logs", "-f", "gateway"], {
+          cwd,
+          stdio: "inherit",
+        });
+
+        logs.on("exit", (logCode) => {
+          process.exit(logCode ?? 0);
+        });
+      });
     });
   } catch (err) {
     spinner.fail("Failed to prepare environment");

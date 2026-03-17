@@ -112,13 +112,13 @@ function setupServer(
   // Secret injection proxy (Hono)
   if (secretProxy) {
     app.route("/api/proxy", secretProxy.getApp());
-    logger.info("Secret proxy enabled at :8080/api/proxy");
+    logger.debug("Secret proxy enabled at :8080/api/proxy");
   }
 
   // Worker Gateway routes (Hono)
   if (workerGateway) {
     app.route("/worker", workerGateway.getApp());
-    logger.info("Worker gateway routes enabled at :8080/worker/*");
+    logger.debug("Worker gateway routes enabled at :8080/worker/*");
   }
 
   // Register module endpoints
@@ -130,7 +130,7 @@ function setupServer(
     const expressApp = createExpressAdapter(app);
     coreModuleRegistry.registerEndpoints(expressApp);
   }
-  logger.info("Module endpoints registered");
+  logger.debug("Module endpoints registered");
 
   // MCP proxy routes (Hono)
   if (mcpProxy) {
@@ -144,7 +144,7 @@ function setupServer(
     });
     // Mount MCP proxy at /mcp/*
     app.route("/mcp", mcpProxy.getApp());
-    logger.info("MCP proxy routes enabled at :8080/mcp/*");
+    logger.debug("MCP proxy routes enabled at :8080/mcp/*");
   }
 
   // File routes (already Hono) - uses platform registry for per-platform file handling
@@ -152,7 +152,7 @@ function setupServer(
     const { createFileRoutes } = require("../routes/internal/files");
     const fileRouter = createFileRoutes(platformRegistry);
     app.route("/internal/files", fileRouter);
-    logger.info("File routes enabled at :8080/internal/files/*");
+    logger.debug("File routes enabled at :8080/internal/files/*");
   }
 
   // History routes (already Hono)
@@ -160,7 +160,7 @@ function setupServer(
     const { createHistoryRoutes } = require("../routes/internal/history");
     const historyRouter = createHistoryRoutes();
     app.route("/internal", historyRouter);
-    logger.info("History routes enabled at :8080/internal/history");
+    logger.debug("History routes enabled at :8080/internal/history");
   }
 
   // Schedule routes (worker scheduling endpoints)
@@ -170,7 +170,7 @@ function setupServer(
       const { createScheduleRoutes } = require("../routes/internal/schedule");
       const scheduleRouter = createScheduleRoutes(scheduledWakeupService);
       app.route("", scheduleRouter);
-      logger.info("Schedule routes enabled at :8080/internal/schedule");
+      logger.debug("Schedule routes enabled at :8080/internal/schedule");
     }
   }
 
@@ -185,7 +185,9 @@ function setupServer(
       coreServices?.getClaimService()
     );
     app.route("", settingsLinkRouter);
-    logger.info("Settings link routes enabled at :8080/internal/settings-link");
+    logger.debug(
+      "Settings link routes enabled at :8080/internal/settings-link"
+    );
   }
 
   // MCP login routes (worker can trigger MCP OAuth login for users)
@@ -196,7 +198,7 @@ function setupServer(
       interactionService
     );
     app.route("", mcpLoginRouter);
-    logger.info("MCP login routes enabled at :8080/internal/mcp-login");
+    logger.debug("MCP login routes enabled at :8080/internal/mcp-login");
   }
 
   // MCP token routes (worker can retrieve stored MCP OAuth tokens)
@@ -210,7 +212,7 @@ function setupServer(
       coreServices.getMcpConfigService()
     );
     app.route("", mcpTokenRouter);
-    logger.info("MCP token routes enabled at :8080/internal/mcp-token/:mcpId");
+    logger.debug("MCP token routes enabled at :8080/internal/mcp-token/:mcpId");
   }
 
   // Integrations discovery routes (unified skills + MCP search for workers)
@@ -234,7 +236,7 @@ function setupServer(
       grantStore: coreServices?.getGrantStore(),
     });
     app.route("", integrationsDiscoveryRouter);
-    logger.info(
+    logger.debug(
       "Integrations discovery routes enabled at :8080/internal/integrations/*"
     );
   }
@@ -246,7 +248,7 @@ function setupServer(
       const { createAudioRoutes } = require("../routes/internal/audio");
       const audioRouter = createAudioRoutes(transcriptionService);
       app.route("", audioRouter);
-      logger.info("Audio routes enabled at :8080/internal/audio/*");
+      logger.debug("Audio routes enabled at :8080/internal/audio/*");
     }
   }
 
@@ -257,7 +259,7 @@ function setupServer(
       const { createImageRoutes } = require("../routes/internal/images");
       const imageRouter = createImageRoutes(imageGenerationService);
       app.route("", imageRouter);
-      logger.info("Image routes enabled at :8080/internal/images/*");
+      logger.debug("Image routes enabled at :8080/internal/images/*");
     }
   }
 
@@ -268,7 +270,7 @@ function setupServer(
     } = require("../routes/internal/interactions");
     const internalRouter = createInteractionRoutes(interactionService);
     app.route("", internalRouter);
-    logger.info("Internal interaction routes enabled");
+    logger.debug("Internal interaction routes enabled");
   }
 
   // Create CLI token service early so it can be shared by messaging + agent API
@@ -287,7 +289,7 @@ function setupServer(
       cliTokenService,
     });
     app.route("", messagingRouter);
-    logger.info("Messaging routes enabled at :8080/api/v1/messaging/send");
+    logger.debug("Messaging routes enabled at :8080/api/v1/messaging/send");
   }
 
   // Agent API routes (direct API access)
@@ -307,7 +309,7 @@ function setupServer(
         cliTokenService,
       });
       app.route("", agentApi);
-      logger.info(
+      logger.debug(
         "Agent API enabled at :8080/api/v1/agents/* with docs at :8080/api/docs"
       );
     }
@@ -593,7 +595,7 @@ function setupServer(
       authRouter.route("/integration", integrationOAuthModule.getApp());
       registeredProviders.push("integration");
 
-      logger.info(
+      logger.debug(
         "Integration routes enabled at :8080/internal/integrations/*, :8080/api/v1/auth/integration/*"
       );
     }
@@ -640,15 +642,9 @@ function setupServer(
         queueProducer: coreServices.getQueueProducer(),
       });
       app.route("", settingsPageRouter);
-      if (settingsOAuthClient) {
-        logger.info(
-          "Settings HTML page enabled at :8080/settings (with OAuth)"
-        );
-      } else {
-        logger.info(
-          "Settings HTML page enabled at :8080/settings (Telegram initData only, OAuth not configured)"
-        );
-      }
+      logger.debug(
+        `Settings HTML page enabled at :8080/settings (${settingsOAuthClient ? "with OAuth" : "Telegram initData only, OAuth not configured"})`
+      );
 
       // Admin page (system skills registry)
       const systemSkillsService = coreServices.getSystemSkillsService();
@@ -706,7 +702,7 @@ function setupServer(
           }
         });
 
-        logger.info("Admin page enabled at :8080/agents");
+        logger.debug("Admin page enabled at :8080/agents");
       }
     } else if (agentSettingsStore) {
       logger.warn(
@@ -719,7 +715,7 @@ function setupServer(
       const { createLandingRoutes } = require("../routes/public/landing");
       const landingRouter = createLandingRoutes();
       app.route("", landingRouter);
-      logger.info("Landing page enabled at :8080/");
+      logger.debug("Landing page enabled at :8080/");
     }
 
     // Agent history routes (proxy to worker HTTP server)
@@ -737,7 +733,7 @@ function setupServer(
           agentMetadataStore: coreServices.getAgentMetadataStore(),
         });
         app.route("/api/v1/agents/:agentId/history", agentHistoryRouter);
-        logger.info(
+        logger.debug(
           "Agent history routes enabled at :8080/api/v1/agents/{agentId}/history/*"
         );
 
@@ -754,7 +750,7 @@ function setupServer(
           const agentId = c.req.param("agentId");
           return c.html(renderHistoryPage(agentId));
         });
-        logger.info("History page enabled at :8080/agent/{agentId}/history");
+        logger.debug("History page enabled at :8080/agent/{agentId}/history");
       }
     }
 
@@ -780,7 +776,7 @@ function setupServer(
         grantStore: coreServices.getGrantStore(),
       });
       app.route("/api/v1/agents/:agentId/config", agentConfigRouter);
-      logger.info(
+      logger.debug(
         "Agent config routes enabled at :8080/api/v1/agents/{id}/config"
       );
     }
@@ -796,7 +792,7 @@ function setupServer(
         agentMetadataStore: coreServices.getAgentMetadataStore(),
       });
       app.route("/api/v1/agents/:agentId/schedules", agentSchedulesRouter);
-      logger.info(
+      logger.debug(
         "Agent schedules routes enabled at :8080/api/v1/agents/{id}/schedules"
       );
     }
@@ -811,7 +807,9 @@ function setupServer(
         agentSettingsStore: coreServices.getAgentSettingsStore(),
       });
       app.route("/api/v1/integrations", integrationsRouter);
-      logger.info("Integrations routes enabled at :8080/api/v1/integrations/*");
+      logger.debug(
+        "Integrations routes enabled at :8080/api/v1/integrations/*"
+      );
     }
 
     // OAuth routes (mounted under unified auth router)
@@ -833,7 +831,7 @@ function setupServer(
     // Mount unified auth router (includes provider modules + OAuth)
     if (registeredProviders.length > 0) {
       app.route("/api/v1/auth", authRouter);
-      logger.info(
+      logger.debug(
         `Auth routes enabled at :8080/api/v1/auth/* for: ${registeredProviders.join(", ")}`
       );
     }
@@ -851,7 +849,7 @@ function setupServer(
       });
       // Mount as a sub-router under /api/v1/agents/:agentId/channels
       app.route("/api/v1/agents/:agentId/channels", channelBindingRouter);
-      logger.info(
+      logger.debug(
         "Channel binding routes enabled at :8080/api/v1/agents/{agentId}/channels/*"
       );
     }
@@ -868,7 +866,7 @@ function setupServer(
         channelBindingService,
       });
       app.route("/api/v1/agents", agentManagementRouter);
-      logger.info("Agent management routes enabled at :8080/api/v1/agents/*");
+      logger.debug("Agent management routes enabled at :8080/api/v1/agents/*");
     }
 
     // Agent selector is now handled by the unified settings page (/settings)
@@ -893,7 +891,7 @@ function setupServer(
         agentMetadataStore: coreServices.getAgentMetadataStore(),
       })
     );
-    logger.info(
+    logger.debug(
       "Slack and connection routes enabled at :8080/slack/*, :8080/api/v1/connections/*, and :8080/api/v1/webhooks/*"
     );
   }
@@ -1005,7 +1003,7 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
       defaultHttpClient: { targetKey: "js", clientKey: "fetch" },
     })
   );
-  logger.info("API docs enabled at :8080/api/docs");
+  logger.debug("API docs enabled at :8080/api/docs");
 
   // Start the server — single port for everything
   const port = 8080;
@@ -1014,7 +1012,7 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
   httpServer = createServer(honoListener);
 
   httpServer.listen(port);
-  logger.info(`Server listening on port ${port}`);
+  logger.debug(`Server listening on port ${port}`);
 }
 
 /**
@@ -1239,7 +1237,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   logger.debug("Creating orchestrator", { mode: process.env.DEPLOYMENT_MODE });
   const orchestrator = new Orchestrator(config.orchestration);
   await orchestrator.start();
-  logger.info("Orchestrator started");
+  logger.debug("Orchestrator started");
 
   // Create Gateway
   const gateway = new Gateway(config);
@@ -1248,7 +1246,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   const { ApiPlatform } = await import("../api");
   const apiPlatform = new ApiPlatform();
   gateway.registerPlatform(apiPlatform);
-  logger.info("API platform registered");
+  logger.debug("API platform registered");
 
   const { ChatPlatformAdapter } = await import("../connections");
   const chatPlatformAdapters = [
@@ -1259,11 +1257,11 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   for (const adapter of chatPlatformAdapters) {
     gateway.registerPlatform(adapter);
   }
-  logger.info("Chat SDK platform adapters registered");
+  logger.debug("Chat SDK platform adapters registered");
 
   // Start gateway
   await gateway.start();
-  logger.info("Gateway started");
+  logger.debug("Gateway started");
 
   // Get core services
   const coreServices = gateway.getCoreServices();
@@ -1273,7 +1271,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   if (grantStore) {
     const { setProxyGrantStore } = await import("../proxy/http-proxy");
     setProxyGrantStore(grantStore);
-    logger.info("Grant store connected to HTTP proxy");
+    logger.debug("Grant store connected to HTTP proxy");
   }
 
   // Inject core services into orchestrator (provider modules carry their own credential stores)
@@ -1283,7 +1281,7 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
     coreServices.getGrantStore() ?? undefined,
     coreServices.getClaimService()
   );
-  logger.info("Orchestrator configured with core services");
+  logger.debug("Orchestrator configured with core services");
 
   // Initialize Chat SDK connection manager (API-driven platform connections)
   const { ChatInstanceManager, ChatResponseBridge } = await import(
@@ -1295,14 +1293,14 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
     for (const adapter of chatPlatformAdapters) {
       adapter.setManager(chatInstanceManager);
     }
-    logger.info("ChatInstanceManager initialized");
+    logger.debug("ChatInstanceManager initialized");
 
     // Wire ChatResponseBridge into unified thread consumer
     const unifiedConsumer = gateway.getUnifiedConsumer();
     if (unifiedConsumer) {
       const chatResponseBridge = new ChatResponseBridge(chatInstanceManager);
       unifiedConsumer.setChatResponseBridge(chatResponseBridge);
-      logger.info("ChatResponseBridge wired to unified thread consumer");
+      logger.debug("ChatResponseBridge wired to unified thread consumer");
     }
   } catch (error) {
     logger.warn(

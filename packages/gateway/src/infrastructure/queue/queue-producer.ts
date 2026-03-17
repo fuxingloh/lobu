@@ -83,10 +83,8 @@ export class QueueProducer {
     try {
       // Create the messages queue if it doesn't exist
       await this.queue.createQueue("messages");
-      logger.info("✅ Created/verified messages queue");
-
       this.isInitialized = true;
-      logger.info("✅ Queue producer initialized successfully");
+      logger.debug("Queue producer initialized");
     } catch (error) {
       logger.error("Failed to initialize queue producer:", error);
       throw error;
@@ -98,7 +96,7 @@ export class QueueProducer {
    */
   async stop(): Promise<void> {
     this.isInitialized = false;
-    logger.info("✅ Queue producer stopped");
+    logger.debug("Queue producer stopped");
   }
 
   /**

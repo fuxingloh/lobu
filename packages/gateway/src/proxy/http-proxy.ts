@@ -729,11 +729,8 @@ export function startHttpProxy(
         mode = "complete-isolation";
       }
 
-      logger.info(
-        `🔒 HTTP proxy started on ${host}:${port} (global: mode=${mode}, allowed=${global.allowedDomains.length}, denied=${global.deniedDomains.length})`
-      );
-      logger.info(
-        `   Per-deployment configs supported via Proxy-Authorization header`
+      logger.debug(
+        `HTTP proxy started on ${host}:${port} (mode=${mode}, allowed=${global.allowedDomains.length}, denied=${global.deniedDomains.length})`
       );
       resolve(server);
     });

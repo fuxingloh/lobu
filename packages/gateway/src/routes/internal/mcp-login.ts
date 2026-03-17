@@ -117,6 +117,6 @@ export function createMcpLoginRoutes(
     });
   });
 
-  logger.info("Internal MCP login routes registered");
+  logger.debug("Internal MCP login routes registered");
   return router;
 }

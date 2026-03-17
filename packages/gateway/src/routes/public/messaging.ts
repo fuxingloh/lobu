@@ -361,6 +361,6 @@ export function createMessagingRoutes(
     }
   });
 
-  logger.info("Messaging routes registered");
+  logger.debug("Messaging routes registered");
   return app;
 }

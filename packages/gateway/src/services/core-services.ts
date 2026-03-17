@@ -174,7 +174,7 @@ export class CoreServices {
    * Initialize all core services in dependency order
    */
   async initialize(): Promise<void> {
-    logger.info("Initializing core services...");
+    logger.debug("Initializing core services...");
 
     // 1. Queue (foundation for everything else)
     await this.initializeQueue();
@@ -256,7 +256,7 @@ export class CoreServices {
 
     this.queue = new RedisQueue(config);
     await this.queue.start();
-    logger.info("✅ Queue connection established");
+    logger.debug("Queue connection established");
   }
 
   private async initializeQueueProducer(): Promise<void> {
@@ -266,7 +266,7 @@ export class CoreServices {
 
     this.queueProducer = new QueueProducer(this.queue);
     await this.queueProducer.start();
-    logger.info("✅ Queue producer initialized");
+    logger.debug("Queue producer initialized");
   }
 
   // ============================================================================
@@ -284,7 +284,7 @@ export class CoreServices {
     await this.scheduledWakeupService.start();
     // Set global reference for BaseDeploymentManager cleanup
     setScheduledWakeupService(this.scheduledWakeupService);
-    logger.info("✅ Scheduled wakeup service initialized");
+    logger.debug("Scheduled wakeup service initialized");
   }
 
   // ============================================================================
@@ -300,14 +300,14 @@ export class CoreServices {
 
     const sessionStore = new RedisSessionStore(this.queue);
     this.sessionManager = new SessionManager(sessionStore);
-    logger.info("✅ Session manager initialized");
+    logger.debug("Session manager initialized");
 
     this.interactionService = new InteractionService();
-    logger.info("✅ Interaction service initialized");
+    logger.debug("Interaction service initialized");
 
     // Initialize grant store for unified permissions
     this.grantStore = new GrantStore(redisClient);
-    logger.info("✅ Grant store initialized");
+    logger.debug("Grant store initialized");
 
     // Initialize agent configuration stores
     this.agentSettingsStore = new AgentSettingsStore(redisClient);
@@ -315,8 +315,8 @@ export class CoreServices {
     this.userAgentsStore = new UserAgentsStore(redisClient);
     this.agentMetadataStore = new AgentMetadataStore(redisClient);
     this.adminStatusCache = new AdminStatusCache(redisClient);
-    logger.info(
-      "✅ Agent settings, channel binding, user agents & metadata stores initialized"
+    logger.debug(
+      "Agent settings, channel binding, user agents & metadata stores initialized"
     );
 
     // Seed agents from .lobu/agents.json manifest (CLI-managed projects)
@@ -327,7 +327,7 @@ export class CoreServices {
 
     // Initialize claim service (always available, used by OAuth settings flow)
     this.claimService = new ClaimService(redisClient);
-    logger.info("✅ Claim service initialized");
+    logger.debug("Claim service initialized");
 
     // Initialize settings OAuth client if configured
     this.settingsOAuthClient =
@@ -342,7 +342,7 @@ export class CoreServices {
         "settings:oauth:state",
         "settings-oauth-state"
       );
-      logger.info("✅ Settings OAuth client initialized");
+      logger.debug("Settings OAuth client initialized");
     }
   }
 
@@ -372,8 +372,8 @@ export class CoreServices {
       this.authProfilesManager
     );
     this.modelPreferenceStore = new ModelPreferenceStore(redisClient, "claude");
-    logger.info(
-      "✅ Auth profile, model preference, transcription, and image generation services initialized"
+    logger.debug(
+      "Auth profile, model preference, transcription, and image generation services initialized"
     );
 
     // Initialize secret injection proxy (will be finalized after provider modules are registered)
@@ -383,8 +383,8 @@ export class CoreServices {
         "https://api.anthropic.com",
     });
     this.secretProxy.initialize(redisClient);
-    logger.info(
-      `✅ Secret proxy initialized (upstream: ${this.config.anthropicProxy.anthropicBaseUrl || "https://api.anthropic.com"})`
+    logger.debug(
+      `Secret proxy initialized (upstream: ${this.config.anthropicProxy.anthropicBaseUrl || "https://api.anthropic.com"})`
     );
 
     // Start background token refresh job
@@ -399,7 +399,7 @@ export class CoreServices {
       [{ providerId: "claude", oauthClient: new OAuthClient(CLAUDE_PROVIDER) }]
     );
     this.tokenRefreshJob.start();
-    logger.info("✅ Token refresh job started");
+    logger.debug("Token refresh job started");
 
     // Register Claude OAuth module
     this.oauthStateStore = createOAuthStateStore("claude", redisClient);
@@ -408,15 +408,15 @@ export class CoreServices {
       this.modelPreferenceStore
     );
     moduleRegistry.register(claudeOAuthModule);
-    logger.info(
-      `✅ Claude OAuth module registered (system token: ${claudeOAuthModule.hasSystemKey() ? "available" : "not available"})`
+    logger.debug(
+      `Claude OAuth module registered (system token: ${claudeOAuthModule.hasSystemKey() ? "available" : "not available"})`
     );
 
     // Register ChatGPT OAuth module
     const chatgptOAuthModule = new ChatGPTOAuthModule(this.agentSettingsStore);
     moduleRegistry.register(chatgptOAuthModule);
-    logger.info(
-      `✅ ChatGPT OAuth module registered (system token: ${chatgptOAuthModule.hasSystemKey() ? "available" : "not available"})`
+    logger.debug(
+      `ChatGPT OAuth module registered (system token: ${chatgptOAuthModule.hasSystemKey() ? "available" : "not available"})`
     );
 
     // Read lobu registry URL from config file
@@ -442,7 +442,7 @@ export class CoreServices {
       this.systemSkillsService,
       this.agentSettingsStore
     );
-    logger.info(`System skills config source: ${systemSkillsUrl}`);
+    logger.debug(`System skills config source: ${systemSkillsUrl}`);
 
     if (!this.integrationConfigService) {
       this.integrationConfigService = new IntegrationConfigService(
@@ -484,8 +484,8 @@ export class CoreServices {
       });
       moduleRegistry.register(module);
       registeredIds.add(id);
-      logger.info(
-        `✅ Registered config-driven provider: ${id} (system key: ${module.hasSystemKey() ? "available" : "not available"})`
+      logger.debug(
+        `Registered config-driven provider: ${id} (system key: ${module.hasSystemKey() ? "available" : "not available"})`
       );
     }
 
@@ -494,7 +494,7 @@ export class CoreServices {
       this.agentSettingsStore,
       this.authProfilesManager
     );
-    logger.info("✅ Provider catalog service initialized");
+    logger.debug("Provider catalog service initialized");
 
     // Register provider upstream configs with the secret proxy for path-based routing
     if (this.secretProxy) {
@@ -505,7 +505,7 @@ export class CoreServices {
           this.secretProxy.registerUpstream(upstream, provider.providerId);
         }
       }
-      logger.info("✅ Provider upstreams registered with secret proxy");
+      logger.debug("Provider upstreams registered with secret proxy");
     }
   }
 
@@ -556,7 +556,7 @@ export class CoreServices {
       protocolVersion: "2025-03-26",
       cacheTtl: 86400,
     });
-    logger.info("✅ MCP OAuth Discovery Service initialized");
+    logger.debug("MCP OAuth Discovery Service initialized");
 
     // Initialize MCP config service
     this.mcpConfigService = new McpConfigService({
@@ -573,7 +573,7 @@ export class CoreServices {
       this.mcpConfigService,
       this.agentSettingsStore
     );
-    logger.info("Instruction service initialized");
+    logger.debug("Instruction service initialized");
 
     // Initialize MCP tool cache and proxy (before worker gateway so it can use the proxy)
     const mcpToolCache = new McpToolCache(redisClient);
@@ -585,7 +585,7 @@ export class CoreServices {
       mcpToolCache,
       this.grantStore
     );
-    logger.info("MCP proxy initialized");
+    logger.debug("MCP proxy initialized");
 
     // Initialize worker gateway
     if (!this.sessionManager) {
@@ -604,12 +604,12 @@ export class CoreServices {
       this.agentSettingsStore,
       this.systemSkillsService
     );
-    logger.info("Worker gateway initialized");
+    logger.debug("Worker gateway initialized");
 
     // Discover OAuth capabilities for all MCP servers
-    logger.info("Discovering OAuth capabilities for MCP servers...");
+    logger.debug("Discovering OAuth capabilities for MCP servers...");
     await this.mcpConfigService.enrichWithDiscovery();
-    logger.info("MCP OAuth discovery completed");
+    logger.debug("MCP OAuth discovery completed");
 
     // Register MCP OAuth module
     // Enable proactive MCP credential refresh in the token refresh job
@@ -639,12 +639,12 @@ export class CoreServices {
       this.queue
     );
     moduleRegistry.register(this.mcpOAuthModule);
-    logger.info("MCP OAuth module registered");
+    logger.debug("MCP OAuth module registered");
 
     // Discover and initialize all available modules
     await moduleRegistry.registerAvailableModules();
     await moduleRegistry.initAll();
-    logger.info("Modules initialized");
+    logger.debug("Modules initialized");
   }
 
   // ============================================================================
@@ -657,7 +657,7 @@ export class CoreServices {
     }
 
     if (!this.integrationConfigService) {
-      logger.info(
+      logger.debug(
         "No integration config service available, integrations disabled"
       );
       return;
@@ -666,7 +666,7 @@ export class CoreServices {
     // Check if there are any integrations configured
     const integrationConfigs = await this.integrationConfigService.getAll();
     if (Object.keys(integrationConfigs).length === 0) {
-      logger.info(
+      logger.debug(
         "No integrations found in system skills, integration services disabled"
       );
       return;
@@ -692,8 +692,8 @@ export class CoreServices {
       this.queue
     );
 
-    logger.info(
-      `✅ Integration services initialized (${Object.keys(integrationConfigs).length} integration(s))`
+    logger.debug(
+      `Integration services initialized (${Object.keys(integrationConfigs).length} integration(s))`
     );
   }
 
@@ -718,7 +718,7 @@ export class CoreServices {
       agentSettingsStore: this.agentSettingsStore,
       claimService: this.claimService,
     });
-    logger.info("✅ Command registry initialized with built-in commands");
+    logger.debug("Command registry initialized with built-in commands");
   }
 
   // ============================================================================

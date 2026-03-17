@@ -93,6 +93,6 @@ export class SystemEnvStore {
     for (const [key, value] of Object.entries(all)) {
       this.cache.set(key, value);
     }
-    logger.info(`Loaded ${this.cache.size} system env vars into cache`);
+    logger.debug(`Loaded ${this.cache.size} system env vars into cache`);
   }
 }

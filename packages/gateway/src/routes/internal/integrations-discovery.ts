@@ -440,7 +440,7 @@ export function createIntegrationsDiscoveryRoutes(
     }
   );
 
-  logger.info("Internal integrations discovery routes registered");
+  logger.debug("Internal integrations discovery routes registered");
   return router;
 }
 

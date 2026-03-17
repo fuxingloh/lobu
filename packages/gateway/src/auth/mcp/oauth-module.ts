@@ -133,7 +133,7 @@ export class McpOAuthModule extends BaseModule {
     // Logout endpoint
     this.app.post("/logout/:mcpId", (c) => this.handleLogout(c));
 
-    logger.info("MCP OAuth routes configured");
+    logger.debug("MCP OAuth routes configured");
   }
 
   /**
@@ -142,7 +142,7 @@ export class McpOAuthModule extends BaseModule {
   registerEndpoints(_app: any): void {
     // Routes are already registered in constructor via setupRoutes()
     // This method is kept for module interface compatibility
-    logger.info("MCP OAuth endpoints registered via module system");
+    logger.debug("MCP OAuth endpoints registered via module system");
   }
 
   /**
