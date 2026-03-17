@@ -160,11 +160,14 @@ export async function seedAgentsFromManifest(
       }
 
       // Propagate manifest-managed fields to sandbox agents cloned from this template
-      if (settingsChanged) {
+      const effectiveSettings = settingsChanged
+        ? nextSettings
+        : existingSettings;
+      if (effectiveSettings) {
         await propagateToSandboxAgents(
           agentSettingsStore,
           entry.agentId,
-          nextSettings
+          effectiveSettings
         );
       }
 
@@ -275,6 +278,7 @@ async function propagateToSandboxAgents(
       templateSettings as AgentSettings
     );
 
+    let propagatedCount = 0;
     for (const sandboxId of sandboxIds) {
       try {
         const existing = await agentSettingsStore.getSettings(sandboxId);
@@ -286,7 +290,10 @@ async function propagateToSandboxAgents(
           templateAgentId,
         };
 
+        if (!settingsDiffer(existing, updated)) continue;
+
         await agentSettingsStore.saveSettings(sandboxId, updated);
+        propagatedCount++;
         logger.debug(`Propagated template settings to sandbox "${sandboxId}"`);
       } catch (err) {
         logger.warn(`Failed to propagate settings to sandbox "${sandboxId}"`, {
@@ -295,9 +302,11 @@ async function propagateToSandboxAgents(
       }
     }
 
-    logger.debug(
-      `Propagated settings to ${sandboxIds.length} sandbox(es) of "${templateAgentId}"`
-    );
+    if (propagatedCount > 0) {
+      logger.debug(
+        `Propagated settings to ${propagatedCount}/${sandboxIds.length} sandbox(es) of "${templateAgentId}"`
+      );
+    }
   } catch (err) {
     logger.warn(
       `Failed to find sandbox agents for template "${templateAgentId}"`,
