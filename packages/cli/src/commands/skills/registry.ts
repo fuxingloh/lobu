@@ -8,6 +8,7 @@ export interface RegistrySkill {
   id: string;
   name: string;
   description: string;
+  hidden?: boolean;
   integrations?: Array<{
     id: string;
     label?: string;

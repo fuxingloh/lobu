@@ -5,6 +5,13 @@ import { join } from "node:path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import ora from "ora";
+import {
+  isIntegrationSkill,
+  isProviderSkill,
+  loadSkillsRegistry,
+  type RegistrySkill,
+} from "../commands/skills/registry.js";
+import { secretsSetCommand } from "../commands/secrets.js";
 import { renderTemplate } from "../utils/template.js";
 
 export async function initCommand(
@@ -99,6 +106,17 @@ export async function initCommand(
     },
   ]);
 
+  // Public gateway URL
+  const { publicGatewayUrl } = await inquirer.prompt([
+    {
+      type: "input",
+      name: "publicGatewayUrl",
+      message:
+        "Public gateway URL? (needed for OAuth callbacks and external webhooks)",
+      default: `http://localhost:${gatewayPort}`,
+    },
+  ]);
+
   // Admin password
   const { adminPassword } = await inquirer.prompt([
     {
@@ -115,19 +133,241 @@ export async function initCommand(
     },
   ]);
 
-  // Worker network access — always filtered, configurable per-agent later
-  const allowedDomains = [
-    "registry.npmjs.org",
-    ".npmjs.org",
-    "github.com",
-    ".github.com",
-    ".githubusercontent.com",
-    "cdn.jsdelivr.net",
-    "unpkg.com",
-    "pypi.org",
-    "files.pythonhosted.org",
-  ].join(",");
-  const disallowedDomains = "";
+  // Worker network access policy
+  const { networkPolicy } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "networkPolicy",
+      message: "Worker network access?",
+      choices: [
+        {
+          name: "Restricted (recommended) — common registries only (npm, GitHub, PyPI)",
+          value: "restricted",
+        },
+        {
+          name: "Open — workers can access any domain",
+          value: "open",
+        },
+        {
+          name: "Isolated — workers have no internet access",
+          value: "isolated",
+        },
+      ],
+      default: "restricted",
+    },
+  ]);
+
+  // Provider selection (from system-skills.json registry)
+  const providerSkills = loadSkillsRegistry().filter(isProviderSkill);
+  const providerChoices = [
+    { name: "Skip — I'll add a provider later", value: "" },
+    ...providerSkills.map((s) => ({
+      name: `${s.providers![0]!.displayName}${s.providers![0]!.defaultModel ? ` (${s.providers![0]!.defaultModel})` : ""}`,
+      value: s.id,
+    })),
+  ];
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "providerId",
+      message: "AI provider?",
+      choices: providerChoices,
+      default: "",
+    },
+  ]);
+
+  let providerApiKey = "";
+  let selectedProvider: RegistrySkill | undefined;
+  if (providerId) {
+    selectedProvider = providerSkills.find((s) => s.id === providerId);
+    const p = selectedProvider?.providers?.[0];
+    if (p) {
+      const { apiKey } = await inquirer.prompt([
+        {
+          type: "password",
+          name: "apiKey",
+          message: `${p.displayName} API key:`,
+          mask: "*",
+        },
+      ]);
+      providerApiKey = apiKey || "";
+    }
+  }
+
+  // Skills selection (integration skills from registry, excluding provider-only skills)
+  const integrationSkills = loadSkillsRegistry().filter(
+    (s) => isIntegrationSkill(s) && !isProviderSkill(s) && !s.hidden
+  );
+  const { skillIds } = await inquirer.prompt([
+    {
+      type: "checkbox",
+      name: "skillIds",
+      message: "Enable integration skills?",
+      choices: integrationSkills.map((s) => ({
+        name: `${s.name} — ${s.description}`,
+        value: s.id,
+        checked: s.id === "github",
+      })),
+      when: integrationSkills.length > 0,
+    },
+  ]);
+  const selectedSkillIds: string[] = skillIds || [];
+
+  // Connection (messaging platform) selection
+  const platformChoices = [
+    { name: "Skip — I'll connect a platform later", value: "" },
+    { name: "Telegram", value: "telegram" },
+    { name: "Slack", value: "slack" },
+    { name: "Discord", value: "discord" },
+  ];
+
+  const { platformType } = await inquirer.prompt([
+    {
+      type: "list",
+      name: "platformType",
+      message: "Connect a messaging platform?",
+      choices: platformChoices,
+      default: "",
+    },
+  ]);
+
+  const connectionConfig: Record<string, string> = {};
+  const connectionSecrets: Array<{ envVar: string; value: string }> = [];
+
+  if (platformType === "telegram") {
+    const { botToken } = await inquirer.prompt([
+      {
+        type: "password",
+        name: "botToken",
+        message: "Telegram bot token (from @BotFather):",
+        mask: "*",
+      },
+    ]);
+    if (botToken) {
+      connectionConfig.botToken = "$TELEGRAM_BOT_TOKEN";
+      connectionSecrets.push({
+        envVar: "TELEGRAM_BOT_TOKEN",
+        value: botToken,
+      });
+    }
+  } else if (platformType === "slack") {
+    const slackAnswers = await inquirer.prompt([
+      {
+        type: "password",
+        name: "botToken",
+        message: "Slack bot token (xoxb-...):",
+        mask: "*",
+      },
+      {
+        type: "password",
+        name: "signingSecret",
+        message: "Slack signing secret:",
+        mask: "*",
+      },
+    ]);
+    if (slackAnswers.botToken) {
+      connectionConfig.botToken = "$SLACK_BOT_TOKEN";
+      connectionSecrets.push({
+        envVar: "SLACK_BOT_TOKEN",
+        value: slackAnswers.botToken,
+      });
+    }
+    if (slackAnswers.signingSecret) {
+      connectionConfig.signingSecret = "$SLACK_SIGNING_SECRET";
+      connectionSecrets.push({
+        envVar: "SLACK_SIGNING_SECRET",
+        value: slackAnswers.signingSecret,
+      });
+    }
+  } else if (platformType === "discord") {
+    const { botToken } = await inquirer.prompt([
+      {
+        type: "password",
+        name: "botToken",
+        message: "Discord bot token:",
+        mask: "*",
+      },
+    ]);
+    if (botToken) {
+      connectionConfig.botToken = "$DISCORD_BOT_TOKEN";
+      connectionSecrets.push({
+        envVar: "DISCORD_BOT_TOKEN",
+        value: botToken,
+      });
+    }
+  }
+
+  // Settings page OAuth login (optional)
+  const { oauthIssuer } = await inquirer.prompt([
+    {
+      type: "input",
+      name: "oauthIssuer",
+      message: "Settings page OAuth issuer URL (leave empty to skip):",
+      default: "",
+    },
+  ]);
+
+  const oauthSecrets: Array<{ envVar: string; value: string }> = [];
+  if (oauthIssuer) {
+    const oauthAnswers = await inquirer.prompt([
+      {
+        type: "input",
+        name: "clientId",
+        message: "OAuth client ID (leave empty for dynamic registration):",
+        default: "",
+      },
+      {
+        type: "password",
+        name: "clientSecret",
+        message: "OAuth client secret (leave empty if public client):",
+        mask: "*",
+        default: "",
+      },
+    ]);
+
+    oauthSecrets.push({
+      envVar: "SETTINGS_OAUTH_ISSUER_URL",
+      value: oauthIssuer,
+    });
+    if (oauthAnswers.clientId) {
+      oauthSecrets.push({
+        envVar: "SETTINGS_OAUTH_CLIENT_ID",
+        value: oauthAnswers.clientId,
+      });
+    }
+    if (oauthAnswers.clientSecret) {
+      oauthSecrets.push({
+        envVar: "SETTINGS_OAUTH_CLIENT_SECRET",
+        value: oauthAnswers.clientSecret,
+      });
+    }
+  }
+
+  // Compute network domains from selected policy
+  let allowedDomains: string;
+  let disallowedDomains: string;
+  if (networkPolicy === "open") {
+    allowedDomains = "*";
+    disallowedDomains = "";
+  } else if (networkPolicy === "isolated") {
+    allowedDomains = "";
+    disallowedDomains = "";
+  } else {
+    // restricted (default)
+    allowedDomains = [
+      "registry.npmjs.org",
+      ".npmjs.org",
+      "github.com",
+      ".github.com",
+      ".githubusercontent.com",
+      "cdn.jsdelivr.net",
+      "unpkg.com",
+      "pypi.org",
+      "files.pythonhosted.org",
+    ].join(",");
+    disallowedDomains = "";
+  }
   const encryptionKey = randomBytes(32).toString("hex");
 
   const answers = {
@@ -152,6 +392,13 @@ export async function initCommand(
     await generateLobuToml(projectDir, {
       agentName: projectName,
       allowedDomains: answers.allowedDomains,
+      providerId: providerId || undefined,
+      providerEnvVar: selectedProvider?.providers?.[0]?.envVarName,
+      providerModel: selectedProvider?.providers?.[0]?.defaultModel,
+      connectionType: platformType || undefined,
+      connectionConfig:
+        Object.keys(connectionConfig).length > 0 ? connectionConfig : undefined,
+      skillIds: selectedSkillIds,
     });
 
     const variables = {
@@ -160,7 +407,7 @@ export async function initCommand(
       DEPLOYMENT_MODE: answers.deploymentMode,
       ADMIN_PASSWORD: adminPassword,
       ENCRYPTION_KEY: answers.encryptionKey,
-      PUBLIC_GATEWAY_URL: `http://localhost:${gatewayPort}`,
+      PUBLIC_GATEWAY_URL: publicGatewayUrl,
       GATEWAY_PORT: gatewayPort,
       WORKER_ALLOWED_DOMAINS: answers.allowedDomains,
       WORKER_DISALLOWED_DOMAINS: answers.disallowedDomains,
@@ -168,6 +415,25 @@ export async function initCommand(
 
     // Create .env file
     await renderTemplate(".env.tmpl", variables, join(projectDir, ".env"));
+
+    // Save provider API key to .env
+    if (providerApiKey && selectedProvider?.providers?.[0]?.envVarName) {
+      await secretsSetCommand(
+        projectDir,
+        selectedProvider.providers[0].envVarName,
+        providerApiKey
+      );
+    }
+
+    // Save connection secrets to .env
+    for (const secret of connectionSecrets) {
+      await secretsSetCommand(projectDir, secret.envVar, secret.value);
+    }
+
+    // Save OAuth secrets to .env
+    for (const secret of oauthSecrets) {
+      await secretsSetCommand(projectDir, secret.envVar, secret.value);
+    }
 
     // Create .gitignore
     await renderTemplate(".gitignore.tmpl", {}, join(projectDir, ".gitignore"));
@@ -285,6 +551,12 @@ async function generateLobuToml(
   options: {
     agentName: string;
     allowedDomains: string;
+    providerId?: string;
+    providerEnvVar?: string;
+    providerModel?: string;
+    connectionType?: string;
+    connectionConfig?: Record<string, string>;
+    skillIds?: string[];
   }
 ): Promise<void> {
   const id = options.agentName;
@@ -302,28 +574,70 @@ async function generateLobuToml(
     `dir = "./agents/${id}"`,
     "",
     "# LLM providers (order = priority, key = API key or $ENV_VAR)",
-    "# Add providers via the admin page or uncomment below:",
-    `# [[agents.${id}.providers]]`,
-    '# id = "anthropic"',
-    '# key = "$ANTHROPIC_API_KEY"',
-    "",
-    "# Telegram connection (add via admin page or set bot token in .env):",
-    `# [[agents.${id}.connections]]`,
-    '# platform = "telegram"',
-    '# bot_token = "$TELEGRAM_BOT_TOKEN"',
+  ];
+
+  if (options.providerId && options.providerEnvVar) {
+    lines.push(
+      `[[agents.${id}.providers]]`,
+      `id = "${options.providerId}"`,
+      ...(options.providerModel ? [`model = "${options.providerModel}"`] : []),
+      `key = "$${options.providerEnvVar}"`
+    );
+  } else {
+    lines.push(
+      "# Add providers via the admin page or uncomment below:",
+      `# [[agents.${id}.providers]]`,
+      '# id = "anthropic"',
+      '# key = "$ANTHROPIC_API_KEY"'
+    );
+  }
+
+  lines.push("");
+
+  if (options.connectionType && options.connectionConfig) {
+    lines.push(
+      `[[agents.${id}.connections]]`,
+      `type = "${options.connectionType}"`
+    );
+    lines.push(`[agents.${id}.connections.config]`);
+    for (const [key, value] of Object.entries(options.connectionConfig)) {
+      lines.push(`${key} = "${value}"`);
+    }
+  } else {
+    lines.push(
+      "# Messaging platform (add via admin page or uncomment below):",
+      `# [[agents.${id}.connections]]`,
+      '# type = "telegram"',
+      `# [agents.${id}.connections.config]`,
+      '# botToken = "$TELEGRAM_BOT_TOKEN"'
+    );
+  }
+
+  lines.push(
     "",
     "# Skills from the registry",
     `[agents.${id}.skills]`,
-    'enabled = ["github"]',
-  ];
+    `enabled = [${(options.skillIds ?? []).map((s) => `"${s}"`).join(", ")}]`,
+    "",
+    "# MCP servers (add custom tool servers with optional OAuth):",
+    `# [agents.${id}.skills.mcp.my-mcp]`,
+    '# url = "https://my-mcp.example.com"',
+    `# [agents.${id}.skills.mcp.my-mcp.oauth]`,
+    '# auth_url = "https://auth.example.com/authorize"',
+    '# token_url = "https://auth.example.com/token"',
+    '# client_id = "$MY_MCP_CLIENT_ID"'
+  );
 
   // Network
+  lines.push("", `[agents.${id}.network]`);
   if (options.allowedDomains) {
     const domains = options.allowedDomains
       .split(",")
       .map((d) => `"${d.trim()}"`)
       .join(", ");
-    lines.push("", `[agents.${id}.network]`, `allowed = [${domains}]`);
+    lines.push(`allowed = [${domains}]`);
+  } else {
+    lines.push("allowed = []");
   }
 
   lines.push(""); // trailing newline
@@ -401,6 +715,9 @@ services:
       ENCRYPTION_KEY: \${ENCRYPTION_KEY}
       WORKER_ALLOWED_DOMAINS: \${WORKER_ALLOWED_DOMAINS:-}
       WORKER_DISALLOWED_DOMAINS: \${WORKER_DISALLOWED_DOMAINS:-}
+      SETTINGS_OAUTH_ISSUER_URL: \${SETTINGS_OAUTH_ISSUER_URL:-}
+      SETTINGS_OAUTH_CLIENT_ID: \${SETTINGS_OAUTH_CLIENT_ID:-}
+      SETTINGS_OAUTH_CLIENT_SECRET: \${SETTINGS_OAUTH_CLIENT_SECRET:-}
     volumes:${dockerSocketMount}
       - ./.lobu:/app/.lobu
     networks:
