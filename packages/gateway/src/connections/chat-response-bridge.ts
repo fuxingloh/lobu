@@ -284,31 +284,33 @@ export class ChatResponseBridge implements ResponseRenderer {
               "botToken"
             );
             if (botToken) {
+              const isHttps = buttonUrl.startsWith("https://");
+              // Telegram requires HTTPS for all inline buttons
+              const body: Record<string, unknown> = {
+                chat_id: channelId,
+                text: isHttps
+                  ? errorText
+                  : `${errorText}\n\nOpen Settings: ${buttonUrl}`,
+              };
+              if (isHttps) {
+                body.reply_markup = {
+                  inline_keyboard: [
+                    [{ text: "Open Settings", web_app: { url: buttonUrl } }],
+                  ],
+                };
+              }
               const tgResp = await fetch(
                 `https://api.telegram.org/bot${botToken}/sendMessage`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chat_id: channelId,
-                    text: errorText,
-                    reply_markup: {
-                      inline_keyboard: [
-                        [
-                          {
-                            text: "Open Settings",
-                            web_app: { url: buttonUrl },
-                          },
-                        ],
-                      ],
-                    },
-                  }),
+                  body: JSON.stringify(body),
                 }
               );
               if (!tgResp.ok) {
-                const body = await tgResp.text().catch(() => "");
+                const respBody = await tgResp.text().catch(() => "");
                 logger.warn(
-                  { connectionId, status: tgResp.status, body },
+                  { connectionId, status: tgResp.status, body: respBody },
                   "Telegram sendMessage failed for NO_MODEL_CONFIGURED"
                 );
               }
