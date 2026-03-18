@@ -259,7 +259,96 @@ export class ChatResponseBridge implements ResponseRenderer {
     if (stream?.editTimer) clearTimeout(stream.editTimer);
     this.streams.delete(key);
 
-    // Send error via Chat SDK
+    // For known error codes, render rich UX (e.g. settings button)
+    if (payload.errorCode === "NO_MODEL_CONFIGURED") {
+      try {
+        const connection = await this.manager.getConnection(connectionId);
+        if (connection?.templateAgentId) {
+          const baseUrl =
+            this.manager.getServices().getPublicGatewayUrl() ||
+            "http://localhost:8080";
+          const settingsUrl = new URL(
+            `/agent/${encodeURIComponent(connection.templateAgentId)}`,
+            baseUrl
+          );
+          settingsUrl.searchParams.set("platform", connection.platform);
+          settingsUrl.searchParams.set("chat", channelId);
+          settingsUrl.searchParams.set("connectionId", connectionId);
+          const buttonUrl = settingsUrl.toString();
+          const errorText =
+            "No model configured. Please add a model provider in your settings.";
+
+          if (connection.platform === "telegram") {
+            const botToken = this.manager.getConnectionConfigSecret(
+              connectionId,
+              "botToken"
+            );
+            if (botToken) {
+              const tgResp = await fetch(
+                `https://api.telegram.org/bot${botToken}/sendMessage`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: channelId,
+                    text: errorText,
+                    reply_markup: {
+                      inline_keyboard: [
+                        [
+                          {
+                            text: "Open Settings",
+                            web_app: { url: buttonUrl },
+                          },
+                        ],
+                      ],
+                    },
+                  }),
+                }
+              );
+              if (!tgResp.ok) {
+                const body = await tgResp.text().catch(() => "");
+                logger.warn(
+                  { connectionId, status: tgResp.status, body },
+                  "Telegram sendMessage failed for NO_MODEL_CONFIGURED"
+                );
+              }
+              return;
+            }
+          }
+
+          // Non-Telegram: Chat SDK Card + LinkButton
+          const target = await this.resolveTarget(
+            instance,
+            channelId,
+            payload.conversationId
+          );
+          if (target) {
+            const { Actions, Card, CardText, LinkButton } = await import(
+              "chat"
+            );
+            await target.post({
+              card: Card({
+                children: [
+                  CardText(errorText),
+                  Actions([
+                    LinkButton({ url: buttonUrl, label: "Open Settings" }),
+                  ]),
+                ],
+              }),
+              fallbackText: `${errorText}\n\nOpen Settings: ${buttonUrl}`,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        logger.error(
+          { connectionId, error: String(error) },
+          "Failed to render settings button for NO_MODEL_CONFIGURED"
+        );
+      }
+    }
+
+    // Fallback: plain text error via Chat SDK
     try {
       const target = await this.resolveTarget(
         instance,

@@ -193,22 +193,6 @@ class MessageHandlerBridge {
       }
     }
 
-    // Gap 3: Check if agent has providers configured (including base agent for sandboxes)
-    const agentSettingsStore = this.services.getAgentSettingsStore();
-    if (agentSettingsStore) {
-      const { resolveInstalledProviders } = await import(
-        "../auth/provider-catalog"
-      );
-      const installed = await resolveInstalledProviders(
-        agentSettingsStore,
-        agentId
-      );
-      if (installed.length === 0) {
-        await this.sendProviderSetupPrompt(thread, channelId, isGroup, agentId);
-        return;
-      }
-    }
-
     // Gap 7: Audio transcription
     let messageText = message.text ?? "";
     const transcriptionService = this.services.getTranscriptionService();
@@ -289,6 +273,7 @@ class MessageHandlerBridge {
 
     // Build payload and enqueue
     const traceId = generateTraceId(messageId);
+    const agentSettingsStore = this.services.getAgentSettingsStore();
     const agentOptions = await resolveAgentOptions(
       agentId,
       {},
@@ -337,75 +322,6 @@ class MessageHandlerBridge {
     } catch {
       // best effort
     }
-  }
-
-  // Gap 3+4: Send provider setup prompt with settings link
-  private async sendProviderSetupPrompt(
-    thread: any,
-    channelId: string,
-    isGroup: boolean,
-    agentId: string
-  ): Promise<void> {
-    const baseUrl =
-      this.services.getPublicGatewayUrl() || "http://localhost:8080";
-    const settingsUrl = new URL(
-      `/agent/${encodeURIComponent(agentId)}`,
-      baseUrl
-    );
-    settingsUrl.searchParams.set("platform", this.connection.platform);
-    settingsUrl.searchParams.set("chat", channelId);
-    settingsUrl.searchParams.set("connectionId", this.connection.id);
-    const configUrl = settingsUrl.toString();
-
-    const message =
-      "Welcome! To get started, set up an AI provider (like Claude or OpenAI) so I can respond to your messages.";
-
-    let buttonUrl = configUrl;
-    if (isGroup) {
-      const claimService = this.services.getClaimService();
-      if (claimService) {
-        const claimCode = await claimService.createClaim(
-          this.connection.platform,
-          channelId,
-          "" // no specific user for group claims
-        );
-        const { buildClaimSettingsUrl } = await import(
-          "../auth/settings/claim-service"
-        );
-        buttonUrl = buildClaimSettingsUrl(claimCode, { agentId });
-      }
-    }
-
-    // For Telegram, use native API to send web_app button (Chat SDK doesn't support it)
-    if (this.connection.platform === "telegram") {
-      const botToken = this.manager.getConnectionConfigSecret(
-        this.connection.id,
-        "botToken"
-      );
-      if (botToken) {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: channelId,
-            text: message,
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: "Set up", web_app: { url: buttonUrl } }],
-              ],
-            },
-          }),
-        });
-        logger.info({ agentId, channelId }, "Sent provider setup prompt");
-        return;
-      }
-    }
-
-    // Fallback for non-Telegram platforms
-    const reply = createChatReply((content) => thread.post(content));
-    await reply(message, { url: buttonUrl, urlLabel: "Set up" });
-
-    logger.info({ agentId, channelId }, "Sent provider setup prompt");
   }
 
   // Gap 1: Redis-backed conversation history

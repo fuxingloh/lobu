@@ -106,14 +106,14 @@ export async function initCommand(
     },
   ]);
 
-  // Public gateway URL
+  // Public gateway URL (optional — only needed for OAuth callbacks and external webhooks)
   const { publicGatewayUrl } = await inquirer.prompt([
     {
       type: "input",
       name: "publicGatewayUrl",
       message:
-        "Public gateway URL? (needed for OAuth callbacks and external webhooks)",
-      default: `http://localhost:${gatewayPort}`,
+        "Public gateway URL? (leave empty for local dev, set for OAuth/webhooks)",
+      default: "",
     },
   ]);
 
@@ -407,7 +407,6 @@ export async function initCommand(
       DEPLOYMENT_MODE: answers.deploymentMode,
       ADMIN_PASSWORD: adminPassword,
       ENCRYPTION_KEY: answers.encryptionKey,
-      PUBLIC_GATEWAY_URL: publicGatewayUrl,
       GATEWAY_PORT: gatewayPort,
       WORKER_ALLOWED_DOMAINS: answers.allowedDomains,
       WORKER_DISALLOWED_DOMAINS: answers.disallowedDomains,
@@ -415,6 +414,15 @@ export async function initCommand(
 
     // Create .env file
     await renderTemplate(".env.tmpl", variables, join(projectDir, ".env"));
+
+    // Save public gateway URL if explicitly set
+    if (publicGatewayUrl) {
+      await secretsSetCommand(
+        projectDir,
+        "PUBLIC_GATEWAY_URL",
+        publicGatewayUrl
+      );
+    }
 
     // Save provider API key to .env
     if (providerApiKey && selectedProvider?.providers?.[0]?.envVarName) {

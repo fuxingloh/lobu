@@ -32,7 +32,7 @@ const GATEWAY_DEFAULTS = {
   /** Default HTTP server port */
   HTTP_PORT: 3000,
   /** Default public gateway URL */
-  PUBLIC_GATEWAY_URL: "http://localhost:8080",
+  PUBLIC_GATEWAY_URL: "",
   /** Default queue names */
   QUEUE_DIRECT_MESSAGE: "direct_message",
   QUEUE_MESSAGE_QUEUE: "message_queue",
@@ -196,7 +196,9 @@ export function buildGatewayConfig(): GatewayConfig {
     "PUBLIC_GATEWAY_URL",
     DEFAULTS.PUBLIC_GATEWAY_URL
   );
-  const callbackUrl = `${publicGatewayUrl}/api/v1/auth/mcp/callback`;
+  const callbackUrl = publicGatewayUrl
+    ? `${publicGatewayUrl}/api/v1/auth/mcp/callback`
+    : "";
 
   // Build configuration
   const config: GatewayConfig = {
@@ -405,8 +407,10 @@ export function displayGatewayConfig(config: GatewayConfig): void {
   console.log(`  Retry Delay: ${config.queues.retryDelay}s`);
 
   console.log("\nMCP:");
-  console.log(`  Public Gateway: ${config.mcp.publicGatewayUrl}`);
-  console.log(`  OAuth Callback: ${config.mcp.callbackUrl}`);
+  console.log(
+    `  Public Gateway: ${config.mcp.publicGatewayUrl || "(not set)"}`
+  );
+  console.log(`  OAuth Callback: ${config.mcp.callbackUrl || "(not set)"}`);
 
   console.log("\nOrchestration:");
   console.log(

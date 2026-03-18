@@ -163,7 +163,7 @@ export class HttpWorkerTransport implements WorkerTransport {
     });
   }
 
-  async signalError(error: Error): Promise<void> {
+  async signalError(error: Error, errorCode?: string): Promise<void> {
     await this.sendResponse({
       messageId: this.originalMessageTs,
       channelId: this.channelId,
@@ -171,6 +171,7 @@ export class HttpWorkerTransport implements WorkerTransport {
       userId: this.userId,
       teamId: this.teamId,
       error: error.message,
+      ...(errorCode && { errorCode }),
       timestamp: Date.now(),
       originalMessageId: this.originalMessageTs,
       botResponseId: this.botResponseTs,

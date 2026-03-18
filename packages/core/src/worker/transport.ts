@@ -56,7 +56,7 @@ export interface WorkerTransport {
    *
    * @param error - The error that occurred
    */
-  signalError(error: Error): Promise<void>;
+  signalError(error: Error, errorCode?: string): Promise<void>;
 
   /**
    * Send a status update to the gateway

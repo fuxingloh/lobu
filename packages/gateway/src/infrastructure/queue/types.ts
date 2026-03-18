@@ -114,6 +114,7 @@ export interface ThreadResponsePayload {
   isFullReplacement?: boolean;
   processedMessageIds?: string[];
   error?: string;
+  errorCode?: string;
   timestamp: number;
   originalMessageId?: string;
   moduleData?: Record<string, unknown>;
