@@ -20,6 +20,7 @@ interface ManifestSkill {
   repo: string;
   name: string;
   description?: string;
+  instructions?: string;
   content: string;
   enabled: boolean;
   system?: boolean;
@@ -417,6 +418,7 @@ function buildSkillsConfig(
         repo: skill.repo,
         name: skill.name,
         description: skill.description,
+        instructions: skill.instructions,
         enabled: skill.enabled,
         system: skill.system,
         content: skill.content || undefined,

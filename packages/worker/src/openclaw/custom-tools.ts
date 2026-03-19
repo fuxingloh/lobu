@@ -7,10 +7,7 @@ import type { GatewayParams, TextResult } from "../shared/tool-implementations";
 import {
   askUserQuestion,
   callMcpTool,
-  callService,
   cancelReminder,
-  connectService,
-  disconnectService,
   generateAudio,
   generateImage,
   getChannelHistory,
@@ -319,89 +316,6 @@ export function createOpenClawCustomTools(params: {
       }),
       run: (args) => askUserQuestion(gw, args),
     }),
-
-    defineTool({
-      name: "ConnectService",
-      description:
-        "Connect a service: OAuth integration, MCP server, or AI provider (e.g., 'claude', 'gemini'). Sends a setup button to the user. Use this whenever the user asks to connect or configure any service, including AI providers.",
-      parameters: Type.Object({
-        id: Type.String({
-          description:
-            "Service ID — integration ID (e.g., 'google'), MCP server ID (e.g., 'owletto'), or provider ID (e.g., 'claude', 'gemini', 'chatgpt')",
-        }),
-        scopes: Type.Optional(
-          Type.Array(Type.String(), {
-            description:
-              "Specific OAuth scopes to request. If omitted, uses defaults from the integration config and installed skills.",
-          })
-        ),
-        reason: Type.Optional(
-          Type.String({
-            description:
-              "Brief reason for the connection request, shown to the user.",
-          })
-        ),
-        account: Type.Optional(
-          Type.String({
-            description:
-              "Label for the account, e.g. 'work' or 'personal'. Omit for default account.",
-          })
-        ),
-      }),
-      run: (args) => connectService(gw, args),
-    }),
-
-    defineTool({
-      name: "CallService",
-      description:
-        "Make an authenticated API call through a connected service. The gateway injects the OAuth token — you never see credentials. Supports any REST API within the service's allowed domains.",
-      parameters: Type.Object({
-        integration: Type.String({
-          description: "Service/integration ID (e.g., 'google')",
-        }),
-        method: Type.String({
-          description: "HTTP method (GET, POST, PUT, DELETE, PATCH)",
-        }),
-        url: Type.String({
-          description:
-            "Full URL to call (must be within the service's allowed domains)",
-        }),
-        headers: Type.Optional(
-          Type.Record(Type.String(), Type.String(), {
-            description:
-              "Additional HTTP headers (Authorization is injected automatically)",
-          })
-        ),
-        body: Type.Optional(
-          Type.String({
-            description: "Request body (for POST/PUT/PATCH)",
-          })
-        ),
-        account: Type.Optional(
-          Type.String({
-            description: "Which account to use. Omit for default.",
-          })
-        ),
-      }),
-      run: (args) => callService(gw, args),
-    }),
-
-    defineTool({
-      name: "DisconnectService",
-      description:
-        "Disconnect from a third-party service. Removes stored credentials.",
-      parameters: Type.Object({
-        integration: Type.String({
-          description: "Service/integration ID to disconnect (e.g., 'google')",
-        }),
-        account: Type.Optional(
-          Type.String({
-            description: "Which account to disconnect. Omit for default.",
-          })
-        ),
-      }),
-      run: (args) => disconnectService(gw, args),
-    }),
   ];
 
   return tools;
@@ -414,20 +328,27 @@ export function createOpenClawCustomTools(params: {
  */
 export function createMcpToolDefinitions(
   mcpTools: Record<string, McpToolDef[]>,
-  gw: GatewayParams
+  gw: GatewayParams,
+  mcpContext?: Record<string, string>
 ): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
 
   for (const [mcpId, defs] of Object.entries(mcpTools)) {
+    const contextPrefix = mcpContext?.[mcpId];
     for (const def of defs) {
       const schema = def.inputSchema
         ? Type.Unsafe(def.inputSchema)
         : Type.Object({});
 
+      const baseDescription = def.description || `MCP tool from ${mcpId}`;
+      const description = contextPrefix
+        ? `[${contextPrefix}] ${baseDescription}`
+        : baseDescription;
+
       tools.push({
         name: def.name,
         label: `${mcpId}/${def.name}`,
-        description: def.description || `MCP tool from ${mcpId}`,
+        description,
         parameters: schema,
         execute: async (_toolCallId, args) =>
           toToolResult(

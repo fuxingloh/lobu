@@ -123,6 +123,7 @@ export interface SkillMcpServer {
   };
   resource?: string;
   inputs?: Array<{ id: string; label?: string; type?: string }>;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -149,6 +150,8 @@ export interface SkillConfig {
   name: string;
   /** Optional description from SKILL.md frontmatter */
   description?: string;
+  /** Short always-inlined instruction block for critical rules */
+  instructions?: string;
   /** Whether this skill is currently enabled */
   enabled: boolean;
   /** True for system-defined skills (from system-skills.json). Cannot be removed by users. */

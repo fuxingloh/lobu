@@ -975,7 +975,11 @@ Use it when the user references past discussions or you need context.`);
     const customTools = createOpenClawCustomTools(gwParams);
 
     // Register MCP tools as first-class callable tools (alongside virtual memory wrappers)
-    const mcpToolDefs = createMcpToolDefinitions(context.mcpTools, gwParams);
+    const mcpToolDefs = createMcpToolDefinitions(
+      context.mcpTools,
+      gwParams,
+      context.mcpContext
+    );
     if (mcpToolDefs.length > 0) {
       customTools.push(...mcpToolDefs);
       logger.info(

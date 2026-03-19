@@ -50,14 +50,60 @@ export class ApiPlatform implements PlatformAdapter {
     // Create response renderer for routing worker responses to SSE clients
     this.responseRenderer = new ApiResponseRenderer();
 
-    // Subscribe to question events to broadcast to SSE clients
+    // Subscribe to interaction events to broadcast to SSE clients
     const interactionService = services.getInteractionService();
-    interactionService.on("question:created", (question: any) => {
-      if (question.teamId === "api") {
-        this.handleQuestion(question).catch((error) => {
-          logger.error("Failed to handle question:", error);
-        });
-      }
+
+    interactionService.on("question:created", (event: any) => {
+      if (event.teamId !== "api") return;
+      broadcastToAgent(event.conversationId, "question", {
+        type: "question",
+        questionId: event.id,
+        question: event.question,
+        options: event.options,
+        timestamp: Date.now(),
+      });
+    });
+
+    interactionService.on("link-button:created", (event: any) => {
+      if (event.platform !== "api") return;
+      broadcastToAgent(event.conversationId, "link-button", {
+        type: "link-button",
+        url: event.url,
+        label: event.label,
+        linkType: event.linkType,
+        timestamp: Date.now(),
+      });
+    });
+
+    interactionService.on("grant:requested", (event: any) => {
+      if (event.teamId !== "api") return;
+      broadcastToAgent(event.conversationId, "grant-request", {
+        type: "grant-request",
+        requestId: event.id,
+        domains: event.domains,
+        reason: event.reason,
+        timestamp: Date.now(),
+      });
+    });
+
+    interactionService.on("package:requested", (event: any) => {
+      if (event.teamId !== "api") return;
+      broadcastToAgent(event.conversationId, "package-request", {
+        type: "package-request",
+        requestId: event.id,
+        packages: event.packages,
+        reason: event.reason,
+        timestamp: Date.now(),
+      });
+    });
+
+    interactionService.on("suggestion:created", (event: any) => {
+      if (event.teamId !== "api") return;
+      broadcastToAgent(event.conversationId, "suggestion", {
+        type: "suggestion",
+        prompts: event.prompts,
+        timestamp: Date.now(),
+      });
     });
 
     logger.debug("✅ API platform initialized");
@@ -118,31 +164,10 @@ export class ApiPlatform implements PlatformAdapter {
   }
 
   /**
-   * Handle question by broadcasting to SSE clients
-   */
-  private async handleQuestion(question: any): Promise<void> {
-    const agentId = question.conversationId;
-    if (!agentId) {
-      logger.warn("No agent ID found for question");
-      return;
-    }
-
-    broadcastToAgent(agentId, "question", {
-      type: "question",
-      questionId: question.id,
-      question: question.question,
-      options: question.options,
-      timestamp: Date.now(),
-    });
-
-    logger.info(`Sent question to agent ${agentId}: ${question.id}`);
-  }
-
-  /**
-   * API platform doesn't render suggestions via platform UI
+   * Suggestions are broadcast via interaction events above
    */
   async renderSuggestion(): Promise<void> {
-    // Suggestions are handled via SSE in the response renderer
+    /* noop — suggestions broadcast via interaction events */
   }
 
   /**

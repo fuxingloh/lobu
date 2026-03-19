@@ -3,311 +3,58 @@
     {
       "id": "google-workspace",
       "name": "Google Workspace",
-      "description": "Gmail, Calendar, Drive integration",
-      "integrations": [
-        {
-          "id": "google",
-          "label": "Google",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://accounts.google.com/o/oauth2/v2/auth",
-            "tokenUrl": "https://oauth2.googleapis.com/token",
-            "incrementalAuth": true,
-            "extraAuthParams": {
-              "access_type": "offline",
-              "prompt": "consent"
-            }
-          },
-          "scopesConfig": {
-            "default": ["openid", "profile", "email"],
-            "available": [
-              "https://www.googleapis.com/auth/gmail.readonly",
-              "https://www.googleapis.com/auth/gmail.send",
-              "https://www.googleapis.com/auth/calendar.readonly",
-              "https://www.googleapis.com/auth/calendar.events",
-              "https://www.googleapis.com/auth/drive.readonly"
-            ]
-          },
-          "apiDomains": [
-            "gmail.googleapis.com",
-            "www.googleapis.com",
-            "calendar.googleapis.com"
-          ],
-          "apiBase": "https://www.googleapis.com",
-          "apiHints": "Calendar: /calendar/v3/calendars/primary/events; Gmail: /gmail/v1/users/me/messages, /gmail/v1/users/me/messages/send; Drive: /drive/v3/files"
-        }
-      ]
+      "description": "Gmail, Calendar, Drive integration"
     },
     {
       "id": "github",
       "name": "GitHub",
-      "description": "Repos, issues, pull requests, and code access",
-      "integrations": [
-        {
-          "id": "github",
-          "label": "GitHub",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://github.com/login/oauth/authorize",
-            "tokenUrl": "https://github.com/login/oauth/access_token"
-          },
-          "scopesConfig": {
-            "default": ["read:user", "user:email"],
-            "available": [
-              "repo",
-              "read:org",
-              "read:project",
-              "gist",
-              "notifications"
-            ]
-          },
-          "apiDomains": ["api.github.com", "raw.githubusercontent.com"],
-          "apiBase": "https://api.github.com",
-          "apiHints": "Repos: /repos/{owner}/{repo}; Issues: /repos/{owner}/{repo}/issues; Pulls: /repos/{owner}/{repo}/pulls; User: /user"
-        }
-      ]
+      "description": "Repos, issues, pull requests, and code access"
     },
     {
       "id": "microsoft-365",
       "name": "Microsoft 365",
-      "description": "Outlook, OneDrive, and Teams integration",
-      "integrations": [
-        {
-          "id": "microsoft",
-          "label": "Microsoft",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-            "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-          },
-          "scopesConfig": {
-            "default": ["openid", "profile", "email", "offline_access"],
-            "available": [
-              "Mail.Read",
-              "Mail.Send",
-              "Calendars.Read",
-              "Calendars.ReadWrite",
-              "Files.Read",
-              "Files.ReadWrite",
-              "Chat.Read",
-              "Team.ReadBasic.All"
-            ]
-          },
-          "apiDomains": ["graph.microsoft.com"],
-          "apiBase": "https://graph.microsoft.com/v1.0",
-          "apiHints": "Mail: /me/messages; Calendar: /me/events; Files: /me/drive/root/children; Teams chats: /me/chats"
-        }
-      ]
+      "description": "Outlook, OneDrive, and Teams integration"
     },
     {
       "id": "notion",
       "name": "Notion",
-      "description": "Workspace pages, databases, and content",
-      "integrations": [
-        {
-          "id": "notion",
-          "label": "Notion",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://api.notion.com/v1/oauth/authorize",
-            "tokenUrl": "https://api.notion.com/v1/oauth/token",
-            "tokenEndpointAuthMethod": "client_secret_basic"
-          },
-          "apiDomains": ["api.notion.com"],
-          "apiBase": "https://api.notion.com/v1",
-          "apiHints": "Requires Notion-Version: 2022-06-28 header. Pages: /pages/{id}; Databases: /databases/{id}/query; Search: /search; Blocks: /blocks/{id}/children"
-        }
-      ]
+      "description": "Workspace pages, databases, and content"
     },
     {
       "id": "spotify",
       "name": "Spotify",
-      "description": "Music playback, playlists, and library management",
-      "integrations": [
-        {
-          "id": "spotify",
-          "label": "Spotify",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://accounts.spotify.com/authorize",
-            "tokenUrl": "https://accounts.spotify.com/api/token",
-            "tokenEndpointAuthMethod": "client_secret_basic"
-          },
-          "scopesConfig": {
-            "default": ["user-read-private", "user-read-email"],
-            "available": [
-              "user-read-playback-state",
-              "user-modify-playback-state",
-              "user-read-currently-playing",
-              "playlist-read-private",
-              "playlist-modify-public",
-              "playlist-modify-private",
-              "user-library-read",
-              "user-library-modify",
-              "user-top-read",
-              "user-read-recently-played"
-            ]
-          },
-          "apiDomains": ["api.spotify.com"],
-          "apiBase": "https://api.spotify.com/v1",
-          "apiHints": "Player: /me/player, /me/player/currently-playing; Playlists: /me/playlists, /playlists/{id}/tracks; Library: /me/tracks, /me/albums; Search: /search?q={query}&type=track,artist,album"
-        }
-      ]
+      "description": "Music playback, playlists, and library management"
     },
     {
       "id": "linear",
       "name": "Linear",
-      "description": "Issue tracking and project management",
-      "integrations": [
-        {
-          "id": "linear",
-          "label": "Linear",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://linear.app/oauth/authorize",
-            "tokenUrl": "https://api.linear.app/oauth/token"
-          },
-          "scopesConfig": {
-            "default": ["read"],
-            "available": ["read", "write", "issues:create", "comments:create"]
-          },
-          "apiDomains": ["api.linear.app"],
-          "apiBase": "https://api.linear.app",
-          "apiHints": "GraphQL API only. POST /graphql with query body. Example: { \"query\": \"{ issues { nodes { id title } } }\" }"
-        }
-      ]
+      "description": "Issue tracking and project management"
     },
     {
       "id": "jira",
       "name": "Jira",
-      "description": "Atlassian Jira project and issue management",
-      "integrations": [
-        {
-          "id": "jira",
-          "label": "Atlassian",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://auth.atlassian.com/authorize",
-            "tokenUrl": "https://auth.atlassian.com/oauth/token"
-          },
-          "scopesConfig": {
-            "default": ["read:me"],
-            "available": [
-              "read:jira-work",
-              "write:jira-work",
-              "read:jira-user",
-              "read:confluence-content.all"
-            ]
-          },
-          "apiDomains": ["api.atlassian.com", "auth.atlassian.com"],
-          "apiBase": "https://api.atlassian.com",
-          "apiHints": "REST v3. First get cloudId: /oauth/token/accessible-resources, then /ex/jira/{cloudId}/rest/api/3/search for issues, /ex/jira/{cloudId}/rest/api/3/issue/{key} for details"
-        }
-      ]
+      "description": "Atlassian Jira project and issue management"
     },
     {
       "id": "sentry",
       "name": "Sentry",
-      "description": "Error tracking, performance monitoring, and issue management",
-      "integrations": [
-        {
-          "id": "sentry",
-          "label": "Sentry",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://sentry.io/oauth/authorize/",
-            "tokenUrl": "https://sentry.io/oauth/token/"
-          },
-          "scopesConfig": {
-            "default": ["org:read", "project:read", "event:read"],
-            "available": [
-              "org:read",
-              "org:write",
-              "project:read",
-              "project:write",
-              "project:releases",
-              "team:read",
-              "team:write",
-              "member:read",
-              "event:read",
-              "event:write"
-            ]
-          },
-          "apiDomains": ["sentry.io"],
-          "apiBase": "https://sentry.io/api/0",
-          "apiHints": "Organizations: /organizations/; Projects: /organizations/{org}/projects/; Issues: /organizations/{org}/issues/"
-        }
-      ]
+      "description": "Error tracking, performance monitoring, and issue management"
     },
     {
       "id": "reddit",
       "name": "Reddit",
-      "description": "Reddit posts, comments, subreddits, and user data",
-      "integrations": [
-        {
-          "id": "reddit",
-          "label": "Reddit",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://www.reddit.com/api/v1/authorize?duration=permanent",
-            "tokenUrl": "https://www.reddit.com/api/v1/access_token",
-            "tokenEndpointAuthMethod": "client_secret_basic"
-          },
-          "scopesConfig": {
-            "default": ["identity", "read"],
-            "available": [
-              "submit",
-              "vote",
-              "edit",
-              "save",
-              "history",
-              "mysubreddits",
-              "subscribe",
-              "flair"
-            ]
-          },
-          "apiDomains": ["oauth.reddit.com"],
-          "apiBase": "https://oauth.reddit.com",
-          "apiHints": "User: /api/v1/me; Subreddit posts: /r/{subreddit}/hot; Submit: /api/submit; Vote: /api/vote; Comments: /r/{subreddit}/comments/{article}"
-        }
-      ]
+      "description": "Reddit posts, comments, subreddits, and user data"
     },
     {
       "id": "twitter",
       "name": "X (Twitter)",
-      "description": "Tweets, timelines, users, and direct messages",
-      "integrations": [
-        {
-          "id": "twitter",
-          "label": "X (Twitter)",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://twitter.com/i/oauth2/authorize",
-            "tokenUrl": "https://api.twitter.com/2/oauth2/token",
-            "tokenEndpointAuthMethod": "client_secret_basic"
-          },
-          "scopesConfig": {
-            "default": ["tweet.read", "users.read", "offline.access"],
-            "available": [
-              "tweet.write",
-              "follows.read",
-              "follows.write",
-              "like.read",
-              "like.write",
-              "dm.read",
-              "dm.write"
-            ]
-          },
-          "apiDomains": ["api.twitter.com"],
-          "apiBase": "https://api.twitter.com/2",
-          "apiHints": "User: /users/me; Tweets: /tweets/{id}; Timeline: /users/{id}/tweets; Post tweet: /tweets; Search: /tweets/search/recent?query={q}"
-        }
-      ]
+      "description": "Tweets, timelines, users, and direct messages"
     },
     {
       "id": "owletto",
       "name": "Owletto Memory",
-      "description": "Long-term memory across conversations",
+      "description": "Long-term memory across conversations. Use when you need to remember user preferences, recall past context, or store important facts.",
+      "instructions": "Check Owletto memory at the start of each conversation for relevant context. Store important user preferences, facts, and decisions.",
       "hidden": true,
       "mcpServers": [
         {
@@ -315,12 +62,8 @@
           "name": "Owletto",
           "url": "${env:OWLETTO_MCP_URL}",
           "type": "sse",
-          "oauth": {
-            "authUrl": "${env:OWLETTO_OAUTH_AUTH_URL}",
-            "tokenUrl": "${env:OWLETTO_OAUTH_TOKEN_URL}",
-            "clientId": "${env:OWLETTO_OAUTH_CLIENT_ID}",
-            "scopes": ["mcp:read", "mcp:write"],
-            "tokenEndpointAuthMethod": "none"
+          "headers": {
+            "Authorization": "Bearer ${env:OWLETTO_API_KEY}"
           }
         }
       ]
@@ -493,20 +236,6 @@
       "id": "openrouter",
       "name": "OpenRouter",
       "description": "Multi-provider model router with per-user billing",
-      "integrations": [
-        {
-          "id": "openrouter",
-          "label": "OpenRouter",
-          "authType": "oauth",
-          "oauth": {
-            "authUrl": "https://openrouter.ai/auth",
-            "tokenUrl": "https://openrouter.ai/api/v1/auth/keys"
-          },
-          "apiDomains": ["openrouter.ai"],
-          "apiBase": "https://openrouter.ai/api/v1",
-          "apiHints": "OpenAI-compatible API. Chat completions: /chat/completions; Models: /models"
-        }
-      ],
       "providers": [
         {
           "displayName": "OpenRouter",

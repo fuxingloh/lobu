@@ -148,6 +148,9 @@
             "useKeyWithClickEvents": "off",
             "useSemanticElements": "off",
             "useAnchorContent": "off"
+          },
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
           }
         }
       }

@@ -68,7 +68,11 @@ class SkillsInstructionProvider implements InstructionProvider {
             tags.push(`[thinking: ${skill.thinkingLevel}]`);
           }
           const tagStr = tags.length > 0 ? ` ${tags.join(" ")}` : "";
-          return `- **${skill.name}**${desc} (\`${skill.repo}\`)${tagStr}`;
+          const line = `- **${skill.name}**${desc} (\`${skill.repo}\`)${tagStr}`;
+          if (skill.instructions?.trim()) {
+            return `${line}\n  → ${skill.instructions.trim()}`;
+          }
+          return line;
         })
         .join("\n");
 

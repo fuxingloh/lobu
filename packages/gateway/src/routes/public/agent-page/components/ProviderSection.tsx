@@ -751,7 +751,10 @@ function AuthFlowContent({
       )}
       {showApiKey && (
         <div>
-          <p class="text-xs text-gray-600 mb-2">{pInfo.apiKeyInstructions}</p>
+          <p
+            class="text-xs text-gray-600 mb-2"
+            dangerouslySetInnerHTML={{ __html: pInfo.apiKeyInstructions }}
+          />
           <div class="flex gap-2">
             <input
               type="password"

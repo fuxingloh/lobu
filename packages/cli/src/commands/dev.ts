@@ -191,6 +191,7 @@ async function buildManifest(
         repo: `system/${skill.id}`,
         name: skill.name,
         description: skill.description,
+        instructions: skill.instructions,
         enabled: true,
         system: true,
         content: "",

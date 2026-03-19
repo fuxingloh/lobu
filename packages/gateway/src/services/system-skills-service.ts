@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import type {
-  IntegrationConfig,
   ProviderConfigEntry,
   SkillConfig,
   SystemSkillEntry,
@@ -15,6 +14,7 @@ export interface RuntimeSystemSkill {
   repo: string;
   name: string;
   description?: string;
+  instructions?: string;
   content: string;
 }
 
@@ -56,25 +56,6 @@ export class SystemSkillsService {
     return this.rawLoaded.skills.map((entry) => this.toSkillConfig(entry));
   }
 
-  async getAllIntegrationConfigs(): Promise<Record<string, IntegrationConfig>> {
-    const config = await this.loadConfig();
-    if (!config) return {};
-    const result: Record<string, IntegrationConfig> = {};
-    for (const skill of config.skills) {
-      if (!skill.integrations) continue;
-      for (const ig of skill.integrations) {
-        result[ig.id] = {
-          label: ig.label,
-          authType: ig.authType || "oauth",
-          oauth: ig.oauth,
-          scopes: ig.scopesConfig,
-          apiDomains: ig.apiDomains || [],
-        };
-      }
-    }
-    return result;
-  }
-
   async getProviderConfigs(): Promise<Record<string, ProviderConfigEntry>> {
     const config = await this.loadConfig();
     if (!config) return {};
@@ -99,17 +80,9 @@ export class SystemSkillsService {
       repo: `system/${entry.id}`,
       name: entry.name,
       description: entry.description,
+      instructions: entry.instructions,
       enabled: true,
       system: true,
-      integrations: entry.integrations?.map((ig) => ({
-        id: ig.id,
-        label: ig.label,
-        authType: ig.authType || "oauth",
-        oauth: ig.oauth,
-        scopesConfig: ig.scopesConfig,
-        scopes: ig.scopes,
-        apiDomains: ig.apiDomains,
-      })),
       mcpServers: entry.mcpServers,
       nixPackages: entry.nixPackages,
       permissions: entry.permissions,
@@ -124,26 +97,12 @@ export class SystemSkillsService {
       `System skill ID: \`${repo}\``,
     ];
 
-    if (entry.description?.trim()) {
-      lines.push("", entry.description.trim());
+    if (entry.instructions?.trim()) {
+      lines.push("", "**Instructions:** " + entry.instructions.trim());
     }
 
-    if (entry.integrations?.length) {
-      lines.push("", "## Integrations");
-      for (const integration of entry.integrations) {
-        const scopeInfo = integration.scopesConfig?.available?.length
-          ? ` (scopes: ${integration.scopesConfig.available.join(", ")})`
-          : "";
-        lines.push(
-          `- ${integration.label} (\`${integration.id}\`, auth: ${integration.authType || "oauth"})${scopeInfo}`
-        );
-        if (integration.apiBase) {
-          lines.push(`  - API base: \`${integration.apiBase}\``);
-        }
-        if (integration.apiHints) {
-          lines.push(`  - API hints: ${integration.apiHints}`);
-        }
-      }
+    if (entry.description?.trim()) {
+      lines.push("", entry.description.trim());
     }
 
     if (entry.mcpServers?.length) {
@@ -169,8 +128,9 @@ export class SystemSkillsService {
     lines.push(
       "",
       "## Usage",
-      "- Use `CallService` for these integrations.",
-      "- If auth is needed, use `ConnectService` first."
+      "- Use MCP tools for API access (auth handled by Owletto).",
+      "- Skills with `permissions` require user-approved network grants.",
+      "- Skills with `nixPackages` require user-approved package installs."
     );
 
     return {
@@ -178,6 +138,7 @@ export class SystemSkillsService {
       repo,
       name: entry.name,
       description: entry.description,
+      instructions: entry.instructions,
       content: lines.join("\n"),
     };
   }
@@ -226,21 +187,6 @@ export class SystemSkillsService {
       }
       this.loaded = parsed;
       logger.info(`Loaded ${parsed.skills.length} system skill(s)`);
-
-      // Log integrations that need per-agent OAuth credentials
-      const needsCreds: string[] = [];
-      for (const skill of parsed.skills) {
-        for (const ig of skill.integrations || []) {
-          if (ig.oauth && (!ig.oauth.clientId || !ig.oauth.clientSecret)) {
-            needsCreds.push(ig.id);
-          }
-        }
-      }
-      if (needsCreds.length > 0) {
-        logger.info(
-          `Integrations requiring per-agent OAuth credentials: ${needsCreds.join(", ")}`
-        );
-      }
       return parsed;
     } catch (error) {
       this.loadAttempted = true;

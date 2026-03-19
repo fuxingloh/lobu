@@ -1,7 +1,6 @@
 import {
   type ConfigProviderMeta,
   createLogger,
-  type IntegrationInfo,
   type McpToolDef,
 } from "@lobu/core";
 import { ensureBaseUrl } from "../core/url-utils";
@@ -50,10 +49,12 @@ interface SessionContextResponse {
   mcpStatus: McpStatus[];
   mcpTools?: Record<string, McpToolDef[]>;
   mcpInstructions?: Record<string, string>;
+  mcpContext?: Record<string, string>;
   providerConfig?: ProviderConfig;
-  integrationStatus?: IntegrationInfo[];
   skillsConfig?: SkillContent[];
 }
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Module-level cache for session context
 let cachedResult: {
@@ -61,6 +62,8 @@ let cachedResult: {
   providerConfig: ProviderConfig;
   skillsConfig: SkillContent[];
   mcpTools: Record<string, McpToolDef[]>;
+  mcpContext: Record<string, string>;
+  cachedAt: number;
 } | null = null;
 
 /**
@@ -109,13 +112,13 @@ function buildMcpInstructions(
     }
 
     lines.push(
-      `- ⚠️ **${mcp.name}** (id: ${mcp.id}): Requires ${reasons.join(" and ")}. Call ConnectService(id="${mcp.id}") to authenticate and see available tools.`
+      `- ⚠️ **${mcp.name}** (id: ${mcp.id}): Requires ${reasons.join(" and ")}. Direct the user to the settings page to authenticate.`
     );
   }
 
   for (const mcp of unauthenticatedMcps) {
     lines.push(
-      `- ⚠️ **${mcp.name}** (id: ${mcp.id}): Tools are visible but require authentication to use. Call ConnectService(id="${mcp.id}") to authenticate.`
+      `- ⚠️ **${mcp.name}** (id: ${mcp.id}): Tools are visible but require authentication to use. Direct the user to the settings page to authenticate.`
     );
   }
 
@@ -135,46 +138,6 @@ function buildMcpServerInstructions(
   return lines.join("\n");
 }
 
-function buildIntegrationInstructions(integrations: IntegrationInfo[]): string {
-  if (!integrations || integrations.length === 0) {
-    return "";
-  }
-
-  const lines: string[] = [
-    "## Integrations\n\nConfigured third-party integrations. Use CallService to make authenticated API calls.",
-  ];
-
-  for (const ig of integrations) {
-    const tag = `[${ig.authType || "oauth"}]`;
-    const header = `- ${tag} **${ig.label}** (\`${ig.id}\`)`;
-    const api = ig.apiBase
-      ? `\n  API: \`${ig.apiBase}\`${ig.apiHints ? ` — ${ig.apiHints}` : ""}`
-      : "";
-
-    if (!ig.connected || ig.accounts.length === 0) {
-      const scopes =
-        ig.availableScopes.length > 0
-          ? ` (available scopes: ${ig.availableScopes.join(", ")})`
-          : "";
-      lines.push(`${header} — not connected${scopes}${api}`);
-    } else if (ig.authType === "api-key" || ig.accounts.length === 1) {
-      lines.push(`${header} — connected${api}`);
-    } else {
-      const details = ig.accounts
-        .map(
-          (a) =>
-            `  - **${a.accountId}**: ${a.grantedScopes.join(", ") || "default"}`
-        )
-        .join("\n");
-      lines.push(
-        `${header} — ${ig.accounts.length} accounts\n${details}${api}`
-      );
-    }
-  }
-
-  return lines.join("\n");
-}
-
 /**
  * Fetch session context from gateway for OpenClaw worker.
  * Returns gateway instructions and dynamic provider configuration.
@@ -186,8 +149,9 @@ export async function getOpenClawSessionContext(): Promise<{
   providerConfig: ProviderConfig;
   skillsConfig: SkillContent[];
   mcpTools: Record<string, McpToolDef[]>;
+  mcpContext: Record<string, string>;
 }> {
-  if (cachedResult) {
+  if (cachedResult && Date.now() - cachedResult.cachedAt < CACHE_TTL_MS) {
     logger.debug("Returning cached session context");
     return cachedResult;
   }
@@ -202,6 +166,7 @@ export async function getOpenClawSessionContext(): Promise<{
       providerConfig: {},
       skillsConfig: [],
       mcpTools: {},
+      mcpContext: {},
     };
   }
 
@@ -225,6 +190,7 @@ export async function getOpenClawSessionContext(): Promise<{
         providerConfig: {},
         skillsConfig: [],
         mcpTools: {},
+        mcpContext: {},
       };
     }
 
@@ -249,12 +215,7 @@ export async function getOpenClawSessionContext(): Promise<{
     }
     const mcpServerInstructions =
       buildMcpServerInstructions(instructionsOnlyMcps);
-    const integrationInstructions = buildIntegrationInstructions(
-      data.integrationStatus || []
-    );
 
-    // MCP tools are now exposed as first-class callable tools (not curl instructions).
-    // Only include server instructions for context.
     const gatewayInstructions = [
       data.agentInstructions,
       data.platformInstructions,
@@ -262,7 +223,6 @@ export async function getOpenClawSessionContext(): Promise<{
       data.skillsInstructions,
       mcpSetupInstructions,
       mcpServerInstructions,
-      integrationInstructions,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -270,14 +230,17 @@ export async function getOpenClawSessionContext(): Promise<{
     const mcpTools = data.mcpTools || {};
 
     logger.info(
-      `Built gateway instructions: agent (${(data.agentInstructions || "").length} chars) + platform (${data.platformInstructions.length} chars) + network (${data.networkInstructions.length} chars) + skills (${(data.skillsInstructions || "").length} chars) + MCP setup (${mcpSetupInstructions.length} chars) + MCP server instructions (${mcpServerInstructions.length} chars) + integrations (${integrationInstructions.length} chars), mcpTools: ${Object.keys(mcpTools).length} servers`
+      `Built gateway instructions: agent (${(data.agentInstructions || "").length} chars) + platform (${data.platformInstructions.length} chars) + network (${data.networkInstructions.length} chars) + skills (${(data.skillsInstructions || "").length} chars) + MCP setup (${mcpSetupInstructions.length} chars) + MCP server instructions (${mcpServerInstructions.length} chars), mcpTools: ${Object.keys(mcpTools).length} servers`
     );
+
+    const mcpContext = data.mcpContext || {};
 
     const result = {
       gatewayInstructions,
       providerConfig: data.providerConfig || {},
       skillsConfig: data.skillsConfig || [],
       mcpTools,
+      mcpContext,
     };
 
     // Don't cache if any authenticated MCP returned no tools — likely a
@@ -286,7 +249,7 @@ export async function getOpenClawSessionContext(): Promise<{
       (mcp) => mcp.authenticated && !toolMcpIds.has(mcp.id)
     );
     if (!hasEmptyAuthenticatedMcp) {
-      cachedResult = result;
+      cachedResult = { ...result, cachedAt: Date.now() };
     } else {
       logger.warn(
         "Skipping session context cache — authenticated MCP(s) returned no tools",
@@ -306,6 +269,7 @@ export async function getOpenClawSessionContext(): Promise<{
       providerConfig: {},
       skillsConfig: [],
       mcpTools: {},
+      mcpContext: {},
     };
   }
 }

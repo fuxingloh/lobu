@@ -4,6 +4,7 @@ import {
   createLogger,
   createRootSpan,
   generateWorkerToken,
+  type InstalledProvider,
   type McpServerConfig,
   type NetworkConfig,
 } from "@lobu/core";
@@ -14,7 +15,9 @@ import {
   TOKEN_EXPIRATION_MS,
 } from "../../auth/api-auth-middleware";
 import type { CliTokenService } from "../../auth/cli/token-service";
+import type { AgentSettingsStore } from "../../auth/settings/agent-settings-store";
 import type { QueueProducer } from "../../infrastructure/queue/queue-producer";
+import { getModelProviderModules } from "../../modules/module-system";
 import type { ISessionManager, ThreadSession } from "../../session";
 
 const logger = createLogger("agent-api");
@@ -385,6 +388,7 @@ export interface AgentApiConfig {
   publicGatewayUrl: string;
   adminPassword?: string;
   cliTokenService?: CliTokenService;
+  agentSettingsStore?: AgentSettingsStore;
 }
 
 export function createAgentApi(config: AgentApiConfig): OpenAPIHono;
@@ -407,7 +411,8 @@ export function createAgentApi(
           publicGatewayUrl: publicGatewayUrl!,
         };
 
-  const { queueProducer, adminPassword, cliTokenService } = config;
+  const { queueProducer, adminPassword, cliTokenService, agentSettingsStore } =
+    config;
   const sessMgr = config.sessionManager;
   const pubUrl = config.publicGatewayUrl;
   const app = new OpenAPIHono();
@@ -460,7 +465,41 @@ export function createAgentApi(
       if (error) return c.json({ success: false, error }, 400);
     }
 
+    const isEphemeral = !requestedAgentId?.trim();
     const agentId = requestedAgentId?.trim() || randomUUID();
+
+    // For ephemeral agents, auto-provision settings so the worker gets provider config
+    if (isEphemeral && agentSettingsStore) {
+      // Try system-key providers first (env var based API keys)
+      const providerModules = getModelProviderModules();
+      const systemProviders: InstalledProvider[] = providerModules
+        .filter((m) => m.hasSystemKey())
+        .map((m) => ({
+          providerId: m.providerId,
+          installedAt: Date.now(),
+        }));
+
+      if (systemProviders.length > 0) {
+        await agentSettingsStore.saveSettings(agentId, {
+          installedProviders: systemProviders,
+        });
+        logger.info(
+          `Ephemeral agent ${agentId}: provisioned system providers [${systemProviders.map((p) => p.providerId).join(", ")}]`
+        );
+      } else {
+        // Fall back to using an existing agent as template (inherits its providers)
+        const templateId = await agentSettingsStore.findTemplateAgentId();
+        if (templateId) {
+          await agentSettingsStore.saveSettings(agentId, {
+            templateAgentId: templateId,
+          });
+          logger.info(
+            `Ephemeral agent ${agentId}: using template ${templateId}`
+          );
+        }
+      }
+    }
+
     const conversationId = agentId;
     const channelId = `api-${agentId.slice(0, 8)}`;
     const deploymentName = `api-${agentId.slice(0, 8)}`;
@@ -562,6 +601,12 @@ export function createAgentApi(
     }
 
     await sessMgr.deleteSession(agentId);
+    // Clean up ephemeral agent settings
+    if (agentSettingsStore) {
+      await agentSettingsStore.deleteSettings(agentId).catch(() => {
+        /* best-effort cleanup */
+      });
+    }
     logger.info(`Deleted agent ${agentId}`);
 
     return c.json({ success: true, message: "Agent deleted", agentId });

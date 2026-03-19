@@ -1,15 +1,12 @@
 /**
- * Shared types for the generic integration system.
- * Used by both gateway and worker packages.
+ * Shared types for the integration system.
+ *
+ * OAuth credential management for third-party APIs (GitHub, Google, etc.)
+ * is handled by Owletto. Types here support MCP server OAuth configs
+ * and API-key integrations created by agents at runtime.
  */
 
 import type { ProviderConfigEntry } from "./provider-config-types";
-
-// ============================================================================
-// Config types (integration runtime configs)
-// ============================================================================
-
-export type IntegrationAuthType = "oauth" | "api-key";
 
 export interface IntegrationOAuthConfig {
   authUrl: string;
@@ -17,33 +14,13 @@ export interface IntegrationOAuthConfig {
   clientId?: string;
   clientSecret?: string;
   incrementalAuth?: boolean;
-  tokenEndpointAuthMethod?: string; // "client_secret_post" (default), "client_secret_basic", or "none" (PKCE)
-  extraAuthParams?: Record<string, string>; // Extra query params for authorization URL (e.g. access_type, prompt)
+  tokenEndpointAuthMethod?: string;
+  extraAuthParams?: Record<string, string>;
 }
 
 export interface IntegrationApiKeyConfig {
-  headerName: string; // e.g. "Authorization", "X-Api-Key"
-  headerTemplate: string; // e.g. "Bearer {{key}}", "{{key}}"
-}
-
-export interface IntegrationScopesConfig {
-  default: string[];
-  available: string[];
-}
-
-export interface IntegrationConfig {
-  label: string;
-  authType?: IntegrationAuthType; // defaults to "oauth" for backward compat
-  oauth?: IntegrationOAuthConfig;
-  apiKey?: IntegrationApiKeyConfig;
-  scopes?: IntegrationScopesConfig;
-  apiDomains: string[];
-  apiBase?: string;
-  apiHints?: string;
-  openapi?: {
-    specUrl: string;
-    operations?: string[];
-  };
+  headerName: string;
+  headerTemplate: string;
 }
 
 /** Per-agent integration config (stored in AgentSettings, used by worker routes) */
@@ -60,66 +37,14 @@ export interface SystemSkillEntry {
   id: string;
   name: string;
   description?: string;
+  instructions?: string;
   hidden?: boolean;
-  integrations?: SystemSkillIntegration[];
   mcpServers?: import("./types").SkillMcpServer[];
   providers?: ProviderConfigEntry[];
   nixPackages?: string[];
   permissions?: string[];
 }
 
-export interface SystemSkillIntegration {
-  id: string;
-  label: string;
-  authType?: IntegrationAuthType;
-  oauth?: IntegrationOAuthConfig;
-  scopesConfig?: IntegrationScopesConfig;
-  scopes?: string[];
-  apiDomains?: string[];
-  apiBase?: string;
-  apiHints?: string;
-}
-
 export interface SystemSkillsConfigFile {
   skills: SystemSkillEntry[];
-}
-
-// ============================================================================
-// Credential types (stored in Redis)
-// ============================================================================
-
-export interface IntegrationCredentialRecord {
-  accessToken: string;
-  tokenType?: string;
-  expiresAt?: number;
-  refreshToken?: string;
-  grantedScopes: string[];
-  metadata?: Record<string, unknown>;
-}
-
-// ============================================================================
-// Worker-facing types (returned by internal API endpoints)
-// ============================================================================
-
-export interface IntegrationAccountInfo {
-  accountId: string;
-  grantedScopes: string[];
-}
-
-export interface IntegrationInfo {
-  id: string;
-  label: string;
-  authType: IntegrationAuthType;
-  connected: boolean;
-  configured: boolean;
-  accounts: IntegrationAccountInfo[];
-  availableScopes: string[];
-  apiBase?: string;
-  apiHints?: string;
-}
-
-export interface IntegrationApiResponse {
-  status: number;
-  headers: Record<string, string>;
-  body: string;
 }

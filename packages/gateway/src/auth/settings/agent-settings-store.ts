@@ -71,11 +71,6 @@ export interface AgentSettings {
   skillRegistries?: RegistryEntry[];
   /** Enable verbose logging (show tool calls, reasoning, etc.) */
   verboseLogging?: boolean;
-  /** Per-agent OAuth app credentials for integrations (clientId + encrypted clientSecret) */
-  oauthAppCredentials?: Record<
-    string,
-    { clientId: string; clientSecret: string }
-  >;
   /** Template agent this sandbox was cloned from (for credential fallback) */
   templateAgentId?: string;
   /** Last updated timestamp */
@@ -212,6 +207,32 @@ export class AgentSettingsStore extends BaseRedisStore<AgentSettings> {
     return this.exists(key);
   }
 
+  /**
+   * Find the first agent that has installed providers configured.
+   * Used to find a template for ephemeral agents.
+   */
+  async findTemplateAgentId(): Promise<string | null> {
+    const prefix = `${this.keyPrefix}:`;
+    const keys = await this.scanByPrefix(prefix);
+    for (const key of keys) {
+      try {
+        const data = await this.redis.get(key);
+        if (!data) continue;
+        const parsed = safeJsonParse<AgentSettings>(data);
+        if (
+          parsed?.installedProviders &&
+          parsed.installedProviders.length > 0
+        ) {
+          // Extract agentId from key: "agent:settings:{agentId}"
+          return key.slice(prefix.length);
+        }
+      } catch {
+        /* skip unparseable key */
+      }
+    }
+    return null;
+  }
+
   protected override serialize(value: AgentSettings): string {
     const encrypted = this.encryptSettingsForStorage(value);
     const json = safeJsonStringify(encrypted);
@@ -333,28 +354,6 @@ export class AgentSettingsStore extends BaseRedisStore<AgentSettings> {
       }
     }
 
-    // Encrypt OAuth app credential secrets
-    if (settings.oauthAppCredentials) {
-      let oauthChanged = false;
-      const encrypted: Record<
-        string,
-        { clientId: string; clientSecret: string }
-      > = {};
-      for (const [id, creds] of Object.entries(settings.oauthAppCredentials)) {
-        const encryptedSecret = this.encryptSensitiveValue(creds.clientSecret);
-        if (encryptedSecret !== creds.clientSecret) {
-          oauthChanged = true;
-        }
-        encrypted[id] = {
-          clientId: creds.clientId,
-          clientSecret: encryptedSecret,
-        };
-      }
-      if (oauthChanged) {
-        result = { ...result, oauthAppCredentials: encrypted };
-      }
-    }
-
     return result;
   }
 
@@ -412,30 +411,6 @@ export class AgentSettingsStore extends BaseRedisStore<AgentSettings> {
       if (profilesChanged) {
         changed = true;
         result = { ...result, authProfiles };
-      }
-    }
-
-    // Decrypt OAuth app credential secrets
-    if (settings.oauthAppCredentials) {
-      let oauthChanged = false;
-      const decrypted: Record<
-        string,
-        { clientId: string; clientSecret: string }
-      > = {};
-      for (const [id, creds] of Object.entries(settings.oauthAppCredentials)) {
-        const secret = this.decryptSensitiveValue(creds.clientSecret);
-        if (secret.value !== creds.clientSecret) {
-          oauthChanged = true;
-        }
-        needsMigration ||= secret.needsMigration;
-        decrypted[id] = {
-          clientId: creds.clientId,
-          clientSecret: secret.value,
-        };
-      }
-      if (oauthChanged) {
-        changed = true;
-        result = { ...result, oauthAppCredentials: decrypted };
       }
     }
 

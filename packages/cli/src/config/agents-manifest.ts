@@ -34,6 +34,7 @@ export interface AgentManifestEntry {
         repo: string;
         name: string;
         description?: string;
+        instructions?: string;
         content: string;
         enabled: boolean;
         system?: boolean;
