@@ -524,7 +524,11 @@ export class OpenClawWorker implements WorkerExecutor {
             ? "Your AI provider credentials are invalid or expired. Please update them in your settings: /configure"
             : `❌ Session failed: ${errorMsg}`;
           await this.workerTransport.sendStreamDelta(userMessage, true, true);
-          await this.workerTransport.signalError(new Error(errorMsg));
+          if (isAuthError) {
+            await this.workerTransport.signalDone();
+          } else {
+            await this.workerTransport.signalError(new Error(errorMsg));
+          }
         }
       }
 
