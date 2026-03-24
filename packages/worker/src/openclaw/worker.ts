@@ -516,11 +516,14 @@ export class OpenClawWorker implements WorkerExecutor {
           );
           throw new Error("SESSION_TIMEOUT");
         } else {
-          await this.workerTransport.sendStreamDelta(
-            `❌ Session failed: ${errorMsg}`,
-            true,
-            true
-          );
+          const isAuthError =
+            /401|403|unauthorized|token.*expired|invalid.*key|invalid.*token/i.test(
+              errorMsg
+            );
+          const userMessage = isAuthError
+            ? "Your AI provider credentials are invalid or expired. Please update them in your settings: /configure"
+            : `❌ Session failed: ${errorMsg}`;
+          await this.workerTransport.sendStreamDelta(userMessage, true, true);
           await this.workerTransport.signalError(new Error(errorMsg));
         }
       }
