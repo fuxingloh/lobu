@@ -2,16 +2,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   createLogger,
+  type AgentConfigStore,
+  type AgentSettings,
   type InstalledProvider,
   type SkillConfig,
 } from "@lobu/core";
-import type { AgentMetadataStore } from "../auth/agent-metadata-store";
-import type {
-  AgentSettings,
-  AgentSettingsStore,
-} from "../auth/settings/agent-settings-store";
 import type { AuthProfilesManager } from "../auth/settings/auth-profiles-manager";
-import { buildPromotedSettingsFromSource } from "../auth/settings/template-utils";
 
 const logger = createLogger("agent-seeder");
 
@@ -89,98 +85,51 @@ interface AgentsManifest {
 }
 
 /**
- * Reconcile agents from .lobu/agents.json on gateway startup.
- *
- * For each agent in the manifest:
- * - Creates metadata if it doesn't exist
- * - Updates manifest-managed fields in settings while preserving runtime-only state
- *
- * Silent no-op when the file doesn't exist.
+ * Seed agents from .lobu/agents.json using the unified AgentStore.
  */
 export async function seedAgentsFromManifest(
-  agentSettingsStore: AgentSettingsStore,
-  agentMetadataStore: AgentMetadataStore,
+  agentStore: AgentConfigStore,
   authProfilesManager?: AuthProfilesManager
 ): Promise<void> {
-  const manifestPath = resolve(process.cwd(), ".lobu/agents.json");
-
-  let raw: string;
-  try {
-    raw = readFileSync(manifestPath, "utf-8");
-  } catch {
-    // File doesn't exist — not a CLI-managed project, skip silently
-    return;
-  }
-
-  let manifest: AgentsManifest;
-  try {
-    manifest = JSON.parse(raw);
-  } catch (err) {
-    logger.warn("Failed to parse agents.json", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return;
-  }
-
-  if (!manifest.agents || manifest.agents.length === 0) {
-    return;
-  }
+  const manifest = loadManifest();
+  if (!manifest) return;
 
   logger.debug(`Seeding ${manifest.agents.length} agent(s) from manifest`);
 
   for (const entry of manifest.agents) {
     try {
-      const existingMetadata = await agentMetadataStore.getMetadata(
-        entry.agentId
-      );
+      const existingMetadata = await agentStore.getMetadata(entry.agentId);
       if (!existingMetadata) {
-        await agentMetadataStore.createAgent(
-          entry.agentId,
-          entry.name,
-          "system",
-          "manifest",
-          { description: entry.description }
-        );
-        logger.debug(`Created metadata for agent "${entry.agentId}"`);
+        await agentStore.saveMetadata(entry.agentId, {
+          agentId: entry.agentId,
+          name: entry.name,
+          description: entry.description,
+          owner: { platform: "system", userId: "manifest" },
+          createdAt: Date.now(),
+        });
       } else if (
         existingMetadata.name !== entry.name ||
         existingMetadata.description !== entry.description
       ) {
-        await agentMetadataStore.updateMetadata(entry.agentId, {
+        await agentStore.updateMetadata(entry.agentId, {
           name: entry.name,
           description: entry.description,
         });
-        logger.debug(`Updated metadata for agent "${entry.agentId}"`);
       }
 
-      const existingSettings = await agentSettingsStore.getSettings(
-        entry.agentId
-      );
+      const existingSettings = await agentStore.getSettings(entry.agentId);
       const nextSettings = buildReconciledSettings(entry, existingSettings);
-
       const settingsChanged = settingsDiffer(existingSettings, nextSettings);
+
       if (settingsChanged) {
-        await agentSettingsStore.saveSettings(entry.agentId, nextSettings);
+        await agentStore.saveSettings(entry.agentId, {
+          ...nextSettings,
+          updatedAt: Date.now(),
+        });
         logger.debug(`Reconciled settings for agent "${entry.agentId}"`);
-      } else {
-        logger.debug(
-          `Settings already match manifest for agent "${entry.agentId}"`
-        );
       }
 
-      // Propagate manifest-managed fields to sandbox agents cloned from this template
-      const effectiveSettings = settingsChanged
-        ? nextSettings
-        : existingSettings;
-      if (effectiveSettings) {
-        await propagateToSandboxAgents(
-          agentSettingsStore,
-          entry.agentId,
-          effectiveSettings
-        );
-      }
-
-      // Seed provider credentials as auth profiles
+      // Seed provider credentials
       if (authProfilesManager && entry.credentials?.length) {
         for (const cred of entry.credentials) {
           await authProfilesManager.upsertProfile({
@@ -192,15 +141,37 @@ export async function seedAgentsFromManifest(
             makePrimary: true,
           });
         }
-        logger.debug(
-          `Seeded ${entry.credentials.length} credential(s) for agent "${entry.agentId}"`
-        );
       }
+
+      // NOTE: Connections are NOT seeded here. They go through
+      // seedConnectionsFromManifest() → ChatInstanceManager.addConnection()
+      // which handles both persistence AND starting the live adapter.
+      // That call happens later in startGateway() after ChatInstanceManager is ready.
     } catch (err) {
       logger.error(`Failed to seed agent "${entry.agentId}"`, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+}
+
+function loadManifest(): AgentsManifest | null {
+  const manifestPath = resolve(process.cwd(), ".lobu/agents.json");
+  let raw: string;
+  try {
+    raw = readFileSync(manifestPath, "utf-8");
+  } catch {
+    return null;
+  }
+  try {
+    const manifest = JSON.parse(raw) as AgentsManifest;
+    if (!manifest.agents || manifest.agents.length === 0) return null;
+    return manifest;
+  } catch (err) {
+    logger.warn("Failed to parse agents.json", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
   }
 }
 
@@ -266,61 +237,6 @@ export async function seedConnectionsFromManifest(chatInstanceManager: {
         );
       }
     }
-  }
-}
-
-/**
- * Propagate manifest-managed fields to sandbox agents cloned from a template.
- * Preserves sandbox-specific state (authProfiles, agentIntegrations, etc.).
- */
-async function propagateToSandboxAgents(
-  agentSettingsStore: AgentSettingsStore,
-  templateAgentId: string,
-  templateSettings: Omit<AgentSettings, "updatedAt">
-): Promise<void> {
-  try {
-    const sandboxIds =
-      await agentSettingsStore.findSandboxAgentIds(templateAgentId);
-    if (sandboxIds.length === 0) return;
-
-    const promoted = buildPromotedSettingsFromSource(
-      templateSettings as AgentSettings
-    );
-
-    let propagatedCount = 0;
-    for (const sandboxId of sandboxIds) {
-      try {
-        const existing = await agentSettingsStore.getSettings(sandboxId);
-        if (!existing) continue;
-
-        const updated: Omit<AgentSettings, "updatedAt"> = {
-          ...existing,
-          ...promoted,
-          templateAgentId,
-        };
-
-        if (!settingsDiffer(existing, updated)) continue;
-
-        await agentSettingsStore.saveSettings(sandboxId, updated);
-        propagatedCount++;
-        logger.debug(`Propagated template settings to sandbox "${sandboxId}"`);
-      } catch (err) {
-        logger.warn(`Failed to propagate settings to sandbox "${sandboxId}"`, {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    if (propagatedCount > 0) {
-      logger.debug(
-        `Propagated settings to ${propagatedCount}/${sandboxIds.length} sandbox(es) of "${templateAgentId}"`
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `Failed to find sandbox agents for template "${templateAgentId}"`,
-      { error: err instanceof Error ? err.message : String(err) }
-    );
   }
 }
 

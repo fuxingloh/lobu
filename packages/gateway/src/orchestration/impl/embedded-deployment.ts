@@ -1,3 +1,4 @@
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createLogger, ErrorCode, OrchestratorError } from "@lobu/core";
@@ -13,24 +14,18 @@ import {
   buildDeploymentInfoSummary,
   getVeryOldThresholdDays,
 } from "../deployment-utils";
-import { createJustBashOperations } from "./embedded-bash-ops";
 
 const logger = createLogger("orchestrator");
 
+/** Timeout (ms) to wait for graceful shutdown before SIGKILL. */
+const KILL_TIMEOUT_MS = 5_000;
+
 interface EmbeddedWorkerEntry {
-  gatewayClient: { stop: () => Promise<void> };
+  process: ChildProcess;
   env: Record<string, string>;
   lastActivity: Date;
   workspaceDir: string;
-  workerPromise: Promise<void>;
 }
-
-/** Execution limits for the just-bash sandbox. */
-const EMBEDDED_BASH_LIMITS = {
-  maxCommandCount: 50_000,
-  maxLoopIterations: 50_000,
-  maxCallDepth: 50,
-} as const;
 
 export class EmbeddedDeploymentManager extends BaseDeploymentManager {
   private workers: Map<string, EmbeddedWorkerEntry> = new Map();
@@ -79,93 +74,82 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
     commonEnvVars.WORKSPACE_DIR = workspaceDir;
     commonEnvVars.DEPLOYMENT_MODE = "embedded";
 
-    // Lazy-load just-bash so the module isn't required for other deployment modes
-    const { Bash, ReadWriteFs } = await import("just-bash");
-
-    // Create just-bash instance with ReadWriteFs scoped to workspace
-    const bashFs = new ReadWriteFs({ root: workspaceDir });
-
-    // Build network config from allowed domains so curl works in just-bash
+    // Serialize allowed domains for worker-side just-bash bootstrap
     const allowedDomains = messageData?.networkConfig?.allowedDomains ?? [];
-    const network =
-      allowedDomains.length > 0
-        ? {
-            allowedUrlPrefixes: allowedDomains.flatMap((domain: string) => [
-              `https://${domain}/`,
-              `http://${domain}/`,
-            ]),
-            allowedMethods: [
-              "GET",
-              "HEAD",
-              "POST",
-              "PUT",
-              "PATCH",
-              "DELETE",
-            ] as ("GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE")[],
-          }
-        : undefined;
-
-    const bashInstance = new Bash({
-      fs: bashFs,
-      cwd: "/",
-      env: commonEnvVars,
-      executionLimits: EMBEDDED_BASH_LIMITS,
-      ...(network && { network }),
-    });
-    const bashOps = createJustBashOperations(bashInstance);
-
-    // Set env vars on process.env for the worker to read.
-    // NOTE: These must persist because the GatewayClient processes messages
-    // asynchronously and creates new OpenClawWorker instances that read
-    // from process.env. Sequential-only: one worker at a time.
-    for (const [key, value] of Object.entries(commonEnvVars)) {
-      process.env[key] = value;
+    if (allowedDomains.length > 0) {
+      commonEnvVars.JUST_BASH_ALLOWED_DOMAINS = JSON.stringify(allowedDomains);
     }
 
-    // Dynamically import worker modules from the workspace
-    const workerBasePath = path.resolve("packages/worker/src");
-    const { setupWorkspaceEnv } = await import(
-      `${workerBasePath}/core/workspace.ts`
-    );
-    const { GatewayClient } = await import(
-      `${workerBasePath}/gateway/sse-client.ts`
-    );
-    const { startWorkerHttpServer } = await import(
-      `${workerBasePath}/server.ts`
-    );
+    // Determine spawn command based on nix packages
+    const nixPackages = messageData?.nixConfig?.packages ?? [];
+    const workerEntryPoint = path.resolve("packages/worker/src/index.ts");
 
-    setupWorkspaceEnv(deploymentName);
-    const httpPort = await startWorkerHttpServer();
+    let command: string;
+    let spawnArgs: string[];
 
-    const client = new GatewayClient(
-      this.getDispatcherUrl(),
-      commonEnvVars.WORKER_TOKEN,
-      userId,
-      deploymentName,
-      httpPort
-    );
-
-    // Start as async task (don't await - runs the SSE read loop)
-    const workerPromise = client.start().catch((error: Error) => {
-      logger.error(
-        `Embedded worker ${deploymentName} failed: ${error.message}`
+    if (nixPackages.length > 0) {
+      // Wrap in nix-shell so nix binaries are on PATH
+      command = "nix-shell";
+      spawnArgs = [
+        "-p",
+        ...nixPackages,
+        "--run",
+        `bun run ${workerEntryPoint}`,
+      ];
+      logger.info(
+        `Spawning embedded worker ${deploymentName} with nix packages: ${nixPackages.join(", ")}`
       );
-      this.workers.delete(deploymentName);
+    } else {
+      command = "bun";
+      spawnArgs = ["run", workerEntryPoint];
+    }
+
+    const child = spawn(command, spawnArgs, {
+      env: { ...process.env, ...commonEnvVars },
+      cwd: workspaceDir,
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
-    // Expose bashOps on globalThis so the in-process worker picks it up
-    (globalThis as any).__lobuEmbeddedBashOps = bashOps;
+    // Pipe child stdout/stderr to gateway logger
+    child.stdout?.on("data", (data: Buffer) => {
+      for (const line of data.toString().trimEnd().split("\n")) {
+        logger.info({ worker: deploymentName }, line);
+      }
+    });
+    child.stderr?.on("data", (data: Buffer) => {
+      for (const line of data.toString().trimEnd().split("\n")) {
+        logger.warn({ worker: deploymentName }, line);
+      }
+    });
+
+    // Handle child exit
+    child.on("exit", (code, signal) => {
+      const entry = this.workers.get(deploymentName);
+      if (entry) {
+        this.workers.delete(deploymentName);
+        if (signal) {
+          logger.info(
+            `Embedded worker ${deploymentName} exited with signal ${signal}`
+          );
+        } else if (code !== 0) {
+          logger.error(
+            `Embedded worker ${deploymentName} exited with code ${code}`
+          );
+        } else {
+          logger.info(`Embedded worker ${deploymentName} exited cleanly`);
+        }
+      }
+    });
 
     this.workers.set(deploymentName, {
-      gatewayClient: client,
+      process: child,
       env: commonEnvVars,
       lastActivity: new Date(),
       workspaceDir,
-      workerPromise,
     });
 
     logger.info(
-      `Started embedded worker for ${deploymentName} (httpPort=${httpPort})`
+      `Started embedded worker subprocess for ${deploymentName} (pid=${child.pid})`
     );
   }
 
@@ -176,11 +160,7 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
     const entry = this.workers.get(deploymentName);
 
     if (replicas === 0 && entry) {
-      await entry.gatewayClient.stop();
-      this.workers.delete(deploymentName);
-      if (this.workers.size === 0) {
-        delete (globalThis as any).__lobuEmbeddedBashOps;
-      }
+      this.killWorker(entry, deploymentName);
       logger.info(`Stopped embedded worker ${deploymentName}`);
     } else if (replicas === 1 && !entry) {
       logger.warn(
@@ -192,11 +172,7 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
   async deleteDeployment(deploymentName: string): Promise<void> {
     const entry = this.workers.get(deploymentName);
     if (entry) {
-      await entry.gatewayClient.stop();
-      this.workers.delete(deploymentName);
-      if (this.workers.size === 0) {
-        delete (globalThis as any).__lobuEmbeddedBashOps;
-      }
+      this.killWorker(entry, deploymentName);
       logger.info(`Stopped embedded worker: ${deploymentName}`);
     }
   }
@@ -227,5 +203,26 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
     if (entry) {
       entry.lastActivity = new Date();
     }
+  }
+
+  /** Send SIGTERM, then SIGKILL after timeout. */
+  private killWorker(entry: EmbeddedWorkerEntry, deploymentName: string): void {
+    const child = entry.process;
+    this.workers.delete(deploymentName);
+
+    if (child.exitCode !== null || child.killed) return;
+
+    child.kill("SIGTERM");
+
+    const killTimer = setTimeout(() => {
+      if (child.exitCode === null && !child.killed) {
+        logger.warn(
+          `Embedded worker ${deploymentName} did not exit after SIGTERM, sending SIGKILL`
+        );
+        child.kill("SIGKILL");
+      }
+    }, KILL_TIMEOUT_MS);
+
+    child.on("exit", () => clearTimeout(killTimer));
   }
 }

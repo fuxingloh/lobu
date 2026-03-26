@@ -1,6 +1,15 @@
 #!/usr/bin/env bun
 
-import { CommandRegistry, createLogger, moduleRegistry } from "@lobu/core";
+import {
+  CommandRegistry,
+  createLogger,
+  moduleRegistry,
+  type AgentAccessStore,
+  type AgentConfigStore,
+  type AgentConnectionStore,
+  type SystemSkillEntry,
+  type RegistryEntry,
+} from "@lobu/core";
 import { AdminStatusCache } from "../auth/admin-status-cache";
 import { AgentMetadataStore } from "../auth/agent-metadata-store";
 import { ApiKeyProviderModule } from "../auth/api-key-provider-module";
@@ -45,6 +54,7 @@ import { seedAgentsFromManifest } from "./agent-seeder";
 import { ImageGenerationService } from "./image-generation-service";
 import { InstructionService } from "./instruction-service";
 import { RedisSessionStore, SessionManager } from "./session-manager";
+import { SettingsResolver } from "./settings-resolver";
 import { SystemConfigResolver } from "./system-config-resolver";
 import { SystemSkillsService } from "./system-skills-service";
 import { TranscriptionService } from "./transcription-service";
@@ -136,7 +146,59 @@ export class CoreServices {
   // ============================================================================
   private scheduledWakeupService?: ScheduledWakeupService;
 
-  constructor(private readonly config: GatewayConfig) {}
+  // ============================================================================
+  // Agent Sub-Stores (injectable — host can provide its own implementations)
+  // ============================================================================
+  private configStore?: AgentConfigStore;
+  private connectionStore?: AgentConnectionStore;
+  private accessStore?: AgentAccessStore;
+  private settingsResolver?: SettingsResolver;
+
+  // Options stored for deferred initialization
+  private options?: {
+    configStore?: AgentConfigStore;
+    connectionStore?: AgentConnectionStore;
+    accessStore?: AgentAccessStore;
+    systemSkills?: SystemSkillEntry[];
+    skillRegistries?: RegistryEntry[];
+  };
+
+  constructor(
+    private readonly config: GatewayConfig,
+    options?: {
+      configStore?: AgentConfigStore;
+      connectionStore?: AgentConnectionStore;
+      accessStore?: AgentAccessStore;
+      systemSkills?: SystemSkillEntry[];
+      skillRegistries?: RegistryEntry[];
+    }
+  ) {
+    this.options = options;
+    if (options?.configStore) this.configStore = options.configStore;
+    if (options?.connectionStore)
+      this.connectionStore = options.connectionStore;
+    if (options?.accessStore) this.accessStore = options.accessStore;
+  }
+
+  getConfigStore(): AgentConfigStore | undefined {
+    return this.configStore;
+  }
+
+  getConnectionStore(): AgentConnectionStore | undefined {
+    return this.connectionStore;
+  }
+
+  getAccessStore(): AgentAccessStore | undefined {
+    return this.accessStore;
+  }
+
+  getSettingsResolver(): SettingsResolver | undefined {
+    return this.settingsResolver;
+  }
+
+  getSkillRegistryConfigs(): RegistryEntry[] | undefined {
+    return this.options?.skillRegistries;
+  }
 
   /**
    * Initialize all core services in dependency order
@@ -250,6 +312,24 @@ export class CoreServices {
     this.interactionService = new InteractionService();
     logger.debug("Interaction service initialized");
 
+    // Initialize agent sub-stores — default missing ones to Redis
+    if (!this.configStore || !this.connectionStore || !this.accessStore) {
+      const { RedisAgentStore } = await import("../stores/redis-agent-store");
+      const redisStore = new RedisAgentStore(redisClient);
+      if (!this.configStore) this.configStore = redisStore;
+      if (!this.connectionStore) this.connectionStore = redisStore;
+      if (!this.accessStore) this.accessStore = redisStore;
+      logger.debug("Agent sub-stores initialized (Redis defaults for missing)");
+    } else {
+      logger.debug("Using host-provided agent sub-stores (embedded mode)");
+    }
+
+    // Create settings resolver (template fallback logic)
+    this.settingsResolver = new SettingsResolver(
+      this.configStore,
+      this.connectionStore
+    );
+
     // Initialize grant store for unified permissions
     this.grantStore = new GrantStore(redisClient);
     logger.debug("Grant store initialized");
@@ -313,13 +393,7 @@ export class CoreServices {
     this.modelPreferenceStore = new ModelPreferenceStore(redisClient, "claude");
 
     // Seed agents from .lobu/agents.json manifest (CLI-managed projects)
-    if (this.agentMetadataStore) {
-      await seedAgentsFromManifest(
-        this.agentSettingsStore,
-        this.agentMetadataStore,
-        this.authProfilesManager
-      );
-    }
+    await seedAgentsFromManifest(this.configStore!, this.authProfilesManager);
 
     logger.debug(
       "Auth profile, model preference, transcription, and image generation services initialized"
@@ -368,29 +442,39 @@ export class CoreServices {
       `ChatGPT OAuth module registered (system token: ${chatgptOAuthModule.hasSystemKey() ? "available" : "not available"})`
     );
 
-    // Read lobu registry URL from config file
-    let systemSkillsUrl = "config/system-skills.json";
-    try {
-      const { readFileSync, existsSync } = await import("node:fs");
-      const { resolve } = await import("node:path");
-      const configPath = resolve(process.cwd(), "config/skill-registries.json");
-      if (existsSync(configPath)) {
-        const raw = JSON.parse(readFileSync(configPath, "utf-8"));
-        const lobuEntry = (raw.registries || []).find(
-          (r: any) => r.type === "lobu"
+    // Initialize system skills — use injected skills if provided, else load from file
+    if (this.options?.systemSkills) {
+      this.systemSkillsService = new SystemSkillsService(
+        undefined,
+        this.options.systemSkills
+      );
+    } else {
+      let systemSkillsUrl = "config/system-skills.json";
+      try {
+        const { readFileSync, existsSync } = await import("node:fs");
+        const { resolve } = await import("node:path");
+        const configPath = resolve(
+          process.cwd(),
+          "config/skill-registries.json"
         );
-        if (lobuEntry?.apiUrl) {
-          systemSkillsUrl = lobuEntry.apiUrl;
+        if (existsSync(configPath)) {
+          const raw = JSON.parse(readFileSync(configPath, "utf-8"));
+          const lobuEntry = (raw.registries || []).find(
+            (r: any) => r.type === "lobu"
+          );
+          if (lobuEntry?.apiUrl) {
+            systemSkillsUrl = lobuEntry.apiUrl;
+          }
         }
+      } catch (error) {
+        logger.warn("Failed to read skill registries config", { error });
       }
-    } catch (error) {
-      logger.warn("Failed to read skill registries config", { error });
+      this.systemSkillsService = new SystemSkillsService(systemSkillsUrl);
     }
-    this.systemSkillsService = new SystemSkillsService(systemSkillsUrl);
     this.systemConfigResolver = new SystemConfigResolver(
       this.systemSkillsService
     );
-    logger.debug(`System skills config source: ${systemSkillsUrl}`);
+    logger.debug("System skills service initialized");
 
     this.transcriptionService?.setProviderConfigSource(() =>
       this.systemConfigResolver
@@ -449,6 +533,22 @@ export class CoreServices {
           this.secretProxy.registerUpstream(upstream, provider.providerId);
         }
       }
+      // Register system key resolver for fallback when no per-agent auth profile exists
+      const modules = getModelProviderModules();
+      this.secretProxy.setSystemKeyResolver((providerId: string) => {
+        const mod = modules.find((m) => m.providerId === providerId);
+        if (!mod) return undefined;
+        // Use the module's injectSystemKeyFallback to resolve the system key.
+        // The fallback may inject into a different env var than credentialEnvVarName
+        // (e.g., Claude injects ANTHROPIC_API_KEY, not CLAUDE_CODE_OAUTH_TOKEN),
+        // so check all secret env var names.
+        const testEnv: Record<string, string> = {};
+        mod.injectSystemKeyFallback(testEnv);
+        for (const varName of mod.getSecretEnvVarNames()) {
+          if (testEnv[varName]) return testEnv[varName];
+        }
+        return testEnv[mod.getCredentialEnvVarName()] || undefined;
+      });
       logger.debug("Provider upstreams registered with secret proxy");
     }
   }
@@ -501,7 +601,7 @@ export class CoreServices {
       this.instructionService,
       this.mcpProxy,
       this.providerCatalogService,
-      this.agentSettingsStore,
+      this.settingsResolver,
       this.systemSkillsService
     );
     logger.debug("Worker gateway initialized");

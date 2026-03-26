@@ -93,6 +93,7 @@ export type ModuleEnvVarsBuilder = (
 
 // Orchestrator configuration
 export interface OrchestratorConfig {
+  deploymentMode?: "embedded" | "docker" | "kubernetes";
   queues: {
     connectionString: string;
     retryLimit: number;

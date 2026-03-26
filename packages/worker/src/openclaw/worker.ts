@@ -869,7 +869,15 @@ export class OpenClawWorker implements WorkerExecutor {
         | undefined,
     });
 
-    const embeddedBashOps = (globalThis as any).__lobuEmbeddedBashOps;
+    let embeddedBashOps:
+      | import("@mariozechner/pi-coding-agent").BashOperations
+      | undefined;
+    if (process.env.DEPLOYMENT_MODE === "embedded") {
+      const { createEmbeddedBashOps } = await import(
+        "../embedded/just-bash-bootstrap"
+      );
+      embeddedBashOps = await createEmbeddedBashOps();
+    }
     let tools = createOpenClawTools(workspaceDir, {
       bashOperations: embeddedBashOps,
     }).filter((tool) => isToolAllowedByPolicy(tool.name, toolsPolicy));

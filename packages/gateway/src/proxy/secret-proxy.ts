@@ -39,6 +39,7 @@ export class SecretProxy {
   private slugMap: Map<string, string>;
   private slugToProviderId: Map<string, string> = new Map();
   private authProfilesManager?: AuthProfilesManager;
+  private systemKeyResolver?: (providerId: string) => string | undefined;
 
   constructor(config: SecretProxyConfig) {
     this.config = config;
@@ -59,6 +60,16 @@ export class SecretProxy {
 
   setAuthProfilesManager(manager: AuthProfilesManager): void {
     this.authProfilesManager = manager;
+  }
+
+  /**
+   * Set a callback that resolves system-level API keys for a provider.
+   * Used as fallback when no per-agent auth profile exists.
+   */
+  setSystemKeyResolver(
+    resolver: (providerId: string) => string | undefined
+  ): void {
+    this.systemKeyResolver = resolver;
   }
 
   /**
@@ -200,6 +211,26 @@ export class SecretProxy {
         );
         if (profile?.credential) {
           headers.authorization = `Bearer ${profile.credential}`;
+        } else if (this.systemKeyResolver) {
+          const systemKey = this.systemKeyResolver(providerId);
+          if (systemKey) {
+            headers.authorization = `Bearer ${systemKey}`;
+          } else {
+            logger.warn(
+              `No auth profile or system key for agent ${urlAgentId}, provider ${providerId}`
+            );
+            return c.json(
+              {
+                error: {
+                  message:
+                    "No provider credentials configured. Please add or update your API key in settings: /configure",
+                  type: "authentication_error",
+                  code: "no_credentials",
+                },
+              },
+              401
+            );
+          }
         } else {
           logger.warn(
             `No auth profile for agent ${urlAgentId}, provider ${providerId}`

@@ -95,7 +95,8 @@ export class ChatResponseBridge implements ResponseRenderer {
         const target = await this.resolveTarget(
           instance,
           channelId,
-          payload.conversationId
+          payload.conversationId,
+          (payload.platformMetadata as any)?.responseThreadId
         );
 
         if (target) {
@@ -174,7 +175,8 @@ export class ChatResponseBridge implements ResponseRenderer {
           instance,
           channelId,
           payload.conversationId,
-          connectionId
+          connectionId,
+          (payload.platformMetadata as any)?.responseThreadId
         );
       }
 
@@ -321,7 +323,8 @@ export class ChatResponseBridge implements ResponseRenderer {
           const target = await this.resolveTarget(
             instance,
             channelId,
-            payload.conversationId
+            payload.conversationId,
+            (payload.platformMetadata as any)?.responseThreadId
           );
           if (target) {
             const { Actions, Card, CardText, LinkButton } = await import(
@@ -354,7 +357,8 @@ export class ChatResponseBridge implements ResponseRenderer {
       const target = await this.resolveTarget(
         instance,
         channelId,
-        payload.conversationId
+        payload.conversationId,
+        (payload.platformMetadata as any)?.responseThreadId
       );
       if (target) {
         await target.post(`Error: ${payload.error}`);
@@ -381,7 +385,8 @@ export class ChatResponseBridge implements ResponseRenderer {
       const target = await this.resolveTarget(
         instance,
         channelId,
-        payload.conversationId
+        payload.conversationId,
+        (payload.platformMetadata as any)?.responseThreadId
       );
       if (target) {
         await target.startTyping?.("Processing...");
@@ -406,7 +411,8 @@ export class ChatResponseBridge implements ResponseRenderer {
       const target = await this.resolveTarget(
         instance,
         channelId,
-        payload.conversationId
+        payload.conversationId,
+        (payload.platformMetadata as any)?.responseThreadId
       );
       if (target) {
         const { processedContent, linkButtons } = extractSettingsLinkButtons(
@@ -477,7 +483,8 @@ export class ChatResponseBridge implements ResponseRenderer {
     instance: any,
     channelId: string,
     conversationId: string,
-    connectionId: string
+    connectionId: string,
+    responseThreadId?: string
   ): Promise<void> {
     const shouldBuffer = shouldBufferUntilCompletion(
       instance.connection.platform
@@ -485,7 +492,8 @@ export class ChatResponseBridge implements ResponseRenderer {
     const target = await this.resolveTarget(
       instance,
       channelId,
-      conversationId
+      conversationId,
+      responseThreadId
     );
     if (!target) {
       logger.warn(
@@ -605,10 +613,35 @@ export class ChatResponseBridge implements ResponseRenderer {
   private async resolveTarget(
     instance: any,
     channelId: string,
-    conversationId?: string
+    conversationId?: string,
+    responseThreadId?: string
   ): Promise<any | null> {
     const platform = instance.connection.platform;
     const chat = instance.chat;
+
+    // If we have a full thread ID (e.g. telegram:{chatId}:{topicId}), use
+    // createThread so the response lands in the correct forum topic.
+    if (responseThreadId) {
+      const adapter = chat.getAdapter?.(platform);
+      const createThread = (chat as any).createThread;
+      if (adapter && typeof createThread === "function") {
+        try {
+          const thread = await createThread.call(
+            chat,
+            adapter,
+            responseThreadId,
+            {},
+            false
+          );
+          if (thread) return thread;
+        } catch (error) {
+          logger.debug(
+            { platform, responseThreadId, error: String(error) },
+            "createThread from responseThreadId failed, falling back"
+          );
+        }
+      }
+    }
 
     if (!conversationId || conversationId === channelId) {
       const channelKey = `${platform}:${channelId}`;

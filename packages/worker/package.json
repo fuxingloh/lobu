@@ -45,6 +45,7 @@
     "@sinclair/typebox": "^0.34.33",
     "form-data": "^4.0.4",
     "hono": "^4.11.7",
+    "just-bash": "^2.12.8",
     "zod": "^3.24.1"
   },
   "devDependencies": {

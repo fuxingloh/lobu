@@ -76,9 +76,16 @@ type RegistryFactory = (config: RegistryConfig) => SkillRegistry;
 export class SkillRegistryCoordinator {
   private registries: SkillRegistry[];
 
-  constructor(registries?: SkillRegistry[]) {
+  constructor(
+    registries?: SkillRegistry[],
+    registryConfigs?: RegistryConfig[]
+  ) {
     if (registries) {
       this.registries = registries;
+    } else if (registryConfigs?.length) {
+      this.registries = registryConfigs
+        .map((entry) => this.createRegistry(entry))
+        .filter(Boolean) as SkillRegistry[];
     } else {
       this.registries = this.loadFromConfig();
     }

@@ -2,6 +2,20 @@
 
 // Shared exports for @lobu/core consumers (gateway, worker, external tools)
 
+// Agent store interface (unified storage abstraction)
+export type {
+  AgentAccessStore,
+  AgentConfigStore,
+  AgentConnectionStore,
+  AgentMetadata,
+  AgentSettings,
+  AgentStore,
+  ChannelBinding,
+  ConnectionSettings,
+  Grant,
+  StoredConnection,
+} from "./agent-store";
+
 export type { CommandContext, CommandDefinition } from "./command-registry";
 // Command registry
 export { CommandRegistry } from "./command-registry";
@@ -95,6 +109,28 @@ export const SUPPORTED_PLATFORMS = [
   "teams",
 ] as const;
 export type SupportedPlatform = (typeof SUPPORTED_PLATFORMS)[number];
+
+// Agent Settings API response types (for UI consumers)
+export type {
+  AgentConfigResponse,
+  AgentInfo,
+  CatalogProvider,
+  Connection,
+  IntegrationStatusEntry,
+  McpConfig,
+  ModelOption,
+  ModelSelectionState,
+  PermissionGrant,
+  PrefillMcp,
+  PrefillSkill,
+  ProviderInfo,
+  ProviderState,
+  Schedule,
+  SettingsSnapshot,
+  Skill,
+  SkillIntegrationInfo,
+  SkillMcpServerInfo,
+} from "./api-types";
 
 // Utilities
 export * from "./utils/encryption";

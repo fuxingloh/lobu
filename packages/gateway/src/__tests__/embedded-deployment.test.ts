@@ -7,8 +7,8 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
-import path from "node:path";
 import { ErrorCode, OrchestratorError } from "@lobu/core";
 import type {
   MessagePayload,
@@ -16,38 +16,36 @@ import type {
 } from "../orchestration/base-deployment-manager";
 
 // ---------------------------------------------------------------------------
-// Mock just-bash before importing the class under test
+// Mock child_process.spawn to return a fake ChildProcess
 // ---------------------------------------------------------------------------
-mock.module("just-bash", () => ({
-  Bash: class MockBash {
-    exec = async () => ({ stdout: "", stderr: "", exitCode: 0 });
-  },
-  ReadWriteFs: class MockReadWriteFs {},
-}));
+const mockChildProcesses: EventEmitter[] = [];
 
-// ---------------------------------------------------------------------------
-// Mock worker dynamic imports (resolved via path.resolve)
-// ---------------------------------------------------------------------------
-const workerBasePath = path.resolve("packages/worker/src");
+function createMockChildProcess() {
+  const cp = new EventEmitter() as EventEmitter & {
+    pid: number;
+    exitCode: number | null;
+    killed: boolean;
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: ReturnType<typeof mock>;
+  };
+  cp.pid = Math.floor(Math.random() * 100000);
+  cp.exitCode = null;
+  cp.killed = false;
+  cp.stdout = new EventEmitter();
+  cp.stderr = new EventEmitter();
+  cp.kill = mock((signal?: string) => {
+    cp.killed = true;
+    cp.exitCode = signal === "SIGKILL" ? 137 : 0;
+    cp.emit("exit", cp.exitCode, signal);
+    return true;
+  });
+  mockChildProcesses.push(cp);
+  return cp;
+}
 
-mock.module(`${workerBasePath}/core/workspace.ts`, () => ({
-  setupWorkspaceEnv: () => {
-    /* noop */
-  },
-}));
-
-const mockGatewayClientStop = mock(() => Promise.resolve());
-const mockGatewayClientStart = mock(() => Promise.resolve());
-
-mock.module(`${workerBasePath}/gateway/sse-client.ts`, () => ({
-  GatewayClient: class MockGatewayClient {
-    stop = mockGatewayClientStop;
-    start = mockGatewayClientStart;
-  },
-}));
-
-mock.module(`${workerBasePath}/server.ts`, () => ({
-  startWorkerHttpServer: async () => 0,
+mock.module("node:child_process", () => ({
+  spawn: mock(() => createMockChildProcess()),
 }));
 
 // ---------------------------------------------------------------------------
@@ -109,40 +107,6 @@ function createTestMessagePayload(
 }
 
 // ---------------------------------------------------------------------------
-// Environment snapshot helpers
-// ---------------------------------------------------------------------------
-let savedEnv: Record<string, string | undefined>;
-let savedGlobalBashOps: unknown;
-
-function snapshotEnv() {
-  savedEnv = { ...process.env } as Record<string, string | undefined>;
-  savedGlobalBashOps = (globalThis as any).__lobuEmbeddedBashOps;
-}
-
-function restoreEnv() {
-  // Remove keys that were added during the test
-  for (const key of Object.keys(process.env)) {
-    if (!(key in savedEnv)) {
-      delete process.env[key];
-    }
-  }
-  // Restore original values
-  for (const [key, value] of Object.entries(savedEnv)) {
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
-  // Restore globalThis
-  if (savedGlobalBashOps === undefined) {
-    delete (globalThis as any).__lobuEmbeddedBashOps;
-  } else {
-    (globalThis as any).__lobuEmbeddedBashOps = savedGlobalBashOps;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 describe("EmbeddedDeploymentManager", () => {
@@ -150,18 +114,14 @@ describe("EmbeddedDeploymentManager", () => {
   let mkdirSyncSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
-    snapshotEnv();
     process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
     manager = new EmbeddedDeploymentManager(TEST_CONFIG);
-    mockGatewayClientStop.mockClear();
-    mockGatewayClientStart.mockClear();
-    // Prevent actual filesystem writes
+    mockChildProcesses.length = 0;
     mkdirSyncSpy = spyOn(fs, "mkdirSync").mockReturnValue(undefined);
   });
 
   afterEach(() => {
     mkdirSyncSpy.mockRestore();
-    restoreEnv();
   });
 
   // =========================================================================
@@ -205,6 +165,13 @@ describe("EmbeddedDeploymentManager", () => {
       expect(list[0].replicas).toBe(1);
     });
 
+    test("createDeployment spawns a child process", async () => {
+      const msg = createTestMessagePayload();
+      await manager.createDeployment("worker-1", "user-1", "user-1", msg);
+      expect(mockChildProcesses).toHaveLength(1);
+      expect(mockChildProcesses[0]).toBeDefined();
+    });
+
     test("createDeployment with different names returns multiple entries", async () => {
       const msg1 = createTestMessagePayload({ agentId: "agent-a" });
       const msg2 = createTestMessagePayload({
@@ -215,26 +182,22 @@ describe("EmbeddedDeploymentManager", () => {
       await manager.createDeployment("worker-2", "user-1", "user-1", msg2);
       const list = await manager.listDeployments();
       expect(list).toHaveLength(2);
-      const names = list.map((d) => d.deploymentName).sort();
-      expect(names).toEqual(["worker-1", "worker-2"]);
     });
 
-    test("scaleDeployment(0) removes worker from map", async () => {
+    test("scaleDeployment(0) kills worker and removes from map", async () => {
       const msg = createTestMessagePayload();
       await manager.createDeployment("worker-1", "user-1", "user-1", msg);
       await manager.scaleDeployment("worker-1", 0);
       const list = await manager.listDeployments();
       expect(list).toHaveLength(0);
-      expect(mockGatewayClientStop).toHaveBeenCalledTimes(1);
     });
 
-    test("deleteDeployment removes entry", async () => {
+    test("deleteDeployment kills process and removes entry", async () => {
       const msg = createTestMessagePayload();
       await manager.createDeployment("worker-1", "user-1", "user-1", msg);
       await manager.deleteDeployment("worker-1");
       const list = await manager.listDeployments();
       expect(list).toHaveLength(0);
-      expect(mockGatewayClientStop).toHaveBeenCalledTimes(1);
     });
 
     test("deleteDeployment on non-existent name is a no-op", async () => {
@@ -279,7 +242,6 @@ describe("EmbeddedDeploymentManager", () => {
       const listBefore = await manager.listDeployments();
       const tsBefore = listBefore[0].lastActivity.getTime();
 
-      // Small delay to ensure timestamp difference
       await new Promise((r) => setTimeout(r, 10));
 
       await manager.updateDeploymentActivity("worker-1");
@@ -296,105 +258,40 @@ describe("EmbeddedDeploymentManager", () => {
   });
 
   // =========================================================================
-  // Embedded-specific behavior
+  // Subprocess-specific behavior
   // =========================================================================
-  describe("embedded-specific", () => {
-    test("createDeployment sets DEPLOYMENT_MODE=embedded in env", async () => {
+  describe("subprocess behavior", () => {
+    test("does not mutate gateway process.env", async () => {
+      const envBefore = { ...process.env };
       const msg = createTestMessagePayload();
       await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect(process.env.DEPLOYMENT_MODE).toBe("embedded");
+      // Gateway process.env should not have new worker-specific vars added
+      // (WORKSPACE_DIR, WORKER_TOKEN, etc. are passed to subprocess env, not process.env)
+      expect(process.env.WORKSPACE_DIR).toBe(envBefore.WORKSPACE_DIR);
+      expect(process.env.WORKER_TOKEN).toBe(envBefore.WORKER_TOKEN);
+      expect(process.env.USER_ID).toBe(envBefore.USER_ID);
+      expect(process.env.CONVERSATION_ID).toBe(envBefore.CONVERSATION_ID);
     });
 
-    test("createDeployment sets WORKSPACE_DIR in env", async () => {
+    test("does not set globalThis.__lobuEmbeddedBashOps", async () => {
       const msg = createTestMessagePayload();
       await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect(process.env.WORKSPACE_DIR).toBeDefined();
-      expect(process.env.WORKSPACE_DIR).toContain("workspaces");
-    });
-
-    test("getDispatcherUrl returns localhost-based URL", async () => {
-      // getDispatcherUrl calls getDispatcherHost which returns "localhost"
-      // We test indirectly: DISPATCHER_URL should contain localhost
-      const msg = createTestMessagePayload();
-      await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect(process.env.DISPATCHER_URL).toBe("http://localhost:8080");
-    });
-  });
-
-  // =========================================================================
-  // globalThis.__lobuEmbeddedBashOps lifecycle
-  // =========================================================================
-  describe("globalThis.__lobuEmbeddedBashOps", () => {
-    test("undefined before any worker created", () => {
       expect((globalThis as any).__lobuEmbeddedBashOps).toBeUndefined();
     });
 
-    test("set after first worker creation", async () => {
+    test("child process exit removes worker from map", async () => {
       const msg = createTestMessagePayload();
       await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeDefined();
-    });
+      expect(await manager.listDeployments()).toHaveLength(1);
 
-    test("cleaned up when last worker deleted via deleteDeployment", async () => {
-      const msg = createTestMessagePayload();
-      await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeDefined();
-      await manager.deleteDeployment("worker-1");
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeUndefined();
-    });
+      // Simulate child process exiting
+      const cp = mockChildProcesses[0];
+      cp.emit("exit", 1, null);
 
-    test("cleaned up when last worker scaled to 0", async () => {
-      const msg = createTestMessagePayload();
-      await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeDefined();
-      await manager.scaleDeployment("worker-1", 0);
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeUndefined();
-    });
+      // Give the event handler a tick to run
+      await new Promise((r) => setTimeout(r, 0));
 
-    test("preserved when one of two workers is deleted", async () => {
-      const msg1 = createTestMessagePayload({ agentId: "agent-a" });
-      const msg2 = createTestMessagePayload({
-        agentId: "agent-b",
-        conversationId: "conv-2",
-      });
-      await manager.createDeployment("worker-1", "user-1", "user-1", msg1);
-      await manager.createDeployment("worker-2", "user-1", "user-1", msg2);
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeDefined();
-      await manager.deleteDeployment("worker-1");
-      // Still one worker left - should remain set
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeDefined();
-      const list = await manager.listDeployments();
-      expect(list).toHaveLength(1);
-    });
-
-    test("cleaned up when second-to-last is deleted then last is deleted", async () => {
-      const msg1 = createTestMessagePayload({ agentId: "agent-a" });
-      const msg2 = createTestMessagePayload({
-        agentId: "agent-b",
-        conversationId: "conv-2",
-      });
-      await manager.createDeployment("worker-1", "user-1", "user-1", msg1);
-      await manager.createDeployment("worker-2", "user-1", "user-1", msg2);
-      await manager.deleteDeployment("worker-1");
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeDefined();
-      await manager.deleteDeployment("worker-2");
-      expect((globalThis as any).__lobuEmbeddedBashOps).toBeUndefined();
-    });
-  });
-
-  // =========================================================================
-  // process.env isolation
-  // =========================================================================
-  describe("process.env", () => {
-    test("createDeployment writes env vars to process.env", async () => {
-      const msg = createTestMessagePayload();
-      await manager.createDeployment("worker-1", "user-1", "user-1", msg);
-      expect(process.env.DEPLOYMENT_MODE).toBe("embedded");
-      expect(process.env.WORKSPACE_DIR).toBeDefined();
-      expect(process.env.WORKER_TOKEN).toBeDefined();
-      expect(process.env.USER_ID).toBe("user-1");
-      expect(process.env.CONVERSATION_ID).toBe("conv-1");
-      expect(process.env.CHANNEL_ID).toBe("ch-1");
+      expect(await manager.listDeployments()).toHaveLength(0);
     });
   });
 

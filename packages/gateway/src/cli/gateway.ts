@@ -17,19 +17,33 @@ const logger = createLogger("gateway-startup");
 
 let httpServer: Server | null = null;
 
+export interface CreateGatewayAppOptions {
+  secretProxy: any;
+  workerGateway: any;
+  mcpProxy: any;
+  interactionService?: any;
+  platformRegistry?: any;
+  coreServices?: any;
+  chatInstanceManager?: import("../connections").ChatInstanceManager | null;
+}
+
 /**
- * Setup Hono server with all routes on port 8080
+ * Create the Hono app with all gateway routes.
+ * Returns the app without starting an HTTP server — the caller can mount it
+ * on their own server (embedded mode) or pass it to `startGatewayServer()`.
  */
-function setupServer(
-  secretProxy: any,
-  workerGateway: any,
-  mcpProxy: any,
-  interactionService?: any,
-  platformRegistry?: any,
-  coreServices?: any,
-  chatInstanceManager?: import("../connections").ChatInstanceManager | null
-) {
-  if (httpServer) return;
+export function createGatewayApp(
+  options: CreateGatewayAppOptions
+): OpenAPIHono {
+  const {
+    secretProxy,
+    workerGateway,
+    mcpProxy,
+    interactionService,
+    platformRegistry,
+    coreServices,
+    chatInstanceManager,
+  } = options;
 
   const app = new OpenAPIHono();
 
@@ -1026,16 +1040,21 @@ Agents can be configured with custom MCP (Model Context Protocol) servers:
       defaultHttpClient: { targetKey: "js", clientKey: "fetch" },
     })
   );
-  logger.debug("API docs enabled at :8080/api/docs");
+  logger.debug("API docs enabled at /api/docs");
 
-  // Start the server — single port for everything
-  const port = 8080;
+  return app;
+}
+
+/**
+ * Start an HTTP server for the gateway Hono app.
+ * Used in standalone mode. In embedded mode, the host creates its own server.
+ */
+export function startGatewayServer(app: OpenAPIHono, port = 8080): Server {
   const honoListener = getRequestListener(app.fetch);
-
-  httpServer = createServer(honoListener);
-
-  httpServer.listen(port);
+  const server = createServer(honoListener);
+  server.listen(port);
   logger.debug(`Server listening on port ${port}`);
+  return server;
 }
 
 /**
@@ -1338,15 +1357,18 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   }
 
   // Setup server on port 8080 (single port for all HTTP traffic)
-  setupServer(
-    coreServices.getSecretProxy(),
-    coreServices.getWorkerGateway(),
-    coreServices.getMcpProxy(),
-    coreServices.getInteractionService(),
-    gateway.getPlatformRegistry(),
-    coreServices,
-    chatInstanceManager
-  );
+  if (!httpServer) {
+    const app = createGatewayApp({
+      secretProxy: coreServices.getSecretProxy(),
+      workerGateway: coreServices.getWorkerGateway(),
+      mcpProxy: coreServices.getMcpProxy(),
+      interactionService: coreServices.getInteractionService(),
+      platformRegistry: gateway.getPlatformRegistry(),
+      coreServices,
+      chatInstanceManager,
+    });
+    httpServer = startGatewayServer(app);
+  }
 
   logger.info("Lobu Gateway is running!");
 

@@ -24,8 +24,16 @@ export class SystemSkillsService {
   private rawLoaded?: SystemSkillsConfigFile;
   private loadAttempted = false;
 
-  constructor(configUrl?: string) {
+  constructor(configUrl?: string, preloadedSkills?: SystemSkillEntry[]) {
     this.configUrl = configUrl;
+    if (preloadedSkills) {
+      const config: SystemSkillsConfigFile = { skills: preloadedSkills };
+      this.loaded = config;
+      this.rawLoaded = config;
+      logger.info(
+        `Loaded ${preloadedSkills.length} system skill(s) (injected)`
+      );
+    }
   }
 
   async getSystemSkills(): Promise<SkillConfig[]> {

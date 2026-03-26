@@ -1,10 +1,23 @@
 FROM node:20-alpine
 
 # Install bun for fast dependency installation and docker-cli for runtime
-RUN apk add --no-cache curl bash docker-cli && \
+# xz, shadow, gcompat needed for nix installer (embedded mode with nix packages)
+RUN apk add --no-cache curl bash docker-cli xz shadow gcompat && \
     curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash && \
     chmod +x /usr/local/bin/bun
 ENV PATH="/usr/local/bin:${PATH}"
+
+# Install Nix (single-user mode) for embedded deployment mode nix-shell support
+RUN adduser -D -u 1001 nixuser && mkdir -p /nix && chown nixuser:nixuser /nix
+USER nixuser
+RUN mkdir -p /home/nixuser/.config/nix && \
+    echo 'sandbox = false' > /home/nixuser/.config/nix/nix.conf && \
+    curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
+    /home/nixuser/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
+    /home/nixuser/.nix-profile/bin/nix-channel --update
+USER root
+ENV PATH="/home/nixuser/.nix-profile/bin:${PATH}"
+ENV NIX_PATH="nixpkgs=/home/nixuser/.nix-defexpr/channels/nixpkgs"
 
 WORKDIR /app
 

@@ -2,10 +2,16 @@
   "name": "@lobu/gateway",
   "version": "1.0.0",
   "license": "Apache-2.0",
-  "private": true,
-  "description": "Slack gateway service that routes messages to Kubernetes worker Jobs",
+  "description": "Lobu SDK — embed AI agents with platform adapters, worker orchestration, and MCP proxy",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
   "scripts": {
     "generate:css": "bun run scripts/generate-css.ts",
     "build": "bun run generate:css && bun run scripts/build-history.ts && bun run scripts/build-agent.ts && bun run scripts/build-agents.ts && tsc",
@@ -37,7 +43,6 @@
     "ioredis": "^5.4.1",
     "jose": "^6.0.11",
     "jsonwebtoken": "^9.0.2",
-    "just-bash": "^2.12.8",
     "marked": "^12.0.0",
     "pino": "^9.1.0",
     "yaml": "^2.7.1",

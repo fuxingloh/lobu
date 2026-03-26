@@ -2,14 +2,15 @@
   "name": "@lobu/core",
   "version": "2.0.0",
   "license": "Apache-2.0",
-  "private": true,
-  "description": "Core utilities for Lobu",
+  "description": "Core types and utilities for Lobu agent platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
     },
     "./testing": {
       "bun": "./src/__tests__/fixtures/index.ts"

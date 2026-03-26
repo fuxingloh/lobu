@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 
-import { createLogger } from "@lobu/core";
+import {
+  createLogger,
+  type AgentAccessStore,
+  type AgentConfigStore,
+  type AgentConnectionStore,
+  type SystemSkillEntry,
+  type RegistryEntry,
+} from "@lobu/core";
 import type { GatewayConfig } from "./config";
 import { type PlatformAdapter, platformRegistry } from "./platform";
 import { UnifiedThreadResponseConsumer } from "./platform/unified-thread-consumer";
@@ -21,14 +28,36 @@ const logger = createLogger("gateway");
  * 3. Gateway calls initialize() on each platform with CoreServices
  * 4. Gateway calls start() on each platform
  */
+export interface GatewayOptions {
+  /** Agent settings + metadata store. Defaults to RedisAgentStore. */
+  configStore?: AgentConfigStore;
+  /** Connections + channel bindings store. Defaults to RedisAgentStore. */
+  connectionStore?: AgentConnectionStore;
+  /** Grants + user-agent associations store. Defaults to RedisAgentStore. */
+  accessStore?: AgentAccessStore;
+  /** Provide system skills programmatically (skips file loading). */
+  systemSkills?: SystemSkillEntry[];
+  /** Provide skill registries programmatically (skips file loading). */
+  skillRegistries?: RegistryEntry[];
+}
+
 export class Gateway {
   private coreServices: CoreServices;
   private platforms: Map<string, PlatformAdapter> = new Map();
   private unifiedConsumer?: UnifiedThreadResponseConsumer;
   private isRunning = false;
 
-  constructor(private readonly config: GatewayConfig) {
-    this.coreServices = new CoreServices(config);
+  constructor(
+    private readonly config: GatewayConfig,
+    options?: GatewayOptions
+  ) {
+    this.coreServices = new CoreServices(config, {
+      configStore: options?.configStore,
+      connectionStore: options?.connectionStore,
+      accessStore: options?.accessStore,
+      systemSkills: options?.systemSkills,
+      skillRegistries: options?.skillRegistries,
+    });
   }
 
   /**

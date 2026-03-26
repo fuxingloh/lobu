@@ -330,6 +330,7 @@ class MessageHandlerBridge {
         connectionId: this.connection.id,
         responseChannel: channelId,
         responseId: messageId,
+        responseThreadId: thread.id,
         conversationHistory:
           conversationHistory.length > 0 ? conversationHistory : undefined,
         ...(sessionReset && { sessionReset: true }),

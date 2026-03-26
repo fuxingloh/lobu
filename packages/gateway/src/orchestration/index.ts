@@ -75,7 +75,7 @@ export class Orchestrator {
   private createDeploymentManager(
     config: OrchestratorConfig
   ): BaseDeploymentManager {
-    const deploymentMode = process.env.DEPLOYMENT_MODE;
+    const deploymentMode = config.deploymentMode || process.env.DEPLOYMENT_MODE;
     const providerModules: ModelProviderModule[] = getModelProviderModules();
 
     if (deploymentMode === "docker") {

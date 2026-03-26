@@ -96,6 +96,15 @@ const DISPLAY = {
 // TYPES
 // ============================================================================
 
+/** Recursively makes all properties optional */
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends (infer U)[]
+    ? U[]
+    : T[P] extends object
+      ? DeepPartial<T[P]>
+      : T[P];
+};
+
 /**
  * Complete gateway configuration - single source of truth
  * Platform-specific configs (like Slack) are built separately
@@ -119,6 +128,7 @@ export interface GatewayConfig {
   orchestration: OrchestratorConfig;
   mcp: {
     publicGatewayUrl: string;
+    internalGatewayUrl: string;
   };
   health: {
     checkIntervalMs: number;
@@ -199,23 +209,47 @@ export function buildMemoryPlugins(): PluginConfig[] {
   ];
 }
 
+/** Deep-merge utility: merges source into target, recursing into plain objects */
+function deepMerge<T extends Record<string, any>>(
+  target: T,
+  source: Partial<T>
+): T {
+  const result = { ...target };
+  for (const key of Object.keys(source) as (keyof T)[]) {
+    const srcVal = source[key];
+    if (srcVal === undefined) continue;
+    const tgtVal = result[key];
+    if (
+      tgtVal &&
+      srcVal &&
+      typeof tgtVal === "object" &&
+      typeof srcVal === "object" &&
+      !Array.isArray(tgtVal) &&
+      !Array.isArray(srcVal)
+    ) {
+      result[key] = deepMerge(tgtVal as any, srcVal as any);
+    } else {
+      result[key] = srcVal as T[keyof T];
+    }
+  }
+  return result;
+}
+
 /**
- * Build complete gateway configuration from environment variables
- * This is the SINGLE source of truth for all configuration
+ * Build complete gateway configuration from environment variables,
+ * optionally deep-merged with explicit overrides.
+ *
+ * @param overrides - Partial config that takes precedence over env vars.
+ *   Useful for embedded mode where the host provides config programmatically.
  */
-export function buildGatewayConfig(): GatewayConfig {
+export function buildGatewayConfig(
+  overrides?: DeepPartial<GatewayConfig>
+): GatewayConfig {
   logger.debug("Building gateway configuration from environment variables");
 
-  // Required variables
-  const connectionString = getRequiredEnv("QUEUE_URL");
-
-  // Log warning if no system key is available (providers check their own env vars)
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    logger.debug(
-      "No system ANTHROPIC_API_KEY configured. " +
-        "Users will need to authenticate via OAuth."
-    );
-  }
+  // Required variables (allow override to satisfy the requirement)
+  const connectionString =
+    overrides?.queues?.connectionString || getRequiredEnv("QUEUE_URL");
 
   const defaultMemoryFlushEnabled = getOptionalBoolean(
     "AGENT_DEFAULT_MEMORY_FLUSH_ENABLED",
@@ -293,6 +327,11 @@ export function buildGatewayConfig(): GatewayConfig {
         process.env.SECRET_PROXY_UPSTREAM_URL || process.env.ANTHROPIC_BASE_URL,
     },
     orchestration: {
+      deploymentMode: process.env.DEPLOYMENT_MODE as
+        | "embedded"
+        | "docker"
+        | "kubernetes"
+        | undefined,
       queues: {
         connectionString,
         retryLimit: getOptionalNumber(
@@ -393,6 +432,7 @@ export function buildGatewayConfig(): GatewayConfig {
     },
     mcp: {
       publicGatewayUrl,
+      internalGatewayUrl: getInternalGatewayUrl(),
     },
     health: {
       checkIntervalMs: getOptionalNumber(
@@ -411,6 +451,10 @@ export function buildGatewayConfig(): GatewayConfig {
   };
 
   logger.debug("Gateway configuration built successfully");
+
+  if (overrides) {
+    return deepMerge(config, overrides as Partial<GatewayConfig>);
+  }
 
   return config;
 }

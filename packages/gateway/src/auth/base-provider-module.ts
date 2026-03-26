@@ -101,9 +101,13 @@ export abstract class BaseProviderModule
   }
 
   getUpstreamConfig(): ProviderUpstreamConfig | null {
-    const { slug, upstreamBaseUrl } = this.providerConfig;
+    const { slug, upstreamBaseUrl, baseUrlEnvVarName } = this.providerConfig;
     if (!slug || !upstreamBaseUrl) return null;
-    return { slug, upstreamBaseUrl };
+    // Check env for base URL override (e.g., ANTHROPIC_BASE_URL=https://api.z.ai)
+    const envOverride = baseUrlEnvVarName
+      ? resolveEnv(baseUrlEnvVarName)
+      : undefined;
+    return { slug, upstreamBaseUrl: envOverride || upstreamBaseUrl };
   }
 
   async hasCredentials(agentId: string): Promise<boolean> {

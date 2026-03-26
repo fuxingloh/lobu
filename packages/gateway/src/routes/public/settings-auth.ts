@@ -18,6 +18,20 @@ function isSecureRequest(c: Context): boolean {
  * Returns SettingsTokenPayload | null.
  */
 export function verifySettingsSession(c: Context): SettingsTokenPayload | null {
+  // Trust internal requests from the embedding host (e.g., Owletto).
+  // Requires a shared secret so external callers cannot forge this header.
+  const internalSecret = process.env.LOBU_INTERNAL_SECRET;
+  const internalHeader = c.req.header("X-Lobu-Internal");
+  if (internalSecret && internalHeader === internalSecret) {
+    const agentId = c.req.param("agentId") || "system";
+    return {
+      agentId,
+      platform: "system",
+      userId: "internal",
+      exp: Date.now() + 86400000,
+    } as SettingsTokenPayload;
+  }
+
   const token = getCookie(c, SETTINGS_SESSION_COOKIE_NAME);
   if (!token || token.trim().length === 0) return null;
 

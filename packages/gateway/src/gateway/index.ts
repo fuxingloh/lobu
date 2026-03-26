@@ -14,7 +14,7 @@ import type { McpConfigService } from "../auth/mcp/config-service";
 import type { McpProxy } from "../auth/mcp/proxy";
 import type { McpTool } from "../auth/mcp/tool-cache";
 import type { ProviderCatalogService } from "../auth/provider-catalog";
-import type { AgentSettingsStore } from "../auth/settings/agent-settings-store";
+import type { SettingsResolver } from "../services/settings-resolver";
 import { resolveEffectiveModelRef } from "../auth/settings/model-selection";
 import type { IMessageQueue } from "../infrastructure/queue";
 import type { InstructionService } from "../services/instruction-service";
@@ -40,7 +40,7 @@ export class WorkerGateway {
   private publicGatewayUrl: string;
   private mcpProxy?: McpProxy;
   private providerCatalogService?: ProviderCatalogService;
-  private agentSettingsStore?: AgentSettingsStore;
+  private settingsResolver?: SettingsResolver;
   private systemSkillsService?: SystemSkillsService;
 
   constructor(
@@ -51,7 +51,7 @@ export class WorkerGateway {
     instructionService: InstructionService,
     mcpProxy?: McpProxy,
     providerCatalogService?: ProviderCatalogService,
-    agentSettingsStore?: AgentSettingsStore,
+    settingsResolver?: SettingsResolver,
     systemSkillsService?: SystemSkillsService
   ) {
     this.queue = queue;
@@ -66,7 +66,7 @@ export class WorkerGateway {
     this.instructionService = instructionService;
     this.mcpProxy = mcpProxy;
     this.providerCatalogService = providerCatalogService;
-    this.agentSettingsStore = agentSettingsStore;
+    this.settingsResolver = settingsResolver;
     this.systemSkillsService = systemSkillsService;
 
     // Setup Hono app
@@ -353,8 +353,8 @@ export class WorkerGateway {
 
       // Resolve dynamic provider configuration (with template agent fallback)
       const agentSettings =
-        this.agentSettingsStore && agentId
-          ? await this.agentSettingsStore.getEffectiveSettings(agentId)
+        this.settingsResolver && agentId
+          ? await this.settingsResolver.getEffectiveSettings(agentId)
           : null;
       const providerConfig = await this.resolveProviderConfig(
         agentSettings?.templateAgentId || agentId || "",
@@ -365,10 +365,10 @@ export class WorkerGateway {
       // Fetch enabled skills with content for worker filesystem sync
       let skillsConfig: Array<{ name: string; content: string }> = [];
       const mcpContext: Record<string, string> = {};
-      if (this.agentSettingsStore && agentId) {
+      if (this.settingsResolver && agentId) {
         try {
           const settings =
-            await this.agentSettingsStore.getEffectiveSettings(agentId);
+            await this.settingsResolver.getEffectiveSettings(agentId);
           const skills = settings?.skillsConfig?.skills || [];
           skillsConfig = skills
             .filter((s) => s.enabled && s.content)
