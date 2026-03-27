@@ -3,7 +3,20 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 
+export type AuthProvider = (c: Context) => SettingsTokenPayload | null;
+
 export const SETTINGS_SESSION_COOKIE_NAME = "lobu_settings_session";
+
+let _authProvider: AuthProvider | null = null;
+
+/**
+ * Set a custom auth provider for embedded mode.
+ * When set, verifySettingsSession delegates to this provider first,
+ * falling back to cookie auth only if it returns null.
+ */
+export function setAuthProvider(provider: AuthProvider | null): void {
+  _authProvider = provider;
+}
 
 function isSecureRequest(c: Context): boolean {
   const forwardedProto = c.req.header("x-forwarded-proto");
@@ -14,22 +27,14 @@ function isSecureRequest(c: Context): boolean {
 }
 
 /**
- * Verify settings session from cookie.
- * Returns SettingsTokenPayload | null.
+ * Verify settings session.
+ * Checks injected auth provider first (for embedded mode),
+ * then falls back to cookie-based session auth.
  */
 export function verifySettingsSession(c: Context): SettingsTokenPayload | null {
-  // Trust internal requests from the embedding host (e.g., Owletto).
-  // Requires a shared secret so external callers cannot forge this header.
-  const internalSecret = process.env.LOBU_INTERNAL_SECRET;
-  const internalHeader = c.req.header("X-Lobu-Internal");
-  if (internalSecret && internalHeader === internalSecret) {
-    const agentId = c.req.param("agentId") || "system";
-    return {
-      agentId,
-      platform: "system",
-      userId: "internal",
-      exp: Date.now() + 86400000,
-    } as SettingsTokenPayload;
+  if (_authProvider) {
+    const result = _authProvider(c);
+    if (result) return result;
   }
 
   const token = getCookie(c, SETTINGS_SESSION_COOKIE_NAME);

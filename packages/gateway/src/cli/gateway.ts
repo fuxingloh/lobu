@@ -25,6 +25,8 @@ export interface CreateGatewayAppOptions {
   platformRegistry?: any;
   coreServices?: any;
   chatInstanceManager?: import("../connections").ChatInstanceManager | null;
+  /** Custom auth provider for embedded mode. When set, gateway delegates auth to this function instead of using cookie-based sessions. */
+  authProvider?: import("../routes/public/settings-auth").AuthProvider;
 }
 
 /**
@@ -43,7 +45,14 @@ export function createGatewayApp(
     platformRegistry,
     coreServices,
     chatInstanceManager,
+    authProvider,
   } = options;
+
+  // Wire injectable auth provider (for embedded mode)
+  if (authProvider) {
+    const { setAuthProvider } = require("../routes/public/settings-auth");
+    setAuthProvider(authProvider);
+  }
 
   const app = new OpenAPIHono();
 

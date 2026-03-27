@@ -37,6 +37,9 @@ export {
   type CreateGatewayAppOptions,
 } from "./cli/gateway";
 
+// Auth provider (for embedded mode)
+export { type AuthProvider } from "./routes/public/settings-auth";
+
 // Configuration
 export {
   buildGatewayConfig,
@@ -55,8 +58,6 @@ export { ChatPlatformAdapter, ChatInstanceManager } from "./connections";
 export { ApiPlatform } from "./api";
 
 // ── CLI mode (run directly, not when imported as library) ───────────────────
-// Hosts importing @lobu/gateway as a library must set LOBU_EMBEDDED=1 to
-// prevent the CLI from auto-starting.
-if (!process.env.LOBU_EMBEDDED) {
+if (require.main === module) {
   import("./cli");
 }
