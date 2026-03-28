@@ -11,7 +11,7 @@ ENV PATH="/usr/local/bin:${PATH}"
 RUN adduser -D -u 1001 nixuser && mkdir -p /nix && chown nixuser:nixuser /nix
 USER nixuser
 RUN mkdir -p /home/nixuser/.config/nix && \
-    echo 'sandbox = false' > /home/nixuser/.config/nix/nix.conf && \
+    printf 'sandbox = false\nfilter-syscalls = false\n' > /home/nixuser/.config/nix/nix.conf && \
     curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     /home/nixuser/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
     /home/nixuser/.nix-profile/bin/nix-channel --update

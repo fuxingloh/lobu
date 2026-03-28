@@ -45,9 +45,9 @@ RUN addgroup --gid 1001 worker && \
 # This allows workers to use nix-shell or nix develop for custom environments
 RUN mkdir -p /nix && chown worker:worker /nix
 USER worker
-# Create nix.conf with sandbox disabled (required for arm64 QEMU builds)
+# Create nix.conf with sandbox and syscall filtering disabled (required for arm64 QEMU builds)
 RUN mkdir -p /home/worker/.config/nix && \
-    echo 'sandbox = false' > /home/worker/.config/nix/nix.conf
+    printf 'sandbox = false\nfilter-syscalls = false\n' > /home/worker/.config/nix/nix.conf
 RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
 # Add nixpkgs channel for nix-shell -p to work
 RUN /home/worker/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
