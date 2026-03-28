@@ -3,6 +3,7 @@
  */
 export abstract class BaseError extends Error {
   abstract readonly name: string;
+  public operation?: string;
 
   constructor(
     message: string,
@@ -36,6 +37,7 @@ export abstract class BaseError extends Error {
     return {
       name: this.name,
       message: this.message,
+      ...(this.operation && { operation: this.operation }),
       cause:
         this.cause instanceof BaseError
           ? this.cause.toJSON()
@@ -45,41 +47,34 @@ export abstract class BaseError extends Error {
   }
 }
 
-abstract class OperationError extends BaseError {
-  constructor(
-    public operation: string,
-    message: string,
-    cause?: Error
-  ) {
-    super(message, cause);
-  }
-
-  override toJSON(): Record<string, any> {
-    return {
-      ...super.toJSON(),
-      operation: this.operation,
-    };
-  }
-}
-
 /**
  * Error class for worker-related operations
  */
-export class WorkerError extends OperationError {
+export class WorkerError extends BaseError {
   override readonly name = "WorkerError";
+
+  constructor(operation: string, message: string, cause?: Error) {
+    super(message, cause);
+    this.operation = operation;
+  }
 }
 
 /**
  * Error class for workspace-related operations
  */
-export class WorkspaceError extends OperationError {
+export class WorkspaceError extends BaseError {
   override readonly name = "WorkspaceError";
+
+  constructor(operation: string, message: string, cause?: Error) {
+    super(message, cause);
+    this.operation = operation;
+  }
 }
 
 /**
  * Error class for platform-related operations (Slack, WhatsApp, etc.)
  */
-export class PlatformError extends OperationError {
+export class PlatformError extends BaseError {
   override readonly name = "PlatformError";
 
   constructor(
@@ -88,7 +83,8 @@ export class PlatformError extends OperationError {
     message: string,
     cause?: Error
   ) {
-    super(operation, message, cause);
+    super(message, cause);
+    this.operation = operation;
   }
 
   override toJSON(): Record<string, any> {
@@ -147,8 +143,13 @@ export class CoreWorkerError extends WorkerError {
 /**
  * Error class for dispatcher-related operations
  */
-export class DispatcherError extends OperationError {
+export class DispatcherError extends BaseError {
   override readonly name = "DispatcherError";
+
+  constructor(operation: string, message: string, cause?: Error) {
+    super(message, cause);
+    this.operation = operation;
+  }
 }
 
 // ErrorCode enum for orchestration operations

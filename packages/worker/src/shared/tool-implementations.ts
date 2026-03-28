@@ -897,6 +897,62 @@ export async function configure(
 }
 
 // ============================================================================
+// Utility: Upload generated file (image/audio) to gateway
+// ============================================================================
+
+async function uploadGeneratedFile(
+  gw: GatewayParams,
+  buffer: ArrayBuffer,
+  filename: string,
+  mimeType: string,
+  extraHeaders?: Record<string, string>
+): Promise<TextResult | null> {
+  let tempPath: string | null = null;
+  try {
+    tempPath = `/tmp/${filename}_${Date.now()}`;
+    await fs.writeFile(tempPath, Buffer.from(buffer));
+
+    const formData = new FormData();
+    formData.append("file", nodeFs.createReadStream(tempPath), {
+      filename,
+      contentType: mimeType,
+    });
+    formData.append("filename", filename);
+    formData.append("comment", "Generated content");
+
+    const formDataBuffer = await formDataToBuffer(formData);
+    const fdHeaders = formData.getHeaders();
+
+    const uploadResponse = await fetch(
+      `${gw.gatewayUrl}/internal/files/upload`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${gw.workerToken}`,
+          "X-Channel-Id": gw.channelId,
+          "X-Conversation-Id": gw.conversationId,
+          ...fdHeaders,
+          "Content-Length": formDataBuffer.length.toString(),
+          ...extraHeaders,
+        },
+        body: formDataBuffer,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const uploadError = await uploadResponse.text();
+      return textResult(`Generated content but failed to send: ${uploadError}`);
+    }
+
+    return null;
+  } finally {
+    if (tempPath) {
+      await fs.unlink(tempPath).catch(() => undefined);
+    }
+  }
+}
+
+// ============================================================================
 // GenerateImage
 // ============================================================================
 
@@ -989,46 +1045,13 @@ export async function generateImage(
     const provider = response.headers.get("X-Image-Provider") || "unknown";
     const ext = imageExtFromMime(mimeType);
 
-    let tempPath: string | null = null;
-    try {
-      tempPath = `/tmp/image_${Date.now()}.${ext}`;
-      await fs.writeFile(tempPath, Buffer.from(imageBuffer));
-
-      const formData = new FormData();
-      formData.append("file", nodeFs.createReadStream(tempPath), {
-        filename: `generated_image.${ext}`,
-        contentType: mimeType,
-      });
-      formData.append("filename", `generated_image.${ext}`);
-      formData.append("comment", "Generated image");
-
-      const formDataBuffer = await formDataToBuffer(formData);
-      const fdHeaders = formData.getHeaders();
-
-      const uploadResponse = await fetch(
-        `${gw.gatewayUrl}/internal/files/upload`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${gw.workerToken}`,
-            "X-Channel-Id": gw.channelId,
-            "X-Conversation-Id": gw.conversationId,
-            ...fdHeaders,
-            "Content-Length": formDataBuffer.length.toString(),
-          },
-          body: formDataBuffer,
-        }
-      );
-
-      if (!uploadResponse.ok) {
-        const uploadError = await uploadResponse.text();
-        return textResult(`Generated image but failed to send: ${uploadError}`);
-      }
-    } finally {
-      if (tempPath) {
-        await fs.unlink(tempPath).catch(() => undefined);
-      }
-    }
+    const uploadError = await uploadGeneratedFile(
+      gw,
+      imageBuffer,
+      `generated_image.${ext}`,
+      mimeType
+    );
+    if (uploadError) return uploadError;
 
     logger.info(`Image generated and sent using ${provider}`);
     return textResult(`Image sent successfully (generated with ${provider}).`);
@@ -1110,47 +1133,14 @@ export async function generateAudio(
     const provider = response.headers.get("X-Audio-Provider") || "unknown";
     const ext = audioExtFromMime(mimeType);
 
-    let tempPath: string | null = null;
-    try {
-      tempPath = `/tmp/audio_${Date.now()}.${ext}`;
-      await fs.writeFile(tempPath, Buffer.from(audioBuffer));
-
-      const formData = new FormData();
-      formData.append("file", nodeFs.createReadStream(tempPath), {
-        filename: `voice_response.${ext}`,
-        contentType: mimeType,
-      });
-      formData.append("filename", `voice_response.${ext}`);
-      formData.append("comment", "Voice response");
-
-      const formDataBuffer = await formDataToBuffer(formData);
-      const fdHeaders = formData.getHeaders();
-
-      const uploadResponse = await fetch(
-        `${gw.gatewayUrl}/internal/files/upload`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${gw.workerToken}`,
-            "X-Channel-Id": gw.channelId,
-            "X-Conversation-Id": gw.conversationId,
-            "X-Voice-Message": "true",
-            ...fdHeaders,
-            "Content-Length": formDataBuffer.length.toString(),
-          },
-          body: formDataBuffer,
-        }
-      );
-
-      if (!uploadResponse.ok) {
-        const uploadError = await uploadResponse.text();
-        return textResult(`Generated audio but failed to send: ${uploadError}`);
-      }
-    } finally {
-      if (tempPath) {
-        await fs.unlink(tempPath).catch(() => undefined);
-      }
-    }
+    const uploadError = await uploadGeneratedFile(
+      gw,
+      audioBuffer,
+      `voice_response.${ext}`,
+      mimeType,
+      { "X-Voice-Message": "true" }
+    );
+    if (uploadError) return uploadError;
 
     logger.info(`Audio generated and sent using ${provider}`);
     return textResult(

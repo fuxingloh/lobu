@@ -122,8 +122,8 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
       }
     });
 
-    // Handle child exit
-    child.on("exit", (code, signal) => {
+    // Handle child exit (use once to prevent duplicate handler invocations)
+    child.once("exit", (code, signal) => {
       const entry = this.workers.get(deploymentName);
       if (entry) {
         this.workers.delete(deploymentName);
@@ -208,8 +208,11 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
   /** Send SIGTERM, then SIGKILL after timeout. */
   private killWorker(entry: EmbeddedWorkerEntry, deploymentName: string): void {
     const child = entry.process;
+
+    // Delete from map first to prevent race with exit handler
     this.workers.delete(deploymentName);
 
+    // Check if already exited after map deletion
     if (child.exitCode !== null || child.killed) return;
 
     child.kill("SIGTERM");
@@ -223,6 +226,6 @@ export class EmbeddedDeploymentManager extends BaseDeploymentManager {
       }
     }, KILL_TIMEOUT_MS);
 
-    child.on("exit", () => clearTimeout(killTimer));
+    child.once("exit", () => clearTimeout(killTimer));
   }
 }

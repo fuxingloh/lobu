@@ -67,8 +67,15 @@ export class AuthProfilesManager {
       return !expiresAt || expiresAt > now;
     });
 
-    const candidates =
-      validProfiles.length > 0 ? validProfiles : providerProfiles;
+    if (validProfiles.length === 0) {
+      logger.warn(
+        { agentId, provider, profileCount: providerProfiles.length },
+        "All auth profiles for provider are expired"
+      );
+      return null;
+    }
+
+    const candidates = validProfiles;
     if (!model) {
       return candidates[0] || null;
     }

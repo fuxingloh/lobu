@@ -15,6 +15,7 @@ import type {
 import type { InteractionService } from "../../interactions";
 import type { GrantStore } from "../../permissions/grant-store";
 import { authenticateWorker } from "./middleware";
+import type { WorkerContext } from "./types";
 
 const logger = createLogger("internal-settings-link-routes");
 
@@ -25,21 +26,6 @@ function encodePrefillMcpServers(
     "base64url"
   );
 }
-
-type WorkerContext = {
-  Variables: {
-    worker: {
-      userId: string;
-      conversationId: string;
-      channelId: string;
-      teamId?: string;
-      agentId?: string;
-      connectionId?: string;
-      deploymentName: string;
-      platform?: string;
-    };
-  };
-};
 
 /**
  * Create internal settings link routes (Hono)

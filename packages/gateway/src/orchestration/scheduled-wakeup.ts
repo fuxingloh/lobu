@@ -591,6 +591,17 @@ Schedule ID: ${schedule.id}`;
 
         const nextIteration = schedule.iteration + 1;
 
+        // Persist iteration increment BEFORE enqueuing the next job.
+        // This prevents duplicate processing if the process crashes
+        // between enqueue and persist.
+        schedule.iteration = nextIteration;
+        schedule.triggerAt = nextTrigger.toISOString();
+        await redis.setex(
+          redisKey,
+          SCHEDULE_TTL_SECONDS,
+          JSON.stringify(schedule)
+        );
+
         // Create next delayed job
         const jobPayload: ScheduledJobPayload = {
           scheduleId,
@@ -607,15 +618,6 @@ Schedule ID: ${schedule.id}`;
           delayMs,
           singletonKey: `schedule-${scheduleId}-${nextIteration}`,
         });
-
-        // Only increment iteration after queue send succeeds
-        schedule.iteration = nextIteration;
-        schedule.triggerAt = nextTrigger.toISOString();
-        await redis.setex(
-          redisKey,
-          SCHEDULE_TTL_SECONDS,
-          JSON.stringify(schedule)
-        );
 
         logger.info(
           {

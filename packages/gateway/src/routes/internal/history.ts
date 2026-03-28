@@ -4,19 +4,9 @@ import { createLogger } from "@lobu/core";
 import { Hono } from "hono";
 import { platformRegistry } from "../../platform";
 import { authenticateWorker } from "./middleware";
+import type { WorkerContext } from "./types";
 
 const logger = createLogger("history-routes");
-
-type WorkerContext = {
-  Variables: {
-    worker: {
-      conversationId: string;
-      channelId: string;
-      platform: string;
-      teamId: string;
-    };
-  };
-};
 
 /**
  * Create internal history routes (Hono)

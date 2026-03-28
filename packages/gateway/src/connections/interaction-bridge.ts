@@ -14,6 +14,27 @@ import type { PlatformConnection } from "./types";
 
 const logger = createLogger("chat-interaction-bridge");
 
+async function postWithFallback(
+  thread: any,
+  primary: { card: any; fallbackText: string },
+  connectionId: string,
+  context: string
+): Promise<void> {
+  try {
+    await thread.post(primary);
+  } catch (error) {
+    logger.warn(
+      { connectionId, error: String(error) },
+      `Failed to post ${context}`
+    );
+    try {
+      await thread.post(primary.fallbackText);
+    } catch {
+      // give up
+    }
+  }
+}
+
 /**
  * Send a message with inline keyboard buttons via the Telegram Bot API.
  * Used for interactive elements (grant/package requests, questions) since
@@ -95,9 +116,14 @@ export function registerInteractionBridge(
 
   // Per-connection state (avoids cross-contamination between connections)
   const handledEvents = new Set<string>();
+  const activeTimers = new Set<NodeJS.Timeout>();
   function markHandled(id: string): void {
     handledEvents.add(id);
-    setTimeout(() => handledEvents.delete(id), 30_000);
+    const timer = setTimeout(() => {
+      handledEvents.delete(id);
+      activeTimers.delete(timer);
+    }, 30_000);
+    activeTimers.add(timer);
   }
   const pendingQuestionOptions = new Map<string, string[]>();
 
@@ -114,10 +140,11 @@ export function registerInteractionBridge(
         );
         if (botToken) {
           pendingQuestionOptions.set(event.id, [...event.options]);
-          setTimeout(
-            () => pendingQuestionOptions.delete(event.id),
-            GRANT_REQUEST_TTL
-          );
+          const optionTimer = setTimeout(() => {
+            pendingQuestionOptions.delete(event.id);
+            activeTimers.delete(optionTimer);
+          }, GRANT_REQUEST_TTL);
+          activeTimers.add(optionTimer);
           const buttons = event.options.map((option, i) => [
             {
               text: option,
@@ -146,34 +173,24 @@ export function registerInteractionBridge(
       );
       if (!thread) return;
 
-      try {
-        const { Card, CardText, Actions, Button } = await import("chat");
-        const buttons = event.options.map((option, i) =>
-          Button({
-            id: `question:${event.id}:${i}`,
-            label: option,
-            value: option,
-          })
-        );
-        const card = Card({
-          children: [CardText(event.question), Actions(buttons)],
-        });
-        await thread.post({
-          card,
-          fallbackText: `${event.question}\n${event.options.map((o, i) => `${i + 1}. ${o}`).join("\n")}`,
-        });
-      } catch (error) {
-        logger.warn(
-          { connectionId, error: String(error) },
-          "Failed to post question interaction"
-        );
-        try {
-          const fallback = `${event.question}\n${event.options.map((o, i) => `${i + 1}. ${o}`).join("\n")}`;
-          await thread.post(fallback);
-        } catch {
-          // give up
-        }
-      }
+      const { Card, CardText, Actions, Button } = await import("chat");
+      const buttons = event.options.map((option, i) =>
+        Button({
+          id: `question:${event.id}:${i}`,
+          label: option,
+          value: option,
+        })
+      );
+      const card = Card({
+        children: [CardText(event.question), Actions(buttons)],
+      });
+      const fallbackText = `${event.question}\n${event.options.map((o, i) => `${i + 1}. ${o}`).join("\n")}`;
+      await postWithFallback(
+        thread,
+        { card, fallbackText },
+        connectionId,
+        "question interaction"
+      );
     } catch (error) {
       logger.error(
         { connectionId, error: String(error) },
@@ -236,44 +253,34 @@ export function registerInteractionBridge(
       );
       if (!thread) return;
 
-      try {
-        const { Card, CardText, Actions, Button } = await import("chat");
-        const card = Card({
-          children: [
-            CardText(
-              `*Access Request*\nDomains: ${domainList}\nReason: ${event.reason}`
-            ),
-            Actions([
-              Button({
-                id: `grant:${event.id}:approve`,
-                label: "Approve",
-                style: "primary",
-                value: "approve",
-              }),
-              Button({
-                id: `grant:${event.id}:deny`,
-                label: "Deny",
-                style: "danger",
-                value: "deny",
-              }),
-            ]),
-          ],
-        });
-        await thread.post({
-          card,
-          fallbackText: text,
-        });
-      } catch (error) {
-        logger.warn(
-          { connectionId, error: String(error) },
-          "Failed to post grant interaction with buttons"
-        );
-        try {
-          await thread.post(text);
-        } catch {
-          // give up
-        }
-      }
+      const { Card, CardText, Actions, Button } = await import("chat");
+      const card = Card({
+        children: [
+          CardText(
+            `*Access Request*\nDomains: ${domainList}\nReason: ${event.reason}`
+          ),
+          Actions([
+            Button({
+              id: `grant:${event.id}:approve`,
+              label: "Approve",
+              style: "primary",
+              value: "approve",
+            }),
+            Button({
+              id: `grant:${event.id}:deny`,
+              label: "Deny",
+              style: "danger",
+              value: "deny",
+            }),
+          ]),
+        ],
+      });
+      await postWithFallback(
+        thread,
+        { card, fallbackText: text },
+        connectionId,
+        "grant interaction with buttons"
+      );
     } catch (error) {
       logger.error(
         { connectionId, error: String(error) },
@@ -330,44 +337,34 @@ export function registerInteractionBridge(
       );
       if (!thread) return;
 
-      try {
-        const { Card, CardText, Actions, Button } = await import("chat");
-        const card = Card({
-          children: [
-            CardText(
-              `*Package Install Request*\nPackages: ${pkgList}\nReason: ${event.reason}`
-            ),
-            Actions([
-              Button({
-                id: `package:${event.id}:approve`,
-                label: "Approve",
-                style: "primary",
-                value: "approve",
-              }),
-              Button({
-                id: `package:${event.id}:deny`,
-                label: "Deny",
-                style: "danger",
-                value: "deny",
-              }),
-            ]),
-          ],
-        });
-        await thread.post({
-          card,
-          fallbackText: text,
-        });
-      } catch (error) {
-        logger.warn(
-          { connectionId, error: String(error) },
-          "Failed to post package request interaction with buttons"
-        );
-        try {
-          await thread.post(text);
-        } catch {
-          // give up
-        }
-      }
+      const { Card, CardText, Actions, Button } = await import("chat");
+      const card = Card({
+        children: [
+          CardText(
+            `*Package Install Request*\nPackages: ${pkgList}\nReason: ${event.reason}`
+          ),
+          Actions([
+            Button({
+              id: `package:${event.id}:approve`,
+              label: "Approve",
+              style: "primary",
+              value: "approve",
+            }),
+            Button({
+              id: `package:${event.id}:deny`,
+              label: "Deny",
+              style: "danger",
+              value: "deny",
+            }),
+          ]),
+        ],
+      });
+      await postWithFallback(
+        thread,
+        { card, fallbackText: text },
+        connectionId,
+        "package request interaction with buttons"
+      );
     } catch (error) {
       logger.error(
         { connectionId, error: String(error) },
@@ -390,33 +387,24 @@ export function registerInteractionBridge(
       );
       if (!thread) return;
 
-      try {
-        const { Card, CardText, Actions, LinkButton } = await import("chat");
-        const linkButton: any = LinkButton({
-          url: event.url,
-          label: event.label,
-        });
-        if (event.webApp) {
-          linkButton.webApp = true;
-        }
-        const card = Card({
-          children: [CardText(event.label), Actions([linkButton])],
-        });
-        await thread.post({
-          card,
-          fallbackText: `${event.label}: ${event.url}`,
-        });
-      } catch (error) {
-        logger.warn(
-          { connectionId, error: String(error) },
-          "Failed to post link button interaction"
-        );
-        try {
-          await thread.post(`${event.label}: ${event.url}`);
-        } catch {
-          // give up
-        }
+      const { Card, CardText, Actions, LinkButton } = await import("chat");
+      const linkButton: any = LinkButton({
+        url: event.url,
+        label: event.label,
+      });
+      if (event.webApp) {
+        linkButton.webApp = true;
       }
+      const card = Card({
+        children: [CardText(event.label), Actions([linkButton])],
+      });
+      const fallbackText = `${event.label}: ${event.url}`;
+      await postWithFallback(
+        thread,
+        { card, fallbackText },
+        connectionId,
+        "link button interaction"
+      );
     } catch (error) {
       logger.error(
         { connectionId, error: String(error) },
@@ -477,6 +465,10 @@ export function registerInteractionBridge(
     interactionService.off("package:requested", onPackageRequested);
     interactionService.off("link-button:created", onLinkButtonCreated);
     interactionService.off("status-message:created", onStatusMessageCreated);
+    for (const timer of activeTimers) {
+      clearTimeout(timer);
+    }
+    activeTimers.clear();
     handledEvents.clear();
     pendingQuestionOptions.clear();
     logger.info({ connectionId, platform }, "Interaction bridge unregistered");

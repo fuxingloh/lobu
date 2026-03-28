@@ -169,6 +169,10 @@ export class GatewayClient {
   }
 
   private async connectAndListen(): Promise<void> {
+    // Abort previous controller before creating a new one
+    if (this.abortController) {
+      this.abortController.abort();
+    }
     this.abortController = new AbortController();
     const streamUrl = this.httpPort
       ? `${this.dispatcherUrl}/worker/stream?httpPort=${this.httpPort}`
@@ -284,6 +288,7 @@ export class GatewayClient {
         Authorization: `Bearer ${this.workerToken}`,
       },
       body: JSON.stringify({ jobId, received: true }),
+      signal: AbortSignal.timeout(10_000),
     }).catch((err) => {
       logger.warn(`Failed to send delivery receipt for job ${jobId}:`, err);
     });

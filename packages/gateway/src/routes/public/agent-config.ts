@@ -35,6 +35,7 @@ import {
   type ModelProviderModule,
 } from "../../modules/module-system";
 import type { GrantStore } from "../../permissions/grant-store";
+import { createTokenVerifier } from "../shared/token-verifier";
 import { verifySettingsSession } from "./settings-auth";
 
 const TAG = "Configuration";
@@ -503,51 +504,19 @@ export function createAgentConfigRoutes(
 ): OpenAPIHono {
   const app = new OpenAPIHono();
 
+  const baseVerifyToken = createTokenVerifier(config);
+
   /**
    * Verify settings token against agentId.
-   * If token has agentId, it must match. If token has no agentId (channel-based),
-   * verify user owns the agent via userAgentsStore index or canonical metadata owner.
+   * Admin sessions bypass ownership checks.
    */
   const verifyToken = async (
     payload: SettingsTokenPayload | null,
     agentId: string
   ): Promise<SettingsTokenPayload | null> => {
     if (!payload) return null;
-
-    // Admin sessions can manage any agent
     if (payload.isAdmin) return payload;
-
-    if (payload.agentId) {
-      if (payload.agentId !== agentId) return null;
-    } else {
-      // Channel-based token: check ownership
-      const owns = config.userAgentsStore
-        ? await config.userAgentsStore.ownsAgent(
-            payload.platform,
-            payload.userId,
-            agentId
-          )
-        : false;
-
-      if (!owns) {
-        if (!config.agentMetadataStore) return null;
-        const metadata = await config.agentMetadataStore.getMetadata(agentId);
-        const isOwner =
-          metadata?.owner?.platform === payload.platform &&
-          metadata?.owner?.userId === payload.userId;
-        if (!isOwner) return null;
-
-        // Reconcile: metadata says owner but index is missing — repair it
-        if (isOwner && config.userAgentsStore) {
-          config.userAgentsStore
-            .addAgent(payload.platform, payload.userId, agentId)
-            .catch(() => {
-              /* best-effort reconciliation */
-            });
-        }
-      }
-    }
-    return payload;
+    return baseVerifyToken(payload, agentId);
   };
 
   app.openapi(getConfigRoute, async (c): Promise<any> => {

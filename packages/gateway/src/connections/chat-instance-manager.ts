@@ -406,6 +406,10 @@ export class ChatInstanceManager {
     const { platform } = instance.connection;
     const webhookHandler = instance.chat.webhooks?.[platform];
     if (!webhookHandler) {
+      logger.warn(
+        { connectionId, platform },
+        "No webhook handler found for platform"
+      );
       return new Response("No webhook handler", { status: 404 });
     }
 
@@ -413,7 +417,7 @@ export class ChatInstanceManager {
       return await webhookHandler(request);
     } catch (error) {
       logger.error(
-        { connectionId, error: String(error) },
+        { connectionId, platform, error: String(error) },
         "Webhook handling failed"
       );
       return new Response("Internal error", { status: 500 });
@@ -523,7 +527,12 @@ export class ChatInstanceManager {
           installation
         );
       } catch (error) {
-        await adapter.deleteInstallation(teamId).catch(() => undefined);
+        await adapter.deleteInstallation(teamId).catch((err) => {
+          logger.warn(
+            { teamId, error: String(err) },
+            "Failed to delete Slack installation after connection error"
+          );
+        });
         throw error;
       }
 
@@ -533,7 +542,12 @@ export class ChatInstanceManager {
         connectionId: connection.id,
       };
     } finally {
-      await chat.shutdown().catch(() => undefined);
+      await chat.shutdown().catch((err: unknown) => {
+        logger.warn(
+          { error: String(err) },
+          "Failed to shut down Slack OAuth chat"
+        );
+      });
     }
   }
 
@@ -574,7 +588,12 @@ export class ChatInstanceManager {
         this.cloneRequestWithBody(request, body)
       );
     } finally {
-      await chat.shutdown().catch(() => undefined);
+      await chat.shutdown().catch((err) => {
+        logger.warn(
+          { error: String(err) },
+          "Failed to shut down Slack webhook chat"
+        );
+      });
     }
   }
 
@@ -1188,9 +1207,18 @@ export class ChatInstanceManager {
     const redis = this.services.getQueue().getRedisClient();
     const key = `chat:history:${connection.id}:${channelId}`;
     const raw = await redis.lrange(key, 0, -1);
-    let entries = raw.map(
-      (entry: string) => JSON.parse(entry) as HistoryRecord
-    );
+    const parsed: HistoryRecord[] = [];
+    for (const entry of raw) {
+      try {
+        parsed.push(JSON.parse(entry) as HistoryRecord);
+      } catch (err) {
+        logger.warn(
+          { key, error: String(err) },
+          "Skipping corrupt history entry"
+        );
+      }
+    }
+    let entries = parsed;
 
     if (before) {
       const cutoff = Date.parse(before);

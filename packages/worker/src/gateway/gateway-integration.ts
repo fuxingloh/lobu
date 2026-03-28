@@ -5,6 +5,7 @@
 
 import {
   createLogger,
+  retryWithBackoff,
   type WorkerTransport,
   type WorkerTransportConfig,
 } from "@lobu/core";
@@ -133,74 +134,46 @@ export class HttpWorkerTransport implements WorkerTransport {
     }
     this.lastStreamDelta = actualDelta;
 
-    await this.sendResponse({
-      messageId: this.originalMessageTs,
-      channelId: this.channelId,
-      conversationId: this.conversationId,
-      userId: this.userId,
-      teamId: this.teamId,
-      delta: actualDelta,
-      timestamp: Date.now(),
-      originalMessageId: this.originalMessageTs,
-      botResponseId: this.botResponseTs,
-      moduleData: this.moduleData,
-      isFullReplacement,
-    });
+    await this.sendResponse(
+      this.buildBaseResponse({
+        delta: actualDelta,
+        moduleData: this.moduleData,
+        isFullReplacement,
+      })
+    );
   }
 
   async signalCompletion(): Promise<void> {
-    await this.sendResponse({
-      messageId: this.originalMessageTs,
-      channelId: this.channelId,
-      conversationId: this.conversationId,
-      userId: this.userId,
-      teamId: this.teamId,
-      timestamp: Date.now(),
-      originalMessageId: this.originalMessageTs,
-      processedMessageIds: this.processedMessageIds,
-      botResponseId: this.botResponseTs,
-      moduleData: this.moduleData,
-    });
+    await this.sendResponse(
+      this.buildBaseResponse({
+        processedMessageIds: this.processedMessageIds,
+        moduleData: this.moduleData,
+      })
+    );
   }
 
   async signalError(error: Error, errorCode?: string): Promise<void> {
-    await this.sendResponse({
-      messageId: this.originalMessageTs,
-      channelId: this.channelId,
-      conversationId: this.conversationId,
-      userId: this.userId,
-      teamId: this.teamId,
-      error: error.message,
-      ...(errorCode && { errorCode }),
-      timestamp: Date.now(),
-      originalMessageId: this.originalMessageTs,
-      botResponseId: this.botResponseTs,
-    });
+    await this.sendResponse(
+      this.buildBaseResponse({
+        error: error.message,
+        ...(errorCode && { errorCode }),
+      })
+    );
   }
 
   async sendStatusUpdate(elapsedSeconds: number, state: string): Promise<void> {
-    await this.sendResponse({
-      messageId: this.originalMessageTs,
-      channelId: this.channelId,
-      conversationId: this.conversationId,
-      userId: this.userId,
-      teamId: this.teamId,
-      timestamp: Date.now(),
-      originalMessageId: this.originalMessageTs,
-      botResponseId: this.botResponseTs,
-      statusUpdate: {
-        elapsedSeconds,
-        state,
-      },
-    });
+    await this.sendResponse(
+      this.buildBaseResponse({
+        statusUpdate: { elapsedSeconds, state },
+      })
+    );
   }
 
   /**
-   * Build base response payload with common fields
+   * Build base response payload with common fields shared across all response types
    */
-  private buildExecResponse(
-    execId: string,
-    additionalFields: Partial<ResponseData>
+  private buildBaseResponse(
+    additionalFields?: Partial<ResponseData>
   ): ResponseData {
     return {
       messageId: this.originalMessageTs,
@@ -210,9 +183,19 @@ export class HttpWorkerTransport implements WorkerTransport {
       teamId: this.teamId,
       timestamp: Date.now(),
       originalMessageId: this.originalMessageTs,
-      execId,
+      botResponseId: this.botResponseTs,
       ...additionalFields,
     };
+  }
+
+  /**
+   * Build exec response payload with exec-specific fields
+   */
+  private buildExecResponse(
+    execId: string,
+    additionalFields: Partial<ResponseData>
+  ): ResponseData {
+    return this.buildBaseResponse({ execId, ...additionalFields });
   }
 
   /**
@@ -247,26 +230,20 @@ export class HttpWorkerTransport implements WorkerTransport {
   }
 
   private async sendResponse(data: ResponseData): Promise<void> {
-    const maxRetries = 3;
-    let lastError: Error | null = null;
+    const responseUrl = `${this.gatewayUrl}/worker/response`;
+    const basePayload = {
+      ...data,
+      ...(this.platform && !data.platform ? { platform: this.platform } : {}),
+      ...(!data.platformMetadata && this.platformMetadata
+        ? { platformMetadata: this.platformMetadata }
+        : {}),
+    };
+    const payload = this.jobId
+      ? { jobId: this.jobId, ...basePayload }
+      : basePayload;
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const responseUrl = `${this.gatewayUrl}/worker/response`;
-        const basePayload = {
-          ...data,
-          ...(this.platform && !data.platform
-            ? { platform: this.platform }
-            : {}),
-          ...(!data.platformMetadata && this.platformMetadata
-            ? { platformMetadata: this.platformMetadata }
-            : {}),
-        };
-        const payload = this.jobId
-          ? { jobId: this.jobId, ...basePayload }
-          : basePayload;
-
-        // Log the payload for debugging
+    await retryWithBackoff(
+      async () => {
         logger.info(
           `[WORKER-HTTP] Sending to ${responseUrl}: ${JSON.stringify(payload).substring(0, 500)}`
         );
@@ -283,7 +260,7 @@ export class HttpWorkerTransport implements WorkerTransport {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(30_000), // 30s timeout
+          signal: AbortSignal.timeout(30_000),
         });
 
         if (!response.ok) {
@@ -293,26 +270,15 @@ export class HttpWorkerTransport implements WorkerTransport {
         }
 
         logger.debug("Response sent to dispatcher successfully");
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        logger.warn(
-          `Failed to send response (attempt ${attempt + 1}/${maxRetries}):`,
-          error
-        );
-
-        if (attempt < maxRetries - 1) {
-          const delay = 1000 * 2 ** attempt;
-          logger.debug(`Retrying in ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
+      },
+      {
+        maxRetries: 2,
+        baseDelay: 1000,
+        onRetry: (attempt, error) => {
+          logger.warn(`Failed to send response (attempt ${attempt}/2):`, error);
+        },
       }
-    }
-
-    logger.error(
-      "All retry attempts failed for sending response to dispatcher"
     );
-    throw lastError;
   }
 
   private normalizeForComparison(text: string): string {

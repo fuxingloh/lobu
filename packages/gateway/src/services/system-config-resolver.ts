@@ -13,7 +13,7 @@ export interface ResolvedMcpRegistryServer {
   id: string;
   name: string;
   description: string;
-  type: "oauth" | "command" | "api-key" | "none";
+  type: "oauth" | "stdio" | "sse" | "api-key";
   config: Record<string, unknown>;
 }
 
@@ -64,9 +64,9 @@ export class SystemConfigResolver {
         if (!mcp?.id || seenIds.has(mcp.id)) continue;
         seenIds.add(mcp.id);
 
-        const type = mcp.command ? "command" : "none";
+        const type = mcp.type || (mcp.command ? "stdio" : "sse");
         const config: Record<string, unknown> = {
-          type: mcp.type || (mcp.command ? "stdio" : "sse"),
+          type,
         };
 
         if (mcp.url) config.url = mcp.url;

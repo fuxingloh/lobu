@@ -10,9 +10,9 @@
 import { createLogger } from "@lobu/core";
 import { Hono } from "hono";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
-import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ChannelBindingService } from "../../channels";
+import { createTokenVerifier } from "../shared/token-verifier";
 import { verifySettingsSession } from "./settings-auth";
 
 const logger = createLogger("channel-binding-routes");
@@ -32,43 +32,10 @@ export function createChannelBindingRoutes(
 ): Hono {
   const router = new Hono();
 
-  const verifyAuth = async (
-    c: any,
-    agentId: string
-  ): Promise<SettingsTokenPayload | null> => {
-    const payload = verifySettingsSession(c);
-    if (!payload) return null;
+  const verifyToken = createTokenVerifier(config);
 
-    if (payload.agentId) {
-      if (payload.agentId !== agentId) return null;
-    } else {
-      const owns = config.userAgentsStore
-        ? await config.userAgentsStore.ownsAgent(
-            payload.platform,
-            payload.userId,
-            agentId
-          )
-        : false;
-
-      if (!owns) {
-        if (!config.agentMetadataStore) return null;
-        const metadata = await config.agentMetadataStore.getMetadata(agentId);
-        const isOwner =
-          metadata?.owner?.platform === payload.platform &&
-          metadata?.owner?.userId === payload.userId;
-        if (!isOwner) return null;
-
-        if (isOwner && config.userAgentsStore) {
-          config.userAgentsStore
-            .addAgent(payload.platform, payload.userId, agentId)
-            .catch(() => {
-              /* best-effort reconciliation */
-            });
-        }
-      }
-    }
-
-    return payload;
+  const verifyAuth = async (c: any, agentId: string) => {
+    return verifyToken(verifySettingsSession(c), agentId);
   };
 
   // GET /api/v1/agents/{agentId}/channels - List all bindings for an agent

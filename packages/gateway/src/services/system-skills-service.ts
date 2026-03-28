@@ -9,6 +9,15 @@ import { createLogger } from "@lobu/core";
 
 const logger = createLogger("system-skills-service");
 
+const ENV_SUBSTITUTION_ALLOWLIST = new Set([
+  "NODE_ENV",
+  "PUBLIC_GATEWAY_URL",
+  "CLAWHUB_API_URL",
+  "TEMPO_ENDPOINT",
+  "MCP_API_KEY",
+  "SKILLS_REGISTRY_URL",
+]);
+
 export interface RuntimeSystemSkill {
   id: string;
   repo: string;
@@ -186,7 +195,15 @@ export class SystemSkillsService {
       this.rawLoaded = JSON.parse(raw) as SystemSkillsConfigFile;
       const substituted = raw.replace(
         /\$\{env:([^}]+)\}/g,
-        (_match, varName) => process.env[varName] || ""
+        (_match, varName) => {
+          if (!ENV_SUBSTITUTION_ALLOWLIST.has(varName)) {
+            logger.warn(
+              `Blocked env substitution for non-whitelisted var: ${varName}`
+            );
+            return "";
+          }
+          return process.env[varName] || "";
+        }
       );
       const parsed = JSON.parse(substituted) as SystemSkillsConfigFile;
       if (!Array.isArray(parsed.skills)) {

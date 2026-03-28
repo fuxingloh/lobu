@@ -6,9 +6,9 @@
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AgentMetadataStore } from "../../auth/agent-metadata-store";
-import type { SettingsTokenPayload } from "../../auth/settings/token-service";
 import type { UserAgentsStore } from "../../auth/user-agents-store";
 import type { ScheduledWakeupService } from "../../orchestration/scheduled-wakeup";
+import { createTokenVerifier } from "../shared/token-verifier";
 import { verifySettingsSession } from "./settings-auth";
 
 const TAG = "Schedules";
@@ -89,42 +89,7 @@ export function createAgentSchedulesRoutes(
 ): OpenAPIHono {
   const app = new OpenAPIHono();
 
-  const verifyToken = async (
-    payload: SettingsTokenPayload | null,
-    agentId: string
-  ): Promise<SettingsTokenPayload | null> => {
-    if (!payload) return null;
-
-    if (payload.agentId) {
-      if (payload.agentId !== agentId) return null;
-    } else {
-      const owns = config.userAgentsStore
-        ? await config.userAgentsStore.ownsAgent(
-            payload.platform,
-            payload.userId,
-            agentId
-          )
-        : false;
-
-      if (!owns) {
-        if (!config.agentMetadataStore) return null;
-        const metadata = await config.agentMetadataStore.getMetadata(agentId);
-        const isOwner =
-          metadata?.owner?.platform === payload.platform &&
-          metadata?.owner?.userId === payload.userId;
-        if (!isOwner) return null;
-
-        if (isOwner && config.userAgentsStore) {
-          config.userAgentsStore
-            .addAgent(payload.platform, payload.userId, agentId)
-            .catch(() => {
-              /* best-effort reconciliation */
-            });
-        }
-      }
-    }
-    return payload;
-  };
+  const verifyToken = createTokenVerifier(config);
 
   app.openapi(listSchedulesRoute, async (c): Promise<any> => {
     const agentId = c.req.param("agentId") || "";

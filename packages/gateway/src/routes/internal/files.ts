@@ -6,14 +6,9 @@ import { Hono } from "hono";
 import type { PlatformRegistry } from "../../platform";
 import type { IFileHandler } from "../../platform/file-handler";
 import { authenticateWorker } from "./middleware";
+import type { WorkerContext } from "./types";
 
 const logger = createLogger("file-routes");
-
-type WorkerContext = {
-  Variables: {
-    worker: any;
-  };
-};
 
 /**
  * Resolve the file handler for a given platform from the registry.

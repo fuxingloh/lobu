@@ -1,4 +1,5 @@
 import { createLogger, verifyWorkerToken } from "@lobu/core";
+import dns from "node:dns/promises";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { IMessageQueue } from "../../infrastructure/queue";
@@ -12,6 +13,63 @@ import {
 import type { CachedMcpServer, McpTool, McpToolCache } from "./tool-cache";
 
 const logger = createLogger("mcp-proxy");
+
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+
+/**
+ * Check whether a resolved IP address belongs to a reserved/internal range.
+ */
+function isReservedIp(ip: string): boolean {
+  // IPv6 loopback
+  if (ip === "::1") return true;
+
+  // IPv6 unique local (fc00::/7)
+  if (/^f[cd]/i.test(ip)) return true;
+
+  // IPv4
+  const parts = ip.split(".").map(Number);
+  if (parts.length === 4) {
+    const [a, b] = parts as [number, number, number, number];
+    // 127.0.0.0/8
+    if (a === 127) return true;
+    // 10.0.0.0/8
+    if (a === 10) return true;
+    // 172.16.0.0/12
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.168.0.0/16
+    if (a === 192 && b === 168) return true;
+    // 169.254.0.0/16 (link-local)
+    if (a === 169 && b === 254) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Resolve a URL's hostname and check whether it points to an internal/reserved network.
+ */
+async function isInternalUrl(url: string): Promise<boolean> {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+
+    // Check if hostname is already an IP literal
+    if (isReservedIp(hostname)) return true;
+
+    // Resolve hostname to IP addresses
+    const addresses = await dns.resolve4(hostname).catch(() => [] as string[]);
+    const addresses6 = await dns.resolve6(hostname).catch(() => [] as string[]);
+
+    for (const addr of [...addresses, ...addresses6]) {
+      if (isReservedIp(addr)) return true;
+    }
+
+    return false;
+  } catch {
+    // If URL parsing fails, block it
+    return true;
+  }
+}
 
 interface JsonRpcResponse {
   jsonrpc: string;
@@ -391,6 +449,9 @@ export class McpProxy {
     try {
       const body = await c.req.text();
       if (body) {
+        if (body.length > MAX_BODY_SIZE) {
+          return c.json({ error: "Request body too large" }, 413);
+        }
         toolArguments = JSON.parse(body);
       }
     } catch {
@@ -703,6 +764,26 @@ export class McpProxy {
       if (token) credentialToken = token;
     }
 
+    // SSRF protection: block requests to internal networks
+    if (await isInternalUrl(httpServer.upstreamUrl)) {
+      logger.warn("Blocked SSRF attempt to internal URL", {
+        url: httpServer.upstreamUrl,
+        mcpId,
+        agentId,
+      });
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32600,
+            message: "Upstream URL resolves to a blocked internal network",
+          },
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const headers = this.buildUpstreamHeaders(
       sessionId,
       httpServer.headers,
@@ -731,10 +812,34 @@ export class McpProxy {
     mcpId: string,
     userId?: string
   ): Promise<Response> {
+    // SSRF protection: block requests to internal networks
+    if (await isInternalUrl(httpServer.upstreamUrl)) {
+      logger.warn("Blocked SSRF attempt to internal URL", {
+        url: httpServer.upstreamUrl,
+        mcpId,
+        agentId,
+      });
+      return this.sendJsonRpcError(
+        c,
+        -32600,
+        "Upstream URL resolves to a blocked internal network"
+      );
+    }
+
     const sessionKey = `mcp:session:${agentId}:${mcpId}`;
     let sessionId = await this.getSession(sessionKey);
 
     const bodyText = await this.getRequestBodyAsText(c);
+
+    // Body size validation
+    if (bodyText.length > MAX_BODY_SIZE) {
+      logger.warn("Request body too large", {
+        mcpId,
+        agentId,
+        size: bodyText.length,
+      });
+      return new Response("Request body too large", { status: 413 });
+    }
 
     // If no active session exists, re-initialize before forwarding
     if (!sessionId && c.req.method === "POST") {

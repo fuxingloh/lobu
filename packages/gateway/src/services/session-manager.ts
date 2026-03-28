@@ -55,24 +55,20 @@ export class RedisSessionStore implements SessionStore {
   async set(sessionKey: string, session: ThreadSession): Promise<void> {
     try {
       const key = this.getSessionKey(sessionKey);
-
-      // Store session with TTL in Redis
-      await this.redis.setex(
-        key,
-        this.DEFAULT_TTL_SECONDS,
-        JSON.stringify(session)
-      );
-
-      // Create thread index for fast lookups
       const indexKey = this.getThreadIndexKey(
         session.channelId,
         session.conversationId
       );
-      await this.redis.setex(
+
+      // Atomically set both session and thread index keys
+      const pipeline = this.redis.pipeline();
+      pipeline.setex(key, this.DEFAULT_TTL_SECONDS, JSON.stringify(session));
+      pipeline.setex(
         indexKey,
         this.DEFAULT_TTL_SECONDS,
         JSON.stringify({ sessionKey })
       );
+      await pipeline.exec();
 
       logger.debug(`Stored session ${sessionKey}`);
     } catch (error) {
@@ -87,15 +83,19 @@ export class RedisSessionStore implements SessionStore {
       const session = await this.get(sessionKey);
 
       const key = this.getSessionKey(sessionKey);
-      await this.redis.del(key);
 
-      // Clean up thread index
+      // Atomically delete both session and thread index keys
       if (session?.conversationId) {
         const indexKey = this.getThreadIndexKey(
           session.channelId,
           session.conversationId
         );
-        await this.redis.del(indexKey);
+        const pipeline = this.redis.pipeline();
+        pipeline.del(key);
+        pipeline.del(indexKey);
+        await pipeline.exec();
+      } else {
+        await this.redis.del(key);
       }
 
       logger.debug(`Deleted session ${sessionKey}`);

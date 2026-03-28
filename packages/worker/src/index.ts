@@ -17,6 +17,17 @@ import { startWorkerHttpServer, stopWorkerHttpServer } from "./server";
  * Main entry point for gateway-based persistent worker
  */
 async function main() {
+  // Register global rejection/exception handlers early
+  process.on("unhandledRejection", (reason) => {
+    logger.error("Unhandled rejection:", reason);
+    process.exit(1);
+  });
+
+  process.on("uncaughtException", (error) => {
+    logger.error("Uncaught exception:", error);
+    process.exit(1);
+  });
+
   logger.info("Starting worker...");
 
   // Initialize Sentry for error tracking
@@ -92,12 +103,12 @@ async function main() {
       httpPort
     );
 
-    logger.info("🔌 Connecting to dispatcher...");
-    await gatewayClient.start();
-    logger.info("✅ Gateway worker started successfully");
+    // Register signal handlers before async operations
+    let isShuttingDown = false;
 
-    // Keep the process running for persistent gateway connection
     process.on("SIGTERM", async () => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
       logger.info("Received SIGTERM, shutting down gateway worker...");
       await gatewayClient.stop();
       await stopWorkerHttpServer();
@@ -105,11 +116,17 @@ async function main() {
     });
 
     process.on("SIGINT", async () => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
       logger.info("Received SIGINT, shutting down gateway worker...");
       await gatewayClient.stop();
       await stopWorkerHttpServer();
       process.exit(0);
     });
+
+    logger.info("🔌 Connecting to dispatcher...");
+    await gatewayClient.start();
+    logger.info("✅ Gateway worker started successfully");
 
     // Keep process alive
     await new Promise(() => {
@@ -123,4 +140,7 @@ async function main() {
 
 export type { WorkerConfig } from "./core/types";
 
-main();
+main().catch((error) => {
+  logger.error("Fatal error in main:", error);
+  process.exit(1);
+});

@@ -614,6 +614,18 @@ export function createConnectionWebhookRoutes(
       return c.json({ error: "Missing connectionId" }, 400);
     }
 
+    // Verify connection exists before processing
+    const connection = await manager.getConnection(connectionId);
+    if (!connection) {
+      logger.warn({ connectionId }, "Webhook received for unknown connection");
+      return c.json({ error: "Connection not found" }, 404);
+    }
+
+    logger.debug(
+      { connectionId, platform: connection.platform },
+      "Processing webhook"
+    );
+
     try {
       const response = await manager.handleWebhook(connectionId, c.req.raw);
       return response;

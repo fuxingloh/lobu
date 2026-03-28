@@ -79,7 +79,7 @@ export class ClawHubRegistry implements SkillRegistry {
   async search(query: string, limit = 20): Promise<SkillRegistryResult[]> {
     if (!query.trim()) {
       const allSkills = await this.fetchList();
-      return allSkills.slice(0, limit);
+      return allSkills ? allSkills.slice(0, limit) : [];
     }
 
     logger.info(`Searching ClawHub for: ${query}`);
@@ -111,6 +111,7 @@ export class ClawHubRegistry implements SkillRegistry {
       logger.error("Failed to search ClawHub", { error, query });
       // Fall back to client-side filtering
       const allSkills = await this.fetchList();
+      if (!allSkills) return [];
       const lowerQuery = query.toLowerCase().trim();
       return allSkills
         .filter(
@@ -182,7 +183,7 @@ export class ClawHubRegistry implements SkillRegistry {
   /**
    * Fetch popular skills list from ClawHub API (with caching).
    */
-  private async fetchList(): Promise<SkillRegistryResult[]> {
+  private async fetchList(): Promise<SkillRegistryResult[] | null> {
     if (
       this.listCache &&
       Date.now() - this.listCache.fetchedAt < this.LIST_CACHE_TTL_MS
@@ -219,7 +220,7 @@ export class ClawHubRegistry implements SkillRegistry {
       return skills;
     } catch (error) {
       logger.error("Failed to fetch skills from ClawHub", { error });
-      return [];
+      return null;
     }
   }
 

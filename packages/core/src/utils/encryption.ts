@@ -1,6 +1,8 @@
 import * as crypto from "node:crypto";
+import { createLogger } from "../logger";
 
 const IV_LENGTH = 12; // 96-bit nonce for AES-GCM
+const logger = createLogger("encryption");
 
 /**
  * Get encryption key from environment with validation
@@ -23,11 +25,11 @@ function getEncryptionKey(): Buffer {
     if (keyBuffer.length === 32) {
       return keyBuffer;
     }
-  } catch {
-    // Not valid base64, try other formats
+  } catch (err) {
+    logger.debug("ENCRYPTION_KEY is not valid base64, trying hex format", err);
   }
 
-  // Try as hex
+  // Try as hex (must be exactly 64 hex characters for 32 bytes)
   if (/^[0-9a-fA-F]{64}$/.test(key)) {
     keyBuffer = Buffer.from(key, "hex");
     if (keyBuffer.length === 32) {
@@ -35,15 +37,9 @@ function getEncryptionKey(): Buffer {
     }
   }
 
-  // Try as UTF-8 (for backward compatibility with existing keys)
-  keyBuffer = Buffer.from(key, "utf8");
-  if (keyBuffer.length === 32) {
-    return keyBuffer;
-  }
-
   throw new Error(
-    `ENCRYPTION_KEY must be exactly 32 bytes (256 bits) when decoded, got ${keyBuffer.length} bytes. ` +
-      `Generate a valid key with: openssl rand -base64 32`
+    "ENCRYPTION_KEY must be a base64 or hex encoded 32-byte key. " +
+      "Generate a valid key with: openssl rand -base64 32"
   );
 }
 

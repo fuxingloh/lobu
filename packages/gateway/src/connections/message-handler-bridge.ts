@@ -368,14 +368,27 @@ class MessageHandlerBridge {
     Array<{ role: "user" | "assistant"; content: string; name?: string }>
   > {
     const raw = await this.redis.lrange(key, 0, MAX_HISTORY_MESSAGES - 1);
-    return raw.map((entry) => {
-      const parsed = JSON.parse(entry) as HistoryEntry;
-      return {
-        role: parsed.role,
-        content: parsed.content,
-        name: parsed.authorName,
-      };
-    });
+    const results: Array<{
+      role: "user" | "assistant";
+      content: string;
+      name?: string;
+    }> = [];
+    for (const entry of raw) {
+      try {
+        const parsed = JSON.parse(entry) as HistoryEntry;
+        results.push({
+          role: parsed.role,
+          content: parsed.content,
+          name: parsed.authorName,
+        });
+      } catch (err) {
+        logger.warn(
+          { key, error: String(err) },
+          "Skipping corrupt history entry"
+        );
+      }
+    }
+    return results;
   }
 
   private async appendHistory(key: string, entry: HistoryEntry): Promise<void> {

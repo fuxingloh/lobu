@@ -173,7 +173,7 @@ export class TranscriptionService {
    * First TTS-capable provider with a valid profile wins (openai → gemini → elevenlabs).
    */
   async getConfig(agentId: string): Promise<TranscriptionConfig | null> {
-    const configs = await this.getSynthesisConfigs(agentId);
+    const configs = await this.getTranscriptionConfigs(agentId);
     return configs[0] ?? null;
   }
 

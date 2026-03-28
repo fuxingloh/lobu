@@ -9,22 +9,9 @@ import { createLogger } from "@lobu/core";
 import { Hono } from "hono";
 import type { ScheduledWakeupService } from "../../orchestration/scheduled-wakeup";
 import { authenticateWorker } from "./middleware";
+import type { WorkerContext } from "./types";
 
 const logger = createLogger("internal-schedule-routes");
-
-type WorkerContext = {
-  Variables: {
-    worker: {
-      userId: string;
-      conversationId: string;
-      channelId: string;
-      teamId?: string;
-      agentId?: string;
-      deploymentName: string;
-      platform?: string;
-    };
-  };
-};
 
 /**
  * Create internal schedule routes (Hono)

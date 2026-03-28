@@ -13,7 +13,10 @@ import type {
   Grant,
   StoredConnection,
 } from "@lobu/core";
+import { createLogger } from "@lobu/core";
 import type Redis from "ioredis";
+
+const logger = createLogger("redis-agent-store");
 
 // ── Redis key helpers ──────────────────────────────────────────────────────
 
@@ -115,7 +118,15 @@ export class RedisAgentStore implements AgentStore {
     const values = await this.redis.mget(...keys);
     return values
       .filter((v): v is string => v !== null)
-      .map((v) => JSON.parse(v) as AgentMetadata);
+      .map((v) => {
+        try {
+          return JSON.parse(v) as AgentMetadata;
+        } catch (error) {
+          logger.error("Failed to parse agent metadata", { error, value: v });
+          return null;
+        }
+      })
+      .filter((v): v is AgentMetadata => v !== null);
   }
 
   async listSandboxes(connectionId: string): Promise<AgentMetadata[]> {
@@ -154,7 +165,15 @@ export class RedisAgentStore implements AgentStore {
     const values = await this.redis.mget(...keys);
     let connections = values
       .filter((v): v is string => v !== null)
-      .map((v) => JSON.parse(v) as StoredConnection);
+      .map((v) => {
+        try {
+          return JSON.parse(v) as StoredConnection;
+        } catch (error) {
+          logger.error("Failed to parse connection", { error, value: v });
+          return null;
+        }
+      })
+      .filter((v): v is StoredConnection => v !== null);
 
     if (filter?.platform) {
       connections = connections.filter((c) => c.platform === filter.platform);
@@ -373,7 +392,18 @@ export class RedisAgentStore implements AgentStore {
     const values = await this.redis.mget(...keys);
     return values
       .filter((v): v is string => v !== null)
-      .map((v) => JSON.parse(v) as ChannelBinding);
+      .map((v) => {
+        try {
+          return JSON.parse(v) as ChannelBinding;
+        } catch (error) {
+          logger.error("Failed to parse channel binding", {
+            error,
+            value: v,
+          });
+          return null;
+        }
+      })
+      .filter((v): v is ChannelBinding => v !== null);
   }
 
   async deleteAllChannelBindings(agentId: string): Promise<number> {

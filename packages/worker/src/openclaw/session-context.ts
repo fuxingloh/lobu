@@ -56,6 +56,14 @@ interface SessionContextResponse {
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+const DEFAULT_SESSION_CONTEXT = {
+  gatewayInstructions: "",
+  providerConfig: {} as ProviderConfig,
+  skillsConfig: [] as SkillContent[],
+  mcpTools: {} as Record<string, McpToolDef[]>,
+  mcpContext: {} as Record<string, string>,
+} as const;
+
 // Module-level cache for session context
 let cachedResult: {
   gatewayInstructions: string;
@@ -161,13 +169,7 @@ export async function getOpenClawSessionContext(): Promise<{
 
   if (!dispatcherUrl || !workerToken) {
     logger.warn("Missing dispatcher URL or worker token for session context");
-    return {
-      gatewayInstructions: "",
-      providerConfig: {},
-      skillsConfig: [],
-      mcpTools: {},
-      mcpContext: {},
-    };
+    return { ...DEFAULT_SESSION_CONTEXT };
   }
 
   try {
@@ -185,13 +187,7 @@ export async function getOpenClawSessionContext(): Promise<{
       logger.warn("Gateway returned non-success status for session context", {
         status: response.status,
       });
-      return {
-        gatewayInstructions: "",
-        providerConfig: {},
-        skillsConfig: [],
-        mcpTools: {},
-        mcpContext: {},
-      };
+      return { ...DEFAULT_SESSION_CONTEXT };
     }
 
     const data = (await response.json()) as SessionContextResponse;
@@ -260,12 +256,6 @@ export async function getOpenClawSessionContext(): Promise<{
     return result;
   } catch (error) {
     logger.error("Failed to fetch session context from gateway", { error });
-    return {
-      gatewayInstructions: "",
-      providerConfig: {},
-      skillsConfig: [],
-      mcpTools: {},
-      mcpContext: {},
-    };
+    return { ...DEFAULT_SESSION_CONTEXT };
   }
 }

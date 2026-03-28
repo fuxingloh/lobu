@@ -15,10 +15,6 @@ import { storeOutgoingHistory } from "./message-handler-bridge";
 
 const logger = createLogger("chat-response-bridge");
 
-function buildOutboundPayload(text: string): { markdown: string } {
-  return { markdown: text };
-}
-
 function shouldBufferUntilCompletion(platform: string): boolean {
   return platform === "telegram";
 }
@@ -38,6 +34,13 @@ interface StreamState {
 
 const EDIT_INTERVAL_MS = 2000;
 
+interface ResponseContext {
+  connectionId: string;
+  instance: any;
+  channelId: string;
+  platform: string;
+}
+
 /**
  * ChatResponseBridge implements ResponseRenderer so it can be plugged into
  * the unified thread consumer alongside legacy platform renderers.
@@ -46,6 +49,28 @@ export class ChatResponseBridge implements ResponseRenderer {
   private streams = new Map<string, StreamState>();
 
   constructor(private manager: ChatInstanceManager) {}
+
+  private extractResponseContext(
+    payload: ThreadResponsePayload
+  ): ResponseContext | null {
+    const connectionId = (payload.platformMetadata as any)?.connectionId;
+    if (!connectionId) return null;
+
+    const instance = this.manager.getInstance(connectionId);
+    if (!instance) return null;
+
+    const channelId =
+      (payload.platformMetadata as any)?.chatId ??
+      (payload.platformMetadata as any)?.responseChannel ??
+      payload.channelId;
+
+    return {
+      connectionId,
+      instance,
+      channelId,
+      platform: instance.connection.platform,
+    };
+  }
 
   /**
    * Check if this payload belongs to a Chat SDK connection.
@@ -63,20 +88,12 @@ export class ChatResponseBridge implements ResponseRenderer {
     void sessionKey;
     if (payload.delta === undefined) return null;
 
-    const connectionId = (payload.platformMetadata as any)?.connectionId;
-    if (!connectionId) return null;
+    const ctx = this.extractResponseContext(payload);
+    if (!ctx) return null;
 
-    const instance = this.manager.getInstance(connectionId);
-    if (!instance) return null;
-
-    const channelId =
-      (payload.platformMetadata as any)?.chatId ??
-      (payload.platformMetadata as any)?.responseChannel ??
-      payload.channelId;
+    const { connectionId, instance, channelId } = ctx;
     const key = `${channelId}:${payload.conversationId}`;
-    const shouldBuffer = shouldBufferUntilCompletion(
-      instance.connection.platform
-    );
+    const shouldBuffer = shouldBufferUntilCompletion(ctx.platform);
 
     let stream = this.streams.get(key);
 
@@ -100,9 +117,9 @@ export class ChatResponseBridge implements ResponseRenderer {
         );
 
         if (target) {
-          const sentMessage = await target.post(
-            buildOutboundPayload(payload.delta) as any
-          );
+          const sentMessage = await target.post({
+            markdown: payload.delta,
+          } as any);
           stream = {
             buffer: payload.delta,
             sentMessage,
@@ -157,16 +174,10 @@ export class ChatResponseBridge implements ResponseRenderer {
     payload: ThreadResponsePayload,
     _sessionKey: string
   ): Promise<void> {
-    const connectionId = (payload.platformMetadata as any)?.connectionId;
-    if (!connectionId) return;
+    const ctx = this.extractResponseContext(payload);
+    if (!ctx) return;
 
-    const instance = this.manager.getInstance(connectionId);
-    if (!instance) return;
-
-    const channelId =
-      (payload.platformMetadata as any)?.chatId ??
-      (payload.platformMetadata as any)?.responseChannel ??
-      payload.channelId;
+    const { connectionId, instance, channelId } = ctx;
     const key = `${channelId}:${payload.conversationId}`;
 
     const stream = this.streams.get(key);
@@ -252,16 +263,10 @@ export class ChatResponseBridge implements ResponseRenderer {
   ): Promise<void> {
     if (!payload.error) return;
 
-    const connectionId = (payload.platformMetadata as any)?.connectionId;
-    if (!connectionId) return;
+    const ctx = this.extractResponseContext(payload);
+    if (!ctx) return;
 
-    const instance = this.manager.getInstance(connectionId);
-    if (!instance) return;
-
-    const channelId =
-      (payload.platformMetadata as any)?.chatId ??
-      (payload.platformMetadata as any)?.responseChannel ??
-      payload.channelId;
+    const { connectionId, instance, channelId } = ctx;
     const key = `${channelId}:${payload.conversationId}`;
 
     // Clean up stream
@@ -380,16 +385,13 @@ export class ChatResponseBridge implements ResponseRenderer {
   }
 
   async handleStatusUpdate(payload: ThreadResponsePayload): Promise<void> {
-    const connectionId = (payload.platformMetadata as any)?.connectionId;
-    if (!connectionId) return;
+    const ctx = this.extractResponseContext(payload);
+    if (!ctx) return;
 
-    const instance = this.manager.getInstance(connectionId);
-    if (!instance) return;
+    const { instance, channelId } = ctx;
 
     // Show typing indicator
     try {
-      const channelId =
-        (payload.platformMetadata as any)?.chatId ?? payload.channelId;
       const target = await this.resolveTarget(
         instance,
         channelId,
@@ -407,15 +409,12 @@ export class ChatResponseBridge implements ResponseRenderer {
   async handleEphemeral(payload: ThreadResponsePayload): Promise<void> {
     if (!payload.content) return;
 
-    const connectionId = (payload.platformMetadata as any)?.connectionId;
-    if (!connectionId) return;
+    const ctx = this.extractResponseContext(payload);
+    if (!ctx) return;
 
-    const instance = this.manager.getInstance(connectionId);
-    if (!instance) return;
+    const { connectionId, instance, channelId } = ctx;
 
     try {
-      const channelId =
-        (payload.platformMetadata as any)?.chatId ?? payload.channelId;
       const target = await this.resolveTarget(
         instance,
         channelId,
@@ -476,7 +475,7 @@ export class ChatResponseBridge implements ResponseRenderer {
   ): Promise<void> {
     if (!stream.sentMessage?.edit) return;
     try {
-      await stream.sentMessage.edit(buildOutboundPayload(stream.buffer) as any);
+      await stream.sentMessage.edit({ markdown: stream.buffer } as any);
       stream.lastEditTime = Date.now();
     } catch (error) {
       logger.debug(
@@ -530,13 +529,9 @@ export class ChatResponseBridge implements ResponseRenderer {
     if (stream.buffer.length <= MESSAGE_CHUNK_SIZE) {
       try {
         if (!shouldBuffer && stream.sentMessage?.edit) {
-          await stream.sentMessage.edit(
-            buildOutboundPayload(stream.buffer) as any
-          );
+          await stream.sentMessage.edit({ markdown: stream.buffer } as any);
         } else {
-          const result = await target.post(
-            buildOutboundPayload(stream.buffer) as any
-          );
+          const result = await target.post({ markdown: stream.buffer } as any);
           logger.info(
             {
               connectionId,
@@ -577,9 +572,9 @@ export class ChatResponseBridge implements ResponseRenderer {
 
     try {
       if (!shouldBuffer && stream.sentMessage?.edit) {
-        await stream.sentMessage.edit(buildOutboundPayload(firstChunk) as any);
+        await stream.sentMessage.edit({ markdown: firstChunk } as any);
       } else {
-        await target.post(buildOutboundPayload(firstChunk) as any);
+        await target.post({ markdown: firstChunk } as any);
       }
     } catch (error) {
       logger.debug(
@@ -600,7 +595,7 @@ export class ChatResponseBridge implements ResponseRenderer {
     for (let i = 0; i < remainingChunks.length; i++) {
       const chunk = remainingChunks[i]!;
       try {
-        await target.post(buildOutboundPayload(chunk) as any);
+        await target.post({ markdown: chunk } as any);
       } catch (error) {
         logger.debug(
           { connectionId, error: String(error) },

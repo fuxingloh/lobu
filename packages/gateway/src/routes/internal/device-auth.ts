@@ -4,21 +4,12 @@ import type Redis from "ioredis";
 import { GenericDeviceCodeClient } from "../../auth/external/device-code-client";
 import type { McpConfigService } from "../../auth/mcp/config-service";
 import { authenticateWorker } from "./middleware";
+import type { WorkerContext } from "./types";
 
 const logger = createLogger("device-auth");
 
 const DEFAULT_MCP_SCOPE = "mcp:read mcp:write profile:read";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
-
-type WorkerContext = {
-  Variables: {
-    worker: {
-      userId: string;
-      agentId?: string;
-      deploymentName: string;
-    };
-  };
-};
 
 interface StoredCredential {
   accessToken: string;
@@ -390,99 +381,25 @@ export function createDeviceAuthRoutes(
     const agentId = worker.agentId || worker.userId;
     const userId = worker.userId;
 
-    // Resolve the MCP server to get its upstream URL
-    const httpServer = await mcpConfigService.getHttpServer(mcpId, agentId);
-    if (!httpServer) {
-      return c.json({ error: `MCP server '${mcpId}' not found` }, 404);
-    }
-
-    const issuer = deriveOAuthBaseUrl(httpServer.upstreamUrl);
-
     try {
-      // Check cached client registration
-      let client: StoredClient | null = null;
-      const cachedClient = await redis.get(clientCacheKey(mcpId));
-      if (cachedClient) {
-        try {
-          client = JSON.parse(cachedClient) as StoredClient;
-        } catch {
-          client = null;
-        }
-      }
-
-      // Register a new client if needed
-      if (!client) {
-        const regResponse = await fetch(`${issuer}/oauth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grant_types: [DEVICE_CODE_GRANT_TYPE, "refresh_token"],
-            token_endpoint_auth_method: "none",
-            client_name: "Lobu Gateway Device Auth",
-            scope: DEFAULT_MCP_SCOPE,
-          }),
-        });
-
-        if (!regResponse.ok) {
-          const errText = await regResponse.text();
-          logger.error("Client registration failed", { mcpId, error: errText });
-          return c.json({ error: "Client registration failed" }, 502);
-        }
-
-        const registration = (await regResponse.json()) as {
-          client_id: string;
-          client_secret?: string;
-        };
-
-        client = {
-          clientId: registration.client_id,
-          clientSecret: registration.client_secret,
-        };
-
-        // Cache indefinitely (clients don't expire)
-        await redis.set(clientCacheKey(mcpId), JSON.stringify(client));
-      }
-
-      // Request device authorization
-      const deviceCodeClient = new GenericDeviceCodeClient({
-        clientId: client.clientId,
-        clientSecret: client.clientSecret,
-        tokenUrl: `${issuer}/oauth/token`,
-        deviceAuthorizationUrl: `${issuer}/oauth/device_authorization`,
-        scope: DEFAULT_MCP_SCOPE,
-        tokenEndpointAuthMethod: client.clientSecret
-          ? "client_secret_post"
-          : "none",
-      });
-
-      const started = await deviceCodeClient.requestDeviceCode();
-
-      // Store device auth state in Redis
-      const deviceState: StoredDeviceAuth = {
-        deviceCode: started.deviceAuthId,
-        clientId: client.clientId,
-        clientSecret: client.clientSecret,
-        interval: started.interval,
-        expiresAt: Date.now() + started.expiresIn * 1000,
-        tokenUrl: `${issuer}/oauth/token`,
-        issuer,
-      };
-
-      await redis.set(
-        deviceAuthKey(agentId, userId, mcpId),
-        JSON.stringify(deviceState),
-        "EX",
-        started.expiresIn
+      const result = await startDeviceAuth(
+        redis,
+        mcpConfigService,
+        mcpId,
+        agentId,
+        userId
       );
 
-      logger.info("Device auth started", { mcpId, agentId, userId });
+      if (!result) {
+        return c.json(
+          {
+            error: `MCP server '${mcpId}' not found or client registration failed`,
+          },
+          404
+        );
+      }
 
-      return c.json({
-        userCode: started.userCode,
-        verificationUri: started.verificationUri,
-        verificationUriComplete: started.verificationUriComplete,
-        expiresIn: started.expiresIn,
-      });
+      return c.json(result);
     } catch (error) {
       logger.error("Failed to start device auth", { mcpId, error });
       return c.json({ error: "Failed to start device authentication" }, 500);

@@ -198,6 +198,7 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
   private coreV1Api: k8s.CoreV1Api;
   private nodeV1Api: k8s.NodeV1Api;
   private informer: k8s.Informer<k8s.V1Deployment> | null = null;
+  private informerInitializing = false;
 
   constructor(
     config: OrchestratorConfig,
@@ -762,6 +763,29 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         response: k8sError.response?.statusMessage,
       });
 
+      // Clean up the PVC that was created before the deployment failed
+      try {
+        await this.coreV1Api.deleteNamespacedPersistentVolumeClaim(
+          pvcName,
+          this.config.kubernetes.namespace
+        );
+        logger.info(
+          `Cleaned up orphaned PVC ${pvcName} after deployment creation failure`
+        );
+      } catch (pvcCleanupError) {
+        const pvcError = pvcCleanupError as { statusCode?: number };
+        if (pvcError.statusCode === 404) {
+          logger.debug(`PVC ${pvcName} already deleted, skipping cleanup`);
+        } else {
+          logger.error(
+            `Failed to clean up orphaned PVC ${pvcName}:`,
+            pvcCleanupError instanceof Error
+              ? pvcCleanupError.message
+              : String(pvcCleanupError)
+          );
+        }
+      }
+
       // End span with error
       workerSpan?.setStatus({
         code: SpanStatusCode.ERROR,
@@ -968,7 +992,9 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
    * reducing the need for frequent list API calls.
    */
   async startInformer(): Promise<void> {
-    if (this.informer) return;
+    if (this.informer || this.informerInitializing) return;
+
+    this.informerInitializing = true;
 
     const namespace = this.config.kubernetes.namespace;
     const listFn = () =>
@@ -1004,6 +1030,8 @@ export class K8sDeploymentManager extends BaseDeploymentManager {
         error instanceof Error ? error.message : String(error)
       );
       this.informer = null;
+    } finally {
+      this.informerInitializing = false;
     }
   }
 

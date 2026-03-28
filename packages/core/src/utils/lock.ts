@@ -45,10 +45,12 @@ export class AsyncLock {
       releaseLock = resolve;
     });
 
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
       // Wait for previous operation with timeout to prevent deadlock
       const lockTimeout = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           reject(
             new Error(
               `Lock acquisition timeout after ${timeoutMs}ms - possible deadlock in ${this.lockContext}`
@@ -62,6 +64,10 @@ export class AsyncLock {
       // Execute function with exclusive access
       return await fn();
     } finally {
+      // Clear the timeout to prevent leak
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
       // Always release lock, even on error
       releaseLock?.();
     }

@@ -89,7 +89,11 @@ export class MessageBatcher {
       }
 
       // If more messages arrived during processing, start new batch
-      if (this.messageQueue.length > 0 && !this.batchTimer) {
+      if (this.messageQueue.length > 0) {
+        if (this.batchTimer) {
+          clearTimeout(this.batchTimer);
+          this.batchTimer = null;
+        }
         logger.info(
           `Starting new batch window for ${this.messageQueue.length} queued messages`
         );

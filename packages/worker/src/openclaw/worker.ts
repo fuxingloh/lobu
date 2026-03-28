@@ -647,10 +647,18 @@ export class OpenClawWorker implements WorkerExecutor {
     customInstructions: string,
     onProgress: (update: ProgressUpdate) => Promise<void>
   ): Promise<SessionExecutionResult> {
-    const rawOptions = JSON.parse(this.config.agentOptions) as Record<
-      string,
-      unknown
-    >;
+    let rawOptions: Record<string, unknown>;
+    try {
+      rawOptions = JSON.parse(this.config.agentOptions) as Record<
+        string,
+        unknown
+      >;
+    } catch (error) {
+      logger.error(
+        `Failed to parse agentOptions: ${error instanceof Error ? error.message : String(error)}`
+      );
+      rawOptions = {};
+    }
     const verboseLogging = rawOptions.verboseLogging === true;
     const memoryFlushConfig = resolveMemoryFlushConfig(rawOptions);
 
@@ -689,6 +697,10 @@ export class OpenClawWorker implements WorkerExecutor {
     for (const skill of context.skillsConfig) {
       const skillName = path.basename((skill.name || "").trim());
       if (!skillName) continue;
+      if (!/^[a-zA-Z0-9._-]+$/.test(skillName)) {
+        logger.warn(`Skipping skill with invalid name: ${skillName}`);
+        continue;
+      }
       const skillDir = path.join(skillsRoot, skillName);
       await fs.mkdir(skillDir, { recursive: true });
       await fs.writeFile(
@@ -848,8 +860,16 @@ export class OpenClawWorker implements WorkerExecutor {
           // File may not exist
         }
       }
-    } catch {
-      // No previous provider state file - first run
+    } catch (error) {
+      // Log a warning for parse failures (vs. missing file which is expected on first run)
+      const isFileNotFound =
+        error instanceof Error &&
+        (error as NodeJS.ErrnoException).code === "ENOENT";
+      if (!isFileNotFound) {
+        logger.warn(
+          `Failed to read provider state file: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
 
     // Persist current provider state
@@ -921,16 +941,14 @@ export class OpenClawWorker implements WorkerExecutor {
       : null;
     if (credEnvVar && credValue) {
       authStorage.setRuntimeApiKey(provider, credValue);
-      logger.info(`Set runtime API key for ${provider} from ${credEnvVar}`);
+      logger.info(`Set runtime API key for ${provider}`);
     } else {
       const fallbackEnvVar = getApiKeyEnvVarForProvider(provider);
       const fallbackValue =
         credentialStore.get(fallbackEnvVar) || process.env[fallbackEnvVar];
       if (fallbackValue) {
         authStorage.setRuntimeApiKey(provider, fallbackValue);
-        logger.info(
-          `Set runtime API key for ${provider} from fallback ${fallbackEnvVar}`
-        );
+        logger.info(`Set runtime API key for ${provider}`);
       }
     }
 
@@ -950,15 +968,25 @@ export class OpenClawWorker implements WorkerExecutor {
     const instructionParts = [context.gatewayInstructions, customInstructions];
 
     // Prefer CLI backends from dynamic session context, fall back to env var
+    let cliBackendsFromEnv:
+      | Array<{ name: string; command: string; args?: string[] }>
+      | undefined;
+    if (!pc.cliBackends?.length && process.env.CLI_BACKENDS) {
+      try {
+        cliBackendsFromEnv = JSON.parse(process.env.CLI_BACKENDS) as Array<{
+          name: string;
+          command: string;
+          args?: string[];
+        }>;
+      } catch (error) {
+        logger.error(
+          `Failed to parse CLI_BACKENDS env var: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
     const cliBackends = pc.cliBackends?.length
       ? pc.cliBackends
-      : process.env.CLI_BACKENDS
-        ? (JSON.parse(process.env.CLI_BACKENDS) as Array<{
-            name: string;
-            command: string;
-            args?: string[];
-          }>)
-        : undefined;
+      : cliBackendsFromEnv;
     if (cliBackends?.length) {
       const agentList = cliBackends
         .map((b) => {
@@ -1481,14 +1509,31 @@ Use it when the user references past discussions or you need context.`);
           continue;
         }
 
-        const destPath = path.join(inputDir, file.name);
+        // Sanitize file name to prevent path traversal
+        const safeName = path.basename(file.name);
+        if (!safeName || safeName === "." || safeName === "..") {
+          logger.warn(`Skipping file with invalid name: ${file.name}`);
+          continue;
+        }
+        if (safeName !== file.name) {
+          logger.warn(
+            `Sanitized file name from "${file.name}" to "${safeName}"`
+          );
+        }
+
+        if (!response.body) {
+          logger.error(`Response body is null for file ${safeName}`);
+          continue;
+        }
+
+        const destPath = path.join(inputDir, safeName);
         const fileStream = Readable.fromWeb(response.body as any);
         const writeStream = (await import("node:fs")).createWriteStream(
           destPath
         );
 
         await pipeline(fileStream, writeStream);
-        logger.info(`Downloaded: ${file.name} to input directory`);
+        logger.info(`Downloaded: ${safeName} to input directory`);
       } catch (error) {
         logger.error(`Error downloading file ${file.name}:`, error);
       }
@@ -1583,7 +1628,18 @@ ${fileListing}
 
     for (const file of imageFiles) {
       try {
-        const data = await fs.readFile(path.join(inputDir, file.name));
+        // Sanitize file name to prevent path traversal
+        const safeName = path.basename(file.name);
+        if (!safeName || safeName === "." || safeName === "..") {
+          logger.warn(`Skipping image with invalid name: ${file.name}`);
+          continue;
+        }
+        if (safeName !== file.name) {
+          logger.warn(
+            `Sanitized image file name from "${file.name}" to "${safeName}"`
+          );
+        }
+        const data = await fs.readFile(path.join(inputDir, safeName));
         if (data.length > OpenClawWorker.MAX_IMAGE_BYTES) {
           logger.warn(
             `Skipping image ${file.name}: ${Math.round(data.length / 1024 / 1024)}MB exceeds limit`

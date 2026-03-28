@@ -3,9 +3,33 @@ import {
   type ModuleSessionContext,
   moduleRegistry,
   type SessionContext,
+  type WorkerModule,
 } from "@lobu/core";
 
 const logger = createLogger("worker");
+
+/**
+ * Execute an operation on all worker modules with consistent error handling.
+ * Errors in individual modules are logged but do not halt iteration.
+ */
+async function executeForAllModules<T>(
+  operation: (module: WorkerModule) => Promise<T>,
+  operationName: string
+): Promise<T[]> {
+  const workerModules = moduleRegistry.getWorkerModules();
+  const results: T[] = [];
+  for (const module of workerModules) {
+    try {
+      results.push(await operation(module));
+    } catch (error) {
+      logger.error(
+        `Failed to execute ${operationName} for module ${module.name}:`,
+        error
+      );
+    }
+  }
+  return results;
+}
 
 export async function onSessionStart(
   context: SessionContext
@@ -20,17 +44,9 @@ export async function onSessionStart(
 
   let updatedContext = moduleContext;
 
-  const workerModules = moduleRegistry.getWorkerModules();
-  for (const module of workerModules) {
-    try {
-      updatedContext = await module.onSessionStart(updatedContext);
-    } catch (error) {
-      logger.error(
-        `Failed to execute onSessionStart for module ${module.name}:`,
-        error
-      );
-    }
-  }
+  await executeForAllModules(async (module) => {
+    updatedContext = await module.onSessionStart(updatedContext);
+  }, "onSessionStart");
 
   // Merge back into original context, mapping systemPrompt back to customInstructions
   return {
@@ -52,17 +68,10 @@ interface ModuleWorkspaceConfig {
 export async function initModuleWorkspace(
   config: ModuleWorkspaceConfig
 ): Promise<void> {
-  const workerModules = moduleRegistry.getWorkerModules();
-  for (const module of workerModules) {
-    try {
-      await module.initWorkspace(config);
-    } catch (error) {
-      logger.error(
-        `Failed to initialize workspace for module ${module.name}:`,
-        error
-      );
-    }
-  }
+  await executeForAllModules(
+    (module) => module.initWorkspace(config),
+    "initWorkspace"
+  );
 }
 
 export async function collectModuleData(context: {
@@ -71,18 +80,13 @@ export async function collectModuleData(context: {
   conversationId: string;
 }): Promise<Record<string, unknown>> {
   const moduleData: Record<string, unknown> = {};
-  const workerModules = moduleRegistry.getWorkerModules();
 
-  for (const module of workerModules) {
-    try {
-      const data = await module.onBeforeResponse(context);
-      if (data !== null) {
-        moduleData[module.name] = data;
-      }
-    } catch (error) {
-      logger.error(`Failed to collect data from module ${module.name}:`, error);
+  await executeForAllModules(async (module) => {
+    const data = await module.onBeforeResponse(context);
+    if (data !== null) {
+      moduleData[module.name] = data;
     }
-  }
+  }, "onBeforeResponse");
 
   return moduleData;
 }

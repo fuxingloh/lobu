@@ -10,7 +10,7 @@ export interface McpRegistryEntry {
   id: string;
   name: string;
   description: string;
-  type: "oauth" | "command" | "api-key" | "none";
+  type: "oauth" | "stdio" | "sse" | "api-key";
   config: Record<string, unknown>;
   setupInstructions?: string;
 }

@@ -336,6 +336,9 @@ export function createMcpToolDefinitions(
   for (const [mcpId, defs] of Object.entries(mcpTools)) {
     const contextPrefix = mcpContext?.[mcpId];
     for (const def of defs) {
+      if (!def.name || typeof def.name !== "string" || !def.name.trim()) {
+        continue;
+      }
       const schema = def.inputSchema
         ? Type.Unsafe(def.inputSchema)
         : Type.Object({});

@@ -73,13 +73,20 @@ export function verifyWorkerToken(token: string): WorkerTokenData | null {
     const decrypted = decrypt(token);
     const data = JSON.parse(decrypted) as WorkerTokenData;
 
-    if (!data.conversationId) {
-      logger.error("Worker token rejected: missing conversationId");
+    if (
+      !data.conversationId ||
+      !data.userId ||
+      !data.deploymentName ||
+      !data.timestamp
+    ) {
+      logger.error("Worker token rejected: missing required fields");
       return null;
     }
 
     // Check token expiration (default 24h)
-    const ttl = Number(process.env.WORKER_TOKEN_TTL_MS) || 86400000;
+    const parsedTtl = parseInt(process.env.WORKER_TOKEN_TTL_MS ?? "", 10);
+    const ttl =
+      !Number.isNaN(parsedTtl) && parsedTtl > 0 ? parsedTtl : 86400000;
     if (Date.now() - data.timestamp > ttl) {
       logger.error("Worker token rejected: expired");
       return null;

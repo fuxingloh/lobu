@@ -407,7 +407,40 @@ export class MessageConsumer {
             );
             logger.info({ traceId, deploymentName }, "Created deployment");
           } finally {
-            await this.releaseDeploymentLock(deploymentName);
+            try {
+              await this.releaseDeploymentLock(deploymentName);
+            } catch (releaseError) {
+              logger.error(
+                {
+                  deploymentName,
+                  error:
+                    releaseError instanceof Error
+                      ? releaseError.message
+                      : String(releaseError),
+                },
+                "CRITICAL: Failed to release deployment lock, attempting emergency Redis key deletion"
+              );
+              try {
+                const lockKey = `deployment:lock:${deploymentName}`;
+                const redisClient = this.queue.getRedisClient();
+                await redisClient.del(lockKey);
+                logger.info(
+                  { deploymentName },
+                  "Emergency lock cleanup succeeded"
+                );
+              } catch (emergencyError) {
+                logger.error(
+                  {
+                    deploymentName,
+                    error:
+                      emergencyError instanceof Error
+                        ? emergencyError.message
+                        : String(emergencyError),
+                  },
+                  "CRITICAL: Emergency lock cleanup also failed, lock will expire via TTL"
+                );
+              }
+            }
           }
         } else {
           logger.info(

@@ -119,9 +119,16 @@ export async function createEmbeddedBashOps(): Promise<BashOperations> {
   const bashFs = new ReadWriteFs({ root: workspaceDir });
 
   // Parse allowed domains from env var (set by gateway)
-  const allowedDomains: string[] = process.env.JUST_BASH_ALLOWED_DOMAINS
-    ? JSON.parse(process.env.JUST_BASH_ALLOWED_DOMAINS)
-    : [];
+  let allowedDomains: string[] = [];
+  if (process.env.JUST_BASH_ALLOWED_DOMAINS) {
+    try {
+      allowedDomains = JSON.parse(process.env.JUST_BASH_ALLOWED_DOMAINS);
+    } catch {
+      console.error(
+        `[embedded] Failed to parse JUST_BASH_ALLOWED_DOMAINS: ${process.env.JUST_BASH_ALLOWED_DOMAINS}`
+      );
+    }
+  }
 
   const network =
     allowedDomains.length > 0
