@@ -247,6 +247,36 @@ export class MockRedisClient {
     return chain;
   }
 
+  // --- Pipeline ---
+
+  pipeline(): {
+    setex(key: string, ttl: number, value: string): any;
+    del(...keys: string[]): any;
+    exec(): Promise<Array<[null, any]>>;
+  } {
+    const ops: Array<() => Promise<any>> = [];
+    const self = this;
+    const chain = {
+      setex(key: string, ttl: number, value: string) {
+        ops.push(() => self.setex(key, ttl, value));
+        return chain;
+      },
+      del(...keys: string[]) {
+        ops.push(() => self.del(...keys));
+        return chain;
+      },
+      async exec(): Promise<Array<[null, any]>> {
+        const results: Array<[null, any]> = [];
+        for (const op of ops) {
+          const result = await op();
+          results.push([null, result ?? "OK"]);
+        }
+        return results;
+      },
+    };
+    return chain;
+  }
+
   // --- Test helpers ---
 
   advanceTime(ms: number): void {
