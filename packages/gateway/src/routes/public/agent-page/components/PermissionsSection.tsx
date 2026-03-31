@@ -71,6 +71,7 @@ export function PermissionsSection({ adminOnly }: { adminOnly?: boolean }) {
       title="Permissions"
       icon="&#128274;"
       sectionKey="permissions"
+      count={ctx.permissionGrants.value.length}
       adminOnly={adminOnly}
     >
       <div class="space-y-2">

@@ -443,11 +443,6 @@ function ProviderCard({
           <div class="min-w-0">
             <p class="text-sm font-medium text-gray-800">{pInfo.name}</p>
             <CapabilityChips capabilities={pInfo.capabilities || []} />
-            {providerView?.source && (
-              <span class="inline-flex mt-1 text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                {providerView.source}
-              </span>
-            )}
             {!isConfigManaged && !ps.connected && ps.status && (
               <p class="text-xs truncate max-w-[120px] sm:max-w-none text-red-500">
                 {ps.status}

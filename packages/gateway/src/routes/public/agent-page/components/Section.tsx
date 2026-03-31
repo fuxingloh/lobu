@@ -7,6 +7,7 @@ interface SectionProps {
   title: string;
   icon: string;
   sectionKey?: SettingsSectionKey;
+  count?: number;
   badge?: ComponentChildren;
   adminOnly?: boolean;
   children: ComponentChildren;
@@ -17,6 +18,7 @@ export function Section({
   title,
   icon,
   sectionKey,
+  count,
   badge,
   adminOnly,
   children,
@@ -33,12 +35,6 @@ export function Section({
     ctx.canEditSection(sectionKey) &&
     (sectionView?.canReset || (ctx.isSandbox && storeBackedResetAvailable));
 
-  const sourceBadge =
-    sectionView && ctx.isSandbox ? (
-      <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-        {sectionView.source}
-      </span>
-    ) : null;
   const readOnlyBadge =
     sectionView && !ctx.canEditSection(sectionKey!) ? (
       <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
@@ -63,8 +59,12 @@ export function Section({
               hidden from user
             </span>
           )}
-          {sourceBadge}
           {readOnlyBadge}
+          {count != null && count > 0 && (
+            <span class="inline-flex items-center justify-center bg-slate-200 text-slate-600 text-[10px] font-semibold rounded-full min-w-[1.25rem] h-5 px-1.5">
+              {count}
+            </span>
+          )}
           {badge}
           <span
             class={`ml-auto text-xs text-gray-400 transition-transform ${isOpen ? "" : "rotate-[-90deg]"}`}

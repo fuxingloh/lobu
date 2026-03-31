@@ -787,11 +787,6 @@ function App() {
                 <span class="text-sm font-medium text-gray-800">
                   Verbose logging
                 </span>
-                {ctx.sectionViews.logging?.source && (
-                  <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                    {ctx.sectionViews.logging.source}
-                  </span>
-                )}
                 {!ctx.canEditSection("logging") && (
                   <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
                     read-only
@@ -854,9 +849,81 @@ function App() {
             </div>
           )}
         </form>
+        {ctx.isAdmin && ctx.isSandbox && <DeleteSandboxSection />}
         {ctx.isAdmin && !ctx.isSandbox && <DeleteAgentSection />}
       </div>
     </SettingsContext.Provider>
+  );
+}
+
+function DeleteSandboxSection() {
+  const ctx = useSettings();
+  const confirming = useSignal(false);
+  const deleting = useSignal(false);
+  const error = useSignal("");
+
+  async function handleDelete() {
+    deleting.value = true;
+    error.value = "";
+    try {
+      await api.deleteAgent(ctx.agentId);
+      const backUrl = new URLSearchParams(location.search).get("back");
+      window.location.href =
+        backUrl ||
+        (ctx.templateAgentId
+          ? `/agent/${encodeURIComponent(ctx.templateAgentId)}`
+          : "/agents");
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : "Failed to delete sandbox";
+      deleting.value = false;
+    }
+  }
+
+  return (
+    <div class="mt-8 border-t border-gray-200 pt-6">
+      {error.value && (
+        <div class="bg-red-100 text-red-800 px-3 py-2 rounded-lg text-xs mb-3">
+          {error.value}
+        </div>
+      )}
+      {confirming.value ? (
+        <div class="space-y-2">
+          <p class="text-xs text-gray-600">
+            This will delete sandbox settings for <strong>{ctx.agentId}</strong>
+            . Future sessions will use the base agent config.
+          </p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              disabled={deleting.value}
+              onClick={handleDelete}
+              class="px-4 py-2 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all disabled:opacity-60"
+            >
+              {deleting.value ? "Deleting..." : "Yes, Delete Sandbox"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                confirming.value = false;
+              }}
+              class="px-4 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            confirming.value = true;
+          }}
+          class="text-xs text-red-500 hover:text-red-700 transition-colors"
+        >
+          Delete this sandbox
+        </button>
+      )}
+    </div>
   );
 }
 

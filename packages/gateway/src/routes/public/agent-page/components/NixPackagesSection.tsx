@@ -93,6 +93,7 @@ export function NixPackagesSection({ adminOnly }: { adminOnly?: boolean }) {
       title="System Packages"
       icon="&#128230;"
       sectionKey="packages"
+      count={ctx.nixPackages.value.length}
       adminOnly={adminOnly}
     >
       <div class="space-y-3">

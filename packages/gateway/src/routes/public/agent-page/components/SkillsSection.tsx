@@ -64,6 +64,7 @@ function SubItem({
 
 export function SkillsSection({ adminOnly }: { adminOnly?: boolean }) {
   const ctx = useSettings();
+  const count = ctx.skills.value.length;
 
   function toggleSkill(repo: string) {
     ctx.skills.value = ctx.skills.value.map((s) =>
@@ -75,19 +76,13 @@ export function SkillsSection({ adminOnly }: { adminOnly?: boolean }) {
     ctx.skills.value = ctx.skills.value.filter((s) => s.repo !== repo);
   }
 
-  const count = ctx.skills.value.length;
-  const badge =
-    count > 0 ? (
-      <span class="text-xs text-gray-400">({count})</span>
-    ) : undefined;
-
   return (
     <Section
       id="skills"
       title="Skills"
       icon="&#128218;"
       sectionKey="skills"
-      badge={badge}
+      count={count}
       adminOnly={adminOnly}
     >
       <div class="space-y-2">

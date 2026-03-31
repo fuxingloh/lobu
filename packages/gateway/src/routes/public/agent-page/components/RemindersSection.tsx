@@ -55,6 +55,7 @@ export function RemindersSection({ adminOnly }: { adminOnly?: boolean }) {
       title="Schedules"
       icon="&#9200;"
       sectionKey="schedules"
+      count={ctx.schedules.value.length}
       badge={loadingBadge}
       adminOnly={adminOnly}
     >
