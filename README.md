@@ -7,7 +7,7 @@ Sandboxed, persistent, powered by the OpenClaw runtime and Lobu Skills.
 
 **Batteries included.** Lobu bundles sandboxed execution, MCP proxy, and gateway-level network isolation. One deployment, everything included.
 
-<video src="https://community.lobu.ai/demo.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/d72a9286-0325-4b8b-afc0-c1efe9c96f4e
 
 ## Channels & API
 
