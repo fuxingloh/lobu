@@ -30,7 +30,7 @@ const initLines: TermLine[] = [
     color: "#c9cdd4",
     links: [
       {
-        label: "Claude Sonnet 4 via Anthropic",
+        label: "Claude Sonnet 4 via OpenRouter",
         href: "/reference/providers/",
         selected: true,
       },

@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/d72a9286-0325-4b8b-afc0-c1efe9c96f4e
 
 **Telegram** — Long-polling bot integration with interactive agent workflows.
 
-**WhatsApp** — Baileys-based integration with a unique self-chat mode.
+**WhatsApp** — WhatsApp Business Cloud API integration.
 
 **Discord** — Bot integration with channel and DM support.
 
@@ -33,7 +33,7 @@ The quickest way to start is the CLI scaffold:
 
 ```bash
 npx @lobu/cli init my-bot
-cd my-bot && docker compose up -d
+cd my-bot && npx @lobu/cli run -d
 ```
 
 ### Deployment modes
@@ -105,7 +105,7 @@ Workers access third-party APIs through MCP servers. OAuth and credential manage
 
 **OpenClaw runtime.** Workers run [OpenClaw Pi Agent](https://openclaw.ai/), with per-agent model selection via the settings page. Supports OpenClaw skills, `IDENTITY.md`, `SOUL.md`, and `USER.md` workspace files.
 
-**Multi-provider auth.** Claude (OAuth), ChatGPT (device-code flow), and API-key providers (Gemini, NVIDIA, etc.) via pluggable `ModelProviderModule`.
+**Multi-provider auth.** 16 LLM providers (OpenAI, Gemini, Groq, DeepSeek, Mistral, etc.) via config-driven provider registry. API keys resolved at the gateway — workers never see credentials.
 
 ## How Lobu Differs
 
