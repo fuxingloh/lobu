@@ -1,11 +1,12 @@
-# Lobu - Serverless OpenClaw Infrastructure
+# Lobu - Multi-tenant OpenClaw for Organizations
 
-**Lobu** helps you deploy **autonomous AI agents**.
+**Lobu** is an open-source multi-tenant gateway for [OpenClaw](https://github.com/openclaw/openclaw). One sandbox and filesystem per user/channel. Shared memory across contexts. Agents never see secrets.
 
-Computer-use agents via REST API, on Slack, Telegram, WhatsApp, Discord, and Teams.
-Sandboxed, persistent, powered by the OpenClaw runtime and Lobu Skills.
+OpenClaw is an incredible agent runtime (800k LOC) but it's [single-tenant by design](https://x.com/steipete/status/2026092642623201379). Every user shares the same filesystem and bash session. Lobu rewrites only the gateway layer (~40k LOC) to be multi-tenant and keeps OpenClaw's Pi agent harness untouched inside each worker.
 
-**Batteries included.** Lobu bundles sandboxed execution, MCP proxy, and gateway-level network isolation. One deployment, everything included.
+**Embedded mode** uses [just-bash](https://github.com/nicholasgasior/just-bash) (virtual bash) + Nix for reproducible packages. Each user gets an isolated virtual filesystem and bash session at ~50MB memory footprint. We've tested 300 concurrent instances on a single machine. No Docker needed.
+
+Embed OpenClaw-powered agents into your product, or give your team powerful agents without managing separate instances for everyone.
 
 https://github.com/user-attachments/assets/d72a9286-0325-4b8b-afc0-c1efe9c96f4e
 
