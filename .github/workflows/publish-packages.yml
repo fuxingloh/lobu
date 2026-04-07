@@ -31,6 +31,7 @@ jobs:
           cd packages/core && bun run build
           cd ../gateway && bun run build
           cd ../worker && bun run build
+          cd ../cli && bun run build
 
       - name: Authenticate to npm
         run: |
@@ -43,9 +44,11 @@ jobs:
           node scripts/stage-publish-package.mjs packages/core .publish/core
           node scripts/stage-publish-package.mjs packages/gateway .publish/gateway
           node scripts/stage-publish-package.mjs packages/worker .publish/worker
+          node scripts/stage-publish-package.mjs packages/cli .publish/cli
           npm pack --ignore-scripts .publish/core --pack-destination .publish/artifacts
           npm pack --ignore-scripts .publish/gateway --pack-destination .publish/artifacts
           npm pack --ignore-scripts .publish/worker --pack-destination .publish/artifacts
+          npm pack --ignore-scripts .publish/cli --pack-destination .publish/artifacts
 
       - name: Publish @lobu/core
         run: npm publish .publish/artifacts/lobu-core-*.tgz --access public
@@ -59,5 +62,10 @@ jobs:
 
       - name: Publish @lobu/worker
         run: npm publish .publish/artifacts/lobu-worker-*.tgz --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @lobu/cli
+        run: npm publish .publish/artifacts/lobu-cli-*.tgz --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
