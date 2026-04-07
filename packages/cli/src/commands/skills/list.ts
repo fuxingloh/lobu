@@ -9,7 +9,7 @@ export async function skillsListCommand(): Promise<void> {
     return;
   }
 
-  const systemSkills = skills.filter((s) => !isProviderSkill(s));
+  const systemSkills = skills.filter((s) => !isProviderSkill(s) && !s.hidden);
   const providers = skills.filter(isProviderSkill);
 
   if (systemSkills.length > 0) {
