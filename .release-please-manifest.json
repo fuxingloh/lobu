@@ -1,6 +1,6 @@
 {
   ".": "3.0.5",
-  "packages/cli": "3.0.5",
+  "packages/cli": "3.0.6",
   "packages/core": "3.0.5",
   "packages/gateway": "3.0.5",
   "packages/worker": "3.0.5"
