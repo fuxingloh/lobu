@@ -586,22 +586,22 @@ export function MemorySection() {
               {connectorModes.map((mode) => (
                 <div
                   key={mode.label}
-                  class="rounded-2xl p-4 border flex items-start gap-4"
+                  class="rounded-2xl p-4 border"
                   style={{
                     borderColor: "rgba(251, 113, 133, 0.14)",
                     backgroundColor: "rgba(18, 12, 16, 0.45)",
                   }}
                 >
                   <div
-                    class="text-sm font-semibold shrink-0 w-16"
-                    style={{ color: "var(--color-page-text)" }}
-                  >
-                    {mode.label}
-                  </div>
-                  <div
                     class="text-sm leading-6"
                     style={{ color: "var(--color-page-text-muted)" }}
                   >
+                    <span
+                      class="font-semibold"
+                      style={{ color: "var(--color-page-text)" }}
+                    >
+                      {mode.label}.
+                    </span>{" "}
                     {mode.text}
                   </div>
                 </div>
