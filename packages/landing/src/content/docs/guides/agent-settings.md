@@ -31,14 +31,39 @@ Agent settings control behavior of each worker session.
 
 ## Memory Plugin Defaults
 
-The default memory plugin depends on the `MEMORY_URL` environment variable:
+Lobu agents can persist memories across conversations. The memory system is pluggable — you choose the backend during `lobu init` or by setting the `MEMORY_URL` environment variable.
 
-| `MEMORY_URL` | Default plugin |
+### Filesystem memory (`@openclaw/native-memory`)
+
+The default when `MEMORY_URL` is not set. Memories are stored as files on the worker's local disk inside its workspace directory. In Kubernetes this is a per-thread PersistentVolumeClaim mounted at `/workspace`; in Docker it's a host directory at `./workspaces/{threadId}/`.
+
+Filesystem memory is simple and zero-config — it works out of the box with no external services. The trade-off is that memories are scoped to a single thread's workspace and aren't shared across threads or agents.
+
+### Owletto memory (`@lobu/owletto-openclaw`)
+
+Activated when `MEMORY_URL` is set (e.g. during `lobu init` when you select Owletto Cloud, Owletto Local, or a custom Owletto URL). Instead of writing files locally, the agent calls Owletto's MCP server to store and retrieve memories. The gateway proxies these calls through `/mcp/owletto` and automatically configures the endpoint and auth URL — no manual wiring needed.
+
+Owletto memory provides cross-session persistence, structured knowledge management (watchers, connections, knowledge graphs), and the ability to share memory across agents.
+
+### How `lobu init` configures memory
+
+During `lobu init`, the Memory prompt offers four choices:
+
+| Choice | What happens |
 |---|---|
-| **Not set** (default) | `@openclaw/native-memory` (filesystem-based) |
-| **Set** | `@lobu/owletto-openclaw` (falls back to native memory if the Owletto plugin is not installed) |
+| **None (filesystem memory)** | `MEMORY_URL` is left unset. Gateway defaults to `@openclaw/native-memory`. |
+| **Owletto Cloud** | `MEMORY_URL` is set to `https://owletto.com/mcp`. |
+| **Owletto Local** | An Owletto container is added to your compose file and `MEMORY_URL` is set to `http://owletto:8787/mcp`. |
+| **Custom URL** | `MEMORY_URL` is set to your provided URL. |
 
-When Owletto is active, the gateway automatically configures the MCP endpoint and auth URL — no manual wiring needed.
+### Fallback behavior
+
+The gateway checks whether each plugin package is actually installed before using it. If the preferred plugin isn't available, it falls back gracefully:
+
+1. `MEMORY_URL` set + `@lobu/owletto-openclaw` installed → **Owletto**
+2. `MEMORY_URL` set + Owletto not installed + `@openclaw/native-memory` installed → **filesystem fallback**
+3. `MEMORY_URL` unset + `@openclaw/native-memory` installed → **filesystem**
+4. Neither plugin installed → **no memory**
 
 ### Per-agent override
 

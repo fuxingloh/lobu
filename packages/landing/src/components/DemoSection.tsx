@@ -63,7 +63,11 @@ const initLines: TermLine[] = [
     text: "? Memory?",
     color: "#c9cdd4",
     links: [
-      { label: "Filesystem", href: "#", selected: true },
+      {
+        label: "Filesystem",
+        href: "/guides/agent-settings/#filesystem-memory-openclawnative-memory",
+        selected: true,
+      },
       { label: "Owletto", href: "/memory", selected: false },
     ],
   },
