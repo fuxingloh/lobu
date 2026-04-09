@@ -85,16 +85,6 @@ export function HeroSection() {
             Get Started
           </a>
           <a
-            href="/guides/architecture/"
-            class="inline-flex items-center gap-2 text-sm font-medium px-5 py-2.5 rounded-lg transition-all hover:opacity-90"
-            style={{
-              color: "var(--color-page-text-muted)",
-              border: "1px solid var(--color-page-border)",
-            }}
-          >
-            View Architecture
-          </a>
-          <a
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
