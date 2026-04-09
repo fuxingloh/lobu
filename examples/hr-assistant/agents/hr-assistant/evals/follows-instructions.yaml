@@ -1,0 +1,16 @@
+name: follows-instructions
+description: Agent follows instructions without adding unrequested content
+trials: 3
+timeout: 60
+tags: [behavioral]
+rubric: follows-instructions.rubric.md
+
+turns:
+  - content: "List exactly 3 benefits of remote work. Use bullet points."
+    assert:
+      - type: regex
+        value: "^[\\s\\S]*[-•].*[-•].*[-•]"
+        weight: 0.5
+      - type: llm-rubric
+        value: "Lists exactly 3 benefits (not 2, not 4+), uses bullet points"
+        weight: 0.5

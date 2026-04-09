@@ -205,12 +205,39 @@ echo "Thread ID: $THREAD_ID"
 
 ---
 
+## 3. Automated Evaluations
+
+Use `lobu eval` to run automated quality checks against your agent. Evals are defined as YAML files in `agents/hr-assistant/evals/`.
+
+```bash
+# List available evals
+lobu eval --list
+
+# Run all evals
+lobu eval
+
+# Run a specific eval
+lobu eval ping
+
+# Compare models
+lobu eval -m claude/sonnet
+lobu eval -m openai/gpt-4.1
+```
+
+Each run auto-saves results and generates a comparison report at `agents/hr-assistant/evals/evals-report.md`.
+
+See `docs/EVALS.md` for the full eval format and rubric writing guide.
+
+---
+
 ## 4. Notes for AI Agents
 
 These APIs enable your AI agents to:
 - **Test connectivity**: Verify bot deployment is working
 - **E2E testing**: Automate full conversation flows
-- **CI/CD integration**: Run automated tests before deployment
+- **Automated evals**: Run `lobu eval` to measure agent quality with statistical trials
+- **CI/CD integration**: Run `lobu eval --ci` for pass/fail gating before deployment
+- **Model comparison**: Run `lobu eval -m <model>` across models, check `evals-report.md`
 - **Development**: Quickly test bot behavior without manual Slack interaction
 
 The messaging endpoint is **platform-agnostic** — the same API structure works across Slack, Telegram, Discord, and other supported platforms.

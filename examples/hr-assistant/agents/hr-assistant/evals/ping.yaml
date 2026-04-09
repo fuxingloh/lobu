@@ -1,0 +1,16 @@
+name: ping
+description: Agent responds to a simple greeting
+trials: 3
+timeout: 30
+tags: [smoke, fast]
+
+turns:
+  - content: "Hello, are you there?"
+    assert:
+      - type: contains
+        value: "hello"
+        options: { case_insensitive: true }
+        weight: 0.3
+      - type: llm-rubric
+        value: "Response is friendly and acknowledges the greeting without being overly verbose"
+        weight: 0.7

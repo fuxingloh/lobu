@@ -1,6 +1,6 @@
 # Development Makefile for Lobu
 
-.PHONY: help setup build test clean logs deploy down build-packages dev
+.PHONY: help setup build test eval clean logs deploy down build-packages dev
 
 # Default target
 help:
@@ -12,6 +12,7 @@ help:
 	@echo "  make deploy                                - Deploy to K8s using values-local.yaml"
 	@echo "  make deploy TARGET=production              - Deploy to K8s using values-production.yaml"
 	@echo "  make test                                  - Run test bot"
+	@echo "  make eval                                  - Run agent evals"
 	@echo "  make clean                                 - Stop all services and clean up"
 	@echo "  make clean-workers                         - Remove worker containers only"
 
@@ -46,6 +47,10 @@ build-worker:
 # Run test bot
 test:
 	@./scripts/test-bot.sh "@me test from make command"
+
+# Run agent evals
+eval:
+	@npx @lobu/cli eval
 # Deploy to Kubernetes
 # Usage: make deploy [--target=environment]
 deploy:

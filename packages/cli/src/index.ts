@@ -52,6 +52,7 @@ export async function runCli(
     )
     .option("--dry-run", "Process without persisting history")
     .option("--new", "Force new session (ignore existing)")
+    .option("-c, --context <name>", "Use a named context")
     .action(
       async (
         prompt: string,
@@ -62,10 +63,46 @@ export async function runCli(
           thread?: string;
           dryRun?: boolean;
           new?: boolean;
+          context?: string;
         }
       ) => {
         const { chatCommand } = await import("./commands/chat.js");
         await chatCommand(process.cwd(), prompt, options);
+      }
+    );
+
+  // ─── eval ──────────────────────────────────────────────────────────
+  program
+    .command("eval [name]")
+    .description("Run agent evaluations")
+    .option("-a, --agent <id>", "Agent ID (defaults to first in lobu.toml)")
+    .option(
+      "-g, --gateway <url>",
+      "Gateway URL (default: http://localhost:8080)"
+    )
+    .option(
+      "-m, --model <model>",
+      "Model to eval (e.g. claude/sonnet, openai/gpt-4.1)"
+    )
+    .option("--trials <n>", "Override trial count", parseInt)
+    .option("--list", "List available evals without running them")
+    .option("--ci", "CI mode: JSON output, non-zero exit on failure")
+    .option("--output <file>", "Write results to JSON file")
+    .action(
+      async (
+        name: string | undefined,
+        options: {
+          agent?: string;
+          gateway?: string;
+          model?: string;
+          trials?: number;
+          list?: boolean;
+          ci?: boolean;
+          output?: string;
+        }
+      ) => {
+        const { evalCommand } = await import("./commands/eval.js");
+        await evalCommand(process.cwd(), name, options);
       }
     );
 
@@ -102,11 +139,13 @@ export async function runCli(
       "Use the development-only admin password fallback"
     )
     .option("-c, --context <name>", "Use a named context")
+    .option("-f, --force", "Re-authenticate (revokes existing session)")
     .action(
       async (options: {
         token?: string;
         adminPassword?: boolean;
         context?: string;
+        force?: boolean;
       }) => {
         const { loginCommand } = await import("./commands/login.js");
         await loginCommand(options);

@@ -1,0 +1,22 @@
+name: context-retention
+description: Agent remembers context across turns
+trials: 3
+timeout: 60
+tags: [behavioral, multi-turn]
+
+turns:
+  - content: "My name is Alice and I work at Acme Corp."
+
+  - content: "What company do I work at?"
+    assert:
+      - type: contains
+        value: "Acme"
+        weight: 0.5
+      - type: llm-rubric
+        value: "Correctly recalls Acme Corp from the previous message"
+        weight: 0.5
+
+  - content: "And what's my name?"
+    assert:
+      - type: contains
+        value: "Alice"

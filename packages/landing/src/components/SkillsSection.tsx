@@ -1,5 +1,3 @@
-import { TerminalLog } from "./TerminalLog";
-
 const GITHUB_URL = "https://github.com/lobu-ai/lobu";
 
 const platformIcons: Record<string, JSX.Element> = {

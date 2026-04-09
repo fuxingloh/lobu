@@ -78,6 +78,15 @@ docker compose -f docker/docker-compose.yml exec redis redis-cli KEYS 'chat:hist
 docker compose -f docker/docker-compose.yml exec redis redis-cli DEL 'chat:history:<key>'
 ```
 
+5. For automated quality checks, use the eval system:
+```bash
+lobu eval                    # run all evals for default agent
+lobu eval ping               # run a specific eval
+lobu eval -m claude/sonnet   # eval with a specific model
+lobu eval --list             # list available evals
+```
+Eval definitions live in `agents/{name}/evals/*.yaml`. See `docs/EVALS.md` for format details.
+
 - If you create ephemeral files, you MUST delete them when you're done with them.
 - Use Docker to build and run the bot in development mode, K8S for production.
 - NEVER proactively create documentation files (\*.md) or README files. Only create documentation files if explicitly requested by the User. If you need to remember something, add it to CLAUDE.md as a single sentence.

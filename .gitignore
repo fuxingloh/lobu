@@ -44,6 +44,10 @@ debug-voice-urls.js
 # Test coverage
 coverage/
 
+# Eval results (auto-generated)
+**/.results/
+**/evals-report.md
+
 # Local data (Redis, etc.)
 data/
 dump.rdb

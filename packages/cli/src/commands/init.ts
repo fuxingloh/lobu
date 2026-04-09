@@ -552,6 +552,29 @@ export async function initCommand(
     await mkdir(join(agentDir, "skills"), { recursive: true });
     await writeFile(join(agentDir, "skills", ".gitkeep"), "");
 
+    // Create evals directory with sample eval
+    await mkdir(join(agentDir, "evals"), { recursive: true });
+    await writeFile(
+      join(agentDir, "evals", "ping.yaml"),
+      `name: ping
+description: Agent responds to a simple greeting
+trials: 3
+timeout: 30
+tags: [smoke, fast]
+
+turns:
+  - content: "Hello, are you there?"
+    assert:
+      - type: contains
+        value: "hello"
+        options: { case_insensitive: true }
+        weight: 0.3
+      - type: llm-rubric
+        value: "Response is friendly and acknowledges the greeting"
+        weight: 0.7
+`
+    );
+
     // Create shared skills directory
     await mkdir(join(projectDir, "skills"), { recursive: true });
     await writeFile(join(projectDir, "skills", ".gitkeep"), "");

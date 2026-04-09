@@ -19,7 +19,8 @@
       "!**/*.raw.js",
       "!**/node_modules/**",
       "!**/.astro/**",
-      "!**/tmp/**"
+      "!**/tmp/**",
+      "!**/provision-careops-watchers*"
     ]
   },
   "formatter": {
