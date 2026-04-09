@@ -15,7 +15,7 @@ const memoryPillars = [
 
 const recallSignals = [
   "Entity name matching — customers, products, topics",
-  "Full-text retrieval across facts, decisions, and observations",
+  "BM25 full-text retrieval across facts, decisions, and observations",
   "Semantic vector search for concept-level recall",
 ];
 
