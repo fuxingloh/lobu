@@ -41,7 +41,7 @@
     "@hono/node-server": "^1.19.9",
     "@hono/zod-openapi": "^1.2.1",
     "@kubernetes/client-node": "0.21.0",
-    "@lobu/core": "workspace:*",
+    "@lobu/core": "^3.0.5",
     "@mariozechner/pi-ai": "^0.51.6",
     "@scalar/hono-api-reference": "^0.9.39",
     "@sentry/node": "^10.19.0",
