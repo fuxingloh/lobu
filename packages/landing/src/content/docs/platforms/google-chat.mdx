@@ -3,6 +3,14 @@ title: Google Chat
 description: Connect a Lobu agent to Google Chat as a Workspace app.
 ---
 
+import { SampleChat, GCHAT_THEME } from "../../../components/SampleChat";
+import { PlatformConfigTable } from "../../../components/PlatformConfigTable";
+import { useCases } from "../../../use-cases";
+
+export const networkCase = useCases.find((u) => u.id === "network");
+export const skillsCase = useCases.find((u) => u.id === "skills");
+export const schedulesCase = useCases.find((u) => u.id === "schedules");
+
 Lobu connects to Google Chat through the [Chat SDK](https://github.com/vercel/chat) Google Chat adapter (`@chat-adapter/gchat`), using the Google Chat API and Workspace Events for real-time messaging.
 
 ## Setup
@@ -12,40 +20,19 @@ Lobu connects to Google Chat through the [Chat SDK](https://github.com/vercel/ch
 3. In the [Google Chat API configuration](https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat), configure the app:
    - Set the **App URL** to your gateway's webhook endpoint: `https://your-gateway/api/v1/webhooks/{connectionId}`
    - Enable **Interactive features** and configure the connection settings.
-4. Add a connection in Lobu:
+4. Run `lobu connections add gchat` to add the connection (prompts for the service account JSON), or run `lobu init` to scaffold a new project and pick Google Chat in the wizard.
 
-```bash
-curl -X POST https://your-gateway/api/v1/connections \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "gchat",
-    "templateAgentId": "your-agent-id",
-    "config": {
-      "platform": "gchat",
-      "credentials": "{...service account JSON...}",
-      "endpointUrl": "https://your-gateway/api/v1/webhooks/{connectionId}"
-    }
-  }'
-```
+## Interactive Examples
 
-Or set environment variables:
-
-```
-GOOGLE_CHAT_CREDENTIALS={"type":"service_account",...}
-GOOGLE_CHAT_PROJECT_NUMBER=123456789
-```
+<div class="not-content grid gap-6 my-6 md:grid-cols-3">
+  <SampleChat useCase={networkCase} theme={GCHAT_THEME} />
+  <SampleChat useCase={skillsCase} theme={GCHAT_THEME} />
+  <SampleChat useCase={schedulesCase} theme={GCHAT_THEME} />
+</div>
 
 ## Configuration
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `credentials` | Conditional | Service account JSON string. Required unless using ADC. |
-| `useApplicationDefaultCredentials` | Conditional | Use ADC instead of service account JSON. Works with `GOOGLE_APPLICATION_CREDENTIALS`, Workload Identity, or `gcloud auth`. |
-| `endpointUrl` | Recommended | Full webhook URL for button click actions. |
-| `googleChatProjectNumber` | No | GCP project number for webhook JWT verification. |
-| `impersonateUser` | No | User email for domain-wide delegation (Workspace Events). |
-| `pubsubAudience` | No | Expected audience for Pub/Sub push JWT verification. |
+<PlatformConfigTable platform="gchat" />
 
 ## Authentication
 

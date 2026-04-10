@@ -1,0 +1,51 @@
+---
+title: Slack
+description: Slack integration capabilities for Lobu agents.
+---
+
+import { SampleChat, SLACK_THEME } from "../../../components/SampleChat";
+import { PlatformConfigTable } from "../../../components/PlatformConfigTable";
+import { useCases } from "../../../use-cases";
+
+export const networkCase = useCases.find((u) => u.id === "network");
+export const skillsCase = useCases.find((u) => u.id === "skills");
+export const schedulesCase = useCases.find((u) => u.id === "schedules");
+
+Lobu's Slack adapter supports assistant threads, rich UI, and interactive workflows.
+
+## Setup
+
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps) and install it to your workspace.
+2. Copy the **Signing Secret** and **Bot Token** (`xoxb-...`) from the app settings.
+3. Run `lobu connections add slack` to add the connection to your existing agent (prompts for the bot token and signing secret), or run `lobu init` to scaffold a new project and pick Slack in the wizard.
+4. Start the stack with `lobu run -d` — the bot is now live in your Slack workspace.
+
+## Interactive Examples
+
+Below are three common interactions rendered as they would appear in a Slack thread: approval flows, skill/MCP installation, and scheduled tasks.
+
+<div class="not-content grid gap-6 my-6 md:grid-cols-3">
+  <SampleChat useCase={networkCase} theme={SLACK_THEME} />
+  <SampleChat useCase={skillsCase} theme={SLACK_THEME} />
+  <SampleChat useCase={schedulesCase} theme={SLACK_THEME} />
+</div>
+
+## Configuration
+
+<PlatformConfigTable platform="slack" />
+
+## Features
+
+- **Block Kit rendering** for buttons, forms, and structured interaction payloads.
+- **Thread streaming** using Slack streaming APIs for incremental responses.
+- **Tool approval UI** — the gateway intercepts destructive MCP tool calls and renders an in-thread approval card before executing.
+- **AskUser** — agents can prompt users mid-conversation with radio buttons, text input, or action buttons (rendered as Block Kit elements).
+- **MCP connections** — workers discover MCP tools at startup and call them through the gateway proxy; responses render inline as system messages.
+- **Settings/auth links** rendered as platform-scoped link buttons.
+- **Thread status indicator** (`is running..`) with rotating progress messages.
+
+## Typical Use Cases
+
+- Team assistant inside channels and DMs.
+- Human approval steps for domain grants or agent decisions.
+- Rich in-thread interaction without leaving Slack.

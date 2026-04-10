@@ -30,7 +30,7 @@ async function main() {
   rootPkg.version = version;
   await writeFile(
     path.join(root, "package.json"),
-    JSON.stringify(rootPkg, null, 2) + "\n"
+    `${JSON.stringify(rootPkg, null, 2)}\n`
   );
   console.log(`root: ${version}`);
 
@@ -39,7 +39,7 @@ async function main() {
     const pkgPath = path.join(root, pkg, "package.json");
     const pkgJson = JSON.parse(await readFile(pkgPath, "utf8"));
     pkgJson.version = version;
-    await writeFile(pkgPath, JSON.stringify(pkgJson, null, 2) + "\n");
+    await writeFile(pkgPath, `${JSON.stringify(pkgJson, null, 2)}\n`);
     console.log(`${pkg}: ${version}`);
   }
 

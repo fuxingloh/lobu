@@ -152,9 +152,16 @@ export class SecretProxy {
   }
 
   private async forward(c: Context): Promise<Response> {
-    // Build upstream URL — strip the proxy mount prefix and resolve provider slug
+    // Build upstream URL — strip the proxy mount prefix and resolve provider slug.
+    // Handles the case where the gateway is mounted as a sub-app under a prefix
+    // (e.g. /lobu/api/proxy/...) by stripping everything up to and including
+    // /api/proxy rather than requiring it at the start.
     const url = new URL(c.req.url);
-    const rawPath = url.pathname.replace(/^\/api\/proxy/, "");
+    const proxyIdx = url.pathname.indexOf("/api/proxy");
+    const rawPath =
+      proxyIdx >= 0
+        ? url.pathname.slice(proxyIdx + "/api/proxy".length)
+        : url.pathname;
 
     // Try slug-based routing: /api/proxy/{slug}/rest/of/path
     let upstreamBaseUrl = this.config.defaultUpstreamUrl;

@@ -532,7 +532,15 @@ export class WorkerGateway {
     const protocol = (protocolCandidate || "http").trim();
     const host = c.req.header("host");
     if (host) {
-      return `${protocol}://${host}`;
+      // Preserve any base path from publicGatewayUrl (e.g. /lobu) when the
+      // gateway is mounted as a sub-app under a prefix path.
+      let basePath = "";
+      try {
+        basePath = new URL(this.publicGatewayUrl).pathname.replace(/\/$/, "");
+      } catch {
+        // publicGatewayUrl may not be a full URL in some configurations.
+      }
+      return `${protocol}://${host}${basePath}`;
     }
     return this.publicGatewayUrl;
   }
