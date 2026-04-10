@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import dns from "node:dns/promises";
 import { createLogger, verifyWorkerToken } from "@lobu/core";
 import type { Context } from "hono";
@@ -128,9 +129,25 @@ function extractSessionToken(c: Context): string | null {
 
 export class McpProxy {
   private readonly SESSION_TTL_SECONDS = 30 * 60; // 30 minutes
+  private readonly PENDING_TOOL_TTL = 300; // 5 minutes
   private readonly redisClient: any;
   private app: Hono;
   private toolCache?: McpToolCache;
+
+  /** Callback invoked when a tool call is blocked for approval. */
+  public onToolBlocked?: (
+    requestId: string,
+    agentId: string,
+    userId: string,
+    mcpId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    grantPattern: string,
+    channelId: string,
+    conversationId: string,
+    teamId: string | undefined,
+    connectionId: string | undefined
+  ) => Promise<void>;
 
   constructor(
     private readonly configService: McpConfigSource,
@@ -147,6 +164,79 @@ export class McpProxy {
 
   getApp(): Hono {
     return this.app;
+  }
+
+  /**
+   * Execute an MCP tool call directly (internal use, no HTTP auth).
+   * Used by the interaction bridge to execute tool calls after user approval.
+   */
+  async executeToolDirect(
+    agentId: string,
+    userId: string,
+    mcpId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError: boolean;
+  }> {
+    const httpServer = await this.configService.getHttpServer(mcpId, agentId);
+    if (!httpServer) {
+      return {
+        content: [{ type: "text", text: `MCP server '${mcpId}' not found` }],
+        isError: true,
+      };
+    }
+
+    const jsonRpcBody = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { name: toolName, arguments: args },
+      id: 1,
+    });
+
+    try {
+      const response = await this.sendUpstreamRequest(
+        httpServer,
+        agentId,
+        mcpId,
+        "POST",
+        jsonRpcBody,
+        userId
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Tool call failed: ${response.status} ${text}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const json = (await response.json()) as any;
+      const result = json.result || json;
+      return {
+        content: result.content || [
+          { type: "text", text: JSON.stringify(result) },
+        ],
+        isError: result.isError || false,
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Tool execution error: ${String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   }
 
   /**
@@ -421,6 +511,20 @@ export class McpProxy {
       return c.json({ error: `MCP server '${mcpId}' not found` }, 404);
     }
 
+    // Parse body early so tool arguments are available for the approval message.
+    let toolArguments: Record<string, unknown> = {};
+    try {
+      const body = await c.req.text();
+      if (body) {
+        if (body.length > MAX_BODY_SIZE) {
+          return c.json({ error: "Request body too large" }, 413);
+        }
+        toolArguments = JSON.parse(body);
+      }
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
     // Check tool approval based on annotations and grants.
     if (this.grantStore) {
       const { found, annotations } = await this.getToolAnnotations(
@@ -439,6 +543,62 @@ export class McpProxy {
             toolName,
             pattern,
           });
+
+          if (this.onToolBlocked) {
+            const requestId = `ta_${randomUUID()}`;
+            await this.redisClient
+              .set(
+                `pending-tool:${requestId}`,
+                JSON.stringify({
+                  mcpId,
+                  toolName,
+                  args: toolArguments,
+                  agentId,
+                  userId: requesterUserId,
+                }),
+                "EX",
+                this.PENDING_TOOL_TTL
+              )
+              .catch((err: unknown) =>
+                logger.error(
+                  { requestId, error: String(err) },
+                  "Failed to store pending tool invocation"
+                )
+              );
+
+            await this.onToolBlocked(
+              requestId,
+              agentId,
+              requesterUserId,
+              mcpId,
+              toolName,
+              toolArguments,
+              pattern,
+              auth.tokenData.channelId || "",
+              auth.tokenData.conversationId || "",
+              auth.tokenData.teamId,
+              auth.tokenData.connectionId
+            ).catch((err) =>
+              logger.error(
+                { requestId, error: String(err) },
+                "onToolBlocked callback failed"
+              )
+            );
+
+            return c.json(
+              {
+                content: [
+                  {
+                    type: "text",
+                    text: "Tool call requires approval. The user has been asked to approve. Your session will end. The result will arrive as your next message.",
+                  },
+                ],
+                isError: true,
+              },
+              403
+            );
+          }
+
           return c.json(
             {
               content: [
@@ -453,19 +613,6 @@ export class McpProxy {
           );
         }
       }
-    }
-
-    let toolArguments: Record<string, unknown> = {};
-    try {
-      const body = await c.req.text();
-      if (body) {
-        if (body.length > MAX_BODY_SIZE) {
-          return c.json({ error: "Request body too large" }, 413);
-        }
-        toolArguments = JSON.parse(body);
-      }
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
     }
 
     try {
@@ -649,6 +796,98 @@ export class McpProxy {
         -32601,
         `MCP server '${mcpId}' not found`
       );
+    }
+
+    // Check tool approval for tools/call JSON-RPC requests.
+    // Clone the request so the body can be read twice (once here, once in forwardRequest).
+    if (this.grantStore && c.req.method === "POST") {
+      try {
+        const clonedReq = c.req.raw.clone();
+        const bodyText = await clonedReq.text();
+        if (bodyText) {
+          const jsonRpc = JSON.parse(bodyText);
+          if (jsonRpc.method === "tools/call" && jsonRpc.params?.name) {
+            const toolName = jsonRpc.params.name;
+            const toolArgs = jsonRpc.params.arguments || {};
+            const { found, annotations } = await this.getToolAnnotations(
+              mcpId!,
+              toolName,
+              agentId,
+              tokenData
+            );
+            if (found && requiresToolApproval(annotations)) {
+              const pattern = `/mcp/${mcpId}/tools/${toolName}`;
+              const hasGrant = await this.grantStore.hasGrant(agentId, pattern);
+              if (!hasGrant) {
+                logger.info("Tool call blocked (JSON-RPC): requires approval", {
+                  agentId,
+                  mcpId,
+                  toolName,
+                  pattern,
+                });
+
+                if (this.onToolBlocked) {
+                  const requestId = `ta_${randomUUID()}`;
+                  await this.redisClient
+                    .set(
+                      `pending-tool:${requestId}`,
+                      JSON.stringify({
+                        mcpId,
+                        toolName,
+                        args: toolArgs,
+                        agentId,
+                        userId: tokenData.userId,
+                      }),
+                      "EX",
+                      this.PENDING_TOOL_TTL
+                    )
+                    .catch((err: unknown) =>
+                      logger.error(
+                        { requestId, error: String(err) },
+                        "Failed to store pending tool invocation"
+                      )
+                    );
+
+                  await this.onToolBlocked(
+                    requestId,
+                    agentId,
+                    tokenData.userId,
+                    mcpId!,
+                    toolName,
+                    toolArgs,
+                    pattern,
+                    tokenData.channelId || "",
+                    tokenData.conversationId || "",
+                    tokenData.teamId,
+                    tokenData.connectionId
+                  ).catch((err) =>
+                    logger.error(
+                      { requestId, error: String(err) },
+                      "onToolBlocked callback failed"
+                    )
+                  );
+                }
+
+                return c.json({
+                  jsonrpc: "2.0",
+                  id: jsonRpc.id,
+                  result: {
+                    content: [
+                      {
+                        type: "text",
+                        text: "Tool call requires approval. The user has been asked to approve. Your session will end. The result will arrive as your next message.",
+                      },
+                    ],
+                    isError: true,
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // If body parsing fails, just forward the request as-is
+      }
     }
 
     try {

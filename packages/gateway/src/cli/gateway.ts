@@ -271,6 +271,10 @@ export function createGatewayApp(
 
     if (queueProducer && sessionMgr && interactionSvc) {
       const { createAgentApi } = require("../routes/public/agent");
+      const approveRedis = coreServices.getQueue().getRedisClient();
+      const approveGrantStore = coreServices.getGrantStore();
+      const approveMcpProxy = coreServices.getMcpProxy();
+
       const agentApi = createAgentApi({
         queueProducer,
         sessionManager: sessionMgr,
@@ -281,6 +285,47 @@ export function createGatewayApp(
         agentSettingsStore: coreServices.getAgentSettingsStore(),
         agentConfigStore: coreServices.getConfigStore(),
         platformRegistry,
+        approveToolCall: async (requestId: string, decision: string) => {
+          const raw = await approveRedis.get(`pending-tool:${requestId}`);
+          if (!raw)
+            return { success: false, error: "Request not found or expired" };
+          const pending = JSON.parse(raw);
+          const pattern = `/mcp/${pending.mcpId}/tools/${pending.toolName}`;
+          const expiresMap: Record<string, number | null> = {
+            once: Date.now() + 60_000,
+            "1h": Date.now() + 3_600_000,
+            "24h": Date.now() + 86_400_000,
+            always: null,
+          };
+          if (decision === "deny") {
+            await approveGrantStore?.grant(
+              pending.agentId,
+              pattern,
+              null,
+              true
+            );
+            await approveRedis.del(`pending-tool:${requestId}`);
+            return { success: true };
+          }
+          await approveGrantStore?.grant(
+            pending.agentId,
+            pattern,
+            decision in expiresMap ? expiresMap[decision]! : null
+          );
+          if (approveMcpProxy) {
+            const result = await approveMcpProxy.executeToolDirect(
+              pending.agentId,
+              pending.userId,
+              pending.mcpId,
+              pending.toolName,
+              pending.args
+            );
+            await approveRedis.del(`pending-tool:${requestId}`);
+            return { success: true, result } as any;
+          }
+          await approveRedis.del(`pending-tool:${requestId}`);
+          return { success: true };
+        },
       });
       app.route("", agentApi);
       logger.debug(

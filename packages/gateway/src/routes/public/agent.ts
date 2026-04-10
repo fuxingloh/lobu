@@ -432,6 +432,10 @@ export interface AgentApiConfig {
   agentSettingsStore?: AgentSettingsStore;
   agentConfigStore?: Pick<AgentConfigStore, "getSettings" | "listAgents">;
   platformRegistry?: PlatformRegistry;
+  approveToolCall?: (
+    requestId: string,
+    decision: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export function createAgentApi(config: AgentApiConfig): OpenAPIHono;
@@ -1079,6 +1083,31 @@ export function createAgentApi(
       throw error;
     }
   });
+
+  // POST /api/v1/agents/approve - Approve a pending tool call (CLI/web)
+  if (config.approveToolCall) {
+    const approveHandler = config.approveToolCall;
+    app.post("/api/v1/agents/approve", async (c) => {
+      const { requestId, decision } = await c.req.json();
+      if (!requestId || !decision) {
+        return c.json({ error: "Missing requestId or decision" }, 400);
+      }
+      const validDecisions = ["once", "1h", "24h", "always", "deny"];
+      if (!validDecisions.includes(decision)) {
+        return c.json(
+          {
+            error: `Invalid decision. Must be one of: ${validDecisions.join(", ")}`,
+          },
+          400
+        );
+      }
+      const result = await approveHandler(requestId, decision);
+      if (!result.success) {
+        return c.json({ error: result.error || "Approval failed" }, 400);
+      }
+      return c.json({ success: true });
+    });
+  }
 
   logger.debug("Hono Agent API routes registered");
 

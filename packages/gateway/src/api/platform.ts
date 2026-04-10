@@ -75,34 +75,16 @@ export class ApiPlatform implements PlatformAdapter {
       });
     });
 
-    interactionService.on("grant:requested", (event: any) => {
+    interactionService.on("tool:approval-needed", (event: any) => {
       if (event.teamId !== "api") return;
-      broadcastToAgent(event.conversationId, "grant-request", {
-        type: "grant-request",
+      broadcastToAgent(event.conversationId, "tool-approval", {
+        type: "tool-approval",
         requestId: event.id,
-        domains: event.domains,
-        reason: event.reason,
-        timestamp: Date.now(),
-      });
-    });
-
-    interactionService.on("package:requested", (event: any) => {
-      if (event.teamId !== "api") return;
-      broadcastToAgent(event.conversationId, "package-request", {
-        type: "package-request",
-        requestId: event.id,
-        packages: event.packages,
-        reason: event.reason,
-        timestamp: Date.now(),
-      });
-    });
-
-    interactionService.on("config:requested", (event: any) => {
-      if (event.teamId !== "api") return;
-      broadcastToAgent(event.conversationId, "config-request", {
-        type: "config-request",
-        requestId: event.id,
-        text: event.text,
+        mcpId: event.mcpId,
+        toolName: event.toolName,
+        args: event.args,
+        grantPattern: event.grantPattern,
+        durationOptions: ["once", "1h", "24h", "always"],
         timestamp: Date.now(),
       });
     });

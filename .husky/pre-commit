@@ -2,19 +2,11 @@
 
 echo "🔍 Running pre-commit checks..."
 
-# Run format check
-echo "📝 Checking code formatting with Biome..."
-bun run format:check
+# Run biome check (format + lint + organize imports) and auto-fix
+echo "📝 Running Biome checks..."
+bun run check:fix
 if [ $? -ne 0 ]; then
-  echo "❌ Formatting issues found. Run 'bun run format' to fix them."
-  exit 1
-fi
-
-# Run lint check
-echo "🔎 Running linter with Biome..."
-bun run lint
-if [ $? -ne 0 ]; then
-  echo "❌ Linting issues found. Fix them before committing."
+  echo "❌ Biome check failed. Fix issues before committing."
   exit 1
 fi
 

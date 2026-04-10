@@ -37,46 +37,20 @@ export interface PostedLinkButton {
 }
 
 /**
- * Payload emitted on "grant:requested" — platform renderers listen for this.
+ * Payload emitted on "tool:approval-needed" — platform renderers listen for this.
  */
-export interface PostedGrantRequest {
+export interface PostedToolApproval {
   id: string;
-  userId: string;
   agentId: string;
+  userId: string;
   conversationId: string;
   channelId: string;
   teamId?: string;
   connectionId?: string;
-  domains: string[];
-  reason: string;
-}
-
-/**
- * Payload emitted on "package:requested" — platform renderers listen for this.
- */
-export interface PostedPackageRequest {
-  id: string;
-  userId: string;
-  agentId: string;
-  conversationId: string;
-  channelId: string;
-  teamId?: string;
-  packages: string[];
-  reason: string;
-}
-
-/**
- * Payload emitted on "config:requested" — platform renderers listen for this.
- */
-export interface PostedConfigRequest {
-  id: string;
-  userId: string;
-  agentId: string;
-  conversationId: string;
-  channelId: string;
-  teamId?: string;
-  connectionId?: string;
-  text: string;
+  mcpId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  grantPattern: string;
 }
 
 /**
@@ -150,112 +124,44 @@ export class InteractionService extends EventEmitter {
   }
 
   /**
-   * Post a grant request with approve/deny buttons (non-blocking, fire-and-forget).
-   * Emits "grant:requested" for platform renderers.
+   * Post a tool approval request with duration buttons (non-blocking, fire-and-forget).
+   * Emits "tool:approval-needed" for platform renderers.
    */
-  async postGrantRequest(
-    userId: string,
+  async postToolApproval(
     agentId: string,
+    userId: string,
     conversationId: string,
     channelId: string,
     teamId: string | undefined,
     connectionId: string | undefined,
-    domains: string[],
-    reason: string
-  ): Promise<PostedGrantRequest> {
+    mcpId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    grantPattern: string
+  ): Promise<PostedToolApproval> {
     if (this.beforeCreateHook) {
       await this.beforeCreateHook(userId, conversationId);
     }
 
-    const posted: PostedGrantRequest = {
-      id: `gr_${randomUUID()}`,
-      userId,
+    const posted: PostedToolApproval = {
+      id: `ta_${randomUUID()}`,
       agentId,
+      userId,
       conversationId,
       channelId,
       teamId,
       connectionId,
-      domains,
-      reason,
+      mcpId,
+      toolName,
+      args,
+      grantPattern,
     };
 
     logger.info(
-      `Posted grant request ${posted.id} for agent ${agentId} domains=${domains.join(",")}`
+      `Posted tool approval ${posted.id} for ${mcpId}/${toolName} agent=${agentId}`
     );
 
-    this.emit("grant:requested", posted);
-    return posted;
-  }
-
-  /**
-   * Post a package install request with approve/deny buttons (non-blocking, fire-and-forget).
-   * Emits "package:requested" for platform renderers.
-   */
-  async postPackageRequest(
-    userId: string,
-    agentId: string,
-    conversationId: string,
-    channelId: string,
-    teamId: string | undefined,
-    packages: string[],
-    reason: string
-  ): Promise<PostedPackageRequest> {
-    if (this.beforeCreateHook) {
-      await this.beforeCreateHook(userId, conversationId);
-    }
-
-    const posted: PostedPackageRequest = {
-      id: `pkg_${randomUUID()}`,
-      userId,
-      agentId,
-      conversationId,
-      channelId,
-      teamId,
-      packages,
-      reason,
-    };
-
-    logger.info(
-      `Posted package request ${posted.id} for agent ${agentId} packages=${packages.join(",")}`
-    );
-
-    this.emit("package:requested", posted);
-    return posted;
-  }
-
-  /**
-   * Post a config request with approve/deny buttons (non-blocking).
-   * Emits "config:requested" for platform renderers.
-   */
-  async postConfigRequest(
-    userId: string,
-    agentId: string,
-    conversationId: string,
-    channelId: string,
-    teamId: string | undefined,
-    connectionId: string | undefined,
-    text: string
-  ): Promise<PostedConfigRequest> {
-    if (this.beforeCreateHook) {
-      await this.beforeCreateHook(userId, conversationId);
-    }
-
-    const posted: PostedConfigRequest = {
-      id: `cfg_${randomUUID()}`,
-      userId,
-      agentId,
-      conversationId,
-      channelId,
-      teamId,
-      connectionId,
-      text,
-    };
-
-    logger.info(
-      `Posted config request ${posted.id} for agent ${agentId} conversation ${conversationId}`
-    );
-
-    this.emit("config:requested", posted);
+    this.emit("tool:approval-needed", posted);
     return posted;
   }
 

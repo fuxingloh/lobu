@@ -690,6 +690,32 @@ export class CoreServices {
       mcpToolCache,
       this.grantStore
     );
+    this.mcpProxy.onToolBlocked = async (
+      _requestId,
+      agentId,
+      userId,
+      mcpId,
+      toolName,
+      args,
+      grantPattern,
+      channelId,
+      conversationId,
+      teamId,
+      connectionId
+    ) => {
+      await this.interactionService?.postToolApproval(
+        agentId,
+        userId,
+        conversationId,
+        channelId,
+        teamId,
+        connectionId,
+        mcpId,
+        toolName,
+        args,
+        grantPattern
+      );
+    };
     logger.debug("MCP proxy initialized");
 
     // Initialize worker gateway

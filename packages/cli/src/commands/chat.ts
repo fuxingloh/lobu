@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import { join } from "node:path";
 import chalk from "chalk";
 import { resolveContext } from "../api/context.js";
@@ -310,10 +311,77 @@ async function streamResponse(
               }
               controller.abort();
               return;
+            case "tool-approval": {
+              const args = data.args as Record<string, unknown> | undefined;
+              const argsText = args
+                ? Object.entries(args)
+                    .map(
+                      ([k, v]) =>
+                        `  ${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+                    )
+                    .join("\n")
+                : "";
+              console.error(
+                chalk.yellow(
+                  `\n  Tool Approval Required\n  ${data.mcpId} → ${data.toolName}\n${argsText}\n`
+                )
+              );
+              const options = ["once", "1h", "24h", "always", "deny"];
+              console.error(
+                options
+                  .map(
+                    (o, i) =>
+                      `  ${chalk.bold(`${i + 1}`)}. ${o === "deny" ? chalk.red(o) : chalk.green(o)}`
+                  )
+                  .join("\n")
+              );
+
+              const rl = createInterface({
+                input: process.stdin,
+                output: process.stderr,
+              });
+              const answer = await new Promise<string>((resolve) =>
+                rl.question(chalk.dim("\n  Choice (1-5): "), (a) => {
+                  rl.close();
+                  resolve(a.trim());
+                })
+              );
+              const idx = Number.parseInt(answer, 10) - 1;
+              const decision = options[idx] || "deny";
+
+              const approveUrl = sseUrl
+                .replace(/\/events$/, "")
+                .replace(/\/api\/v1\/agents\/[^/]+/, "/api/v1/agents/approve");
+              const approveRes = await fetch(approveUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ requestId: data.requestId, decision }),
+              });
+              if (approveRes.ok) {
+                const result = (await approveRes.json()) as any;
+                if (result.result?.content) {
+                  const text = result.result.content
+                    .map((c: any) => c.text)
+                    .join("\n");
+                  process.stdout.write(renderMarkdown(text));
+                }
+                console.error(
+                  chalk.green(
+                    `\n  Tool ${decision === "deny" ? "denied" : "approved"} (${decision})\n`
+                  )
+                );
+              } else {
+                console.error(
+                  chalk.red(`\n  Approval failed: ${await approveRes.text()}\n`)
+                );
+              }
+              break;
+            }
             case "link-button":
             case "question":
-            case "grant-request":
-            case "package-request":
             case "suggestion":
               console.error(JSON.stringify({ event: currentEvent, ...data }));
               break;

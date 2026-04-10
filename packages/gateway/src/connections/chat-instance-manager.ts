@@ -676,13 +676,14 @@ export class ChatInstanceManager {
       const { registerInteractionBridge } = await import(
         "./interaction-bridge"
       );
+      const mcpProxy = this.services.getMcpProxy();
       const interactionCleanup = registerInteractionBridge(
         this.services.getInteractionService(),
         this,
         connection,
         chat,
         this.services.getGrantStore(),
-        this.services.getAgentSettingsStore()
+        mcpProxy?.executeToolDirect.bind(mcpProxy)
       );
       this.instances.get(connection.id)!.interactionCleanup =
         interactionCleanup;
