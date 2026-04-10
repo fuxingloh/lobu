@@ -35,9 +35,14 @@ jobs:
         env:
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          COMMIT_SHA: ${{ github.sha }}
+          # Passed via env so shell-special characters in the commit body
+          # (backticks, $, quotes) are treated as literal text instead of
+          # being evaluated as subshells / variable expansions.
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           bunx wrangler pages deploy packages/landing/dist \
             --project-name lobu-ai \
             --branch main \
-            --commit-hash "${{ github.sha }}" \
-            --commit-message "${{ github.event.head_commit.message }}"
+            --commit-hash "$COMMIT_SHA" \
+            --commit-message "$COMMIT_MESSAGE"
