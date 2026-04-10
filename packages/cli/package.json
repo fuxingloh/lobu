@@ -20,6 +20,11 @@
   ],
   "author": "Burak Emre",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lobu-ai/lobu.git",
+    "directory": "packages/cli"
+  },
   "dependencies": {
     "@lobu/core": "workspace:*",
     "chalk": "^5.3.0",

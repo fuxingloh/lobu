@@ -3,6 +3,11 @@
   "version": "3.0.19",
   "license": "Apache-2.0",
   "description": "Lobu SDK — embed AI agents with platform adapters, worker orchestration, and MCP proxy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lobu-ai/lobu.git",
+    "directory": "packages/gateway"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
