@@ -116,5 +116,5 @@ function inferType(chunk: string): string {
 const result = extractSchemas();
 const outPath = resolve(__dirname, "../src/generated/platform-configs.json");
 
-writeFileSync(outPath, JSON.stringify(result, null, 2));
+writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
 console.log(`Wrote ${result.platforms.length} platform configs to ${outPath}`);
