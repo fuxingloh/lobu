@@ -16,7 +16,7 @@ const memoryPillars = [
 const recallSignals = [
   "Entity name matching — customers, products, topics",
   "BM25 full-text retrieval across facts, decisions, and observations",
-  "Semantic vector search for concept-level recall",
+  "Semantic vector search for concept-level recall on unstructured text",
 ];
 
 const connectorModes = [
@@ -317,14 +317,15 @@ export function MemorySection() {
             class="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-5"
             style={{ color: "var(--color-page-text)" }}
           >
-            Shared memory for your team
+            Build context that lasts with{" "}
+            <span style="color:var(--color-tg-accent);">Lobu Memory</span>
           </h1>
           <p
             class="text-lg sm:text-xl leading-8 max-w-[40rem] mx-auto m-0"
             style={{ color: "var(--color-page-text-muted)" }}
           >
-            Owletto is Lobu&apos;s default memory system — a typed entity graph
-            with live connectors, scheduled analysis, and managed OAuth.
+            Your agent remembers everything you value with a typed entity graph
+            with live connectors and scheduled analysis.
           </p>
           <div class="flex flex-wrap gap-3 mt-8 justify-center">
             <a
@@ -338,7 +339,7 @@ export function MemorySection() {
                 borderColor: "var(--color-page-border-active)",
               }}
             >
-              See live
+              Try Owletto
             </a>
             <a
               href="https://github.com/lobu-ai/owletto"

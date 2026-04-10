@@ -10,10 +10,19 @@ sidebar:
 Use it for:
 
 - Skill metadata such as `name` and `description`
-- Capability declarations such as integrations, MCP servers, packages, and network domains
+- Capability declarations such as MCP servers, packages, and network domains
 - Instruction text that is injected into the agent's system prompt when the skill is active
 
 Tool policy does **not** live in `SKILL.md`. Configure that in [`lobu.toml`](/reference/lobu-toml/) under `[agents.<id>.tools]`; see [Tool Policy](/guides/tool-policy/).
+
+## Where Skills Live
+
+Lobu discovers local skills from:
+
+- `skills/<name>/SKILL.md` for shared project-level skills
+- `agents/<agent>/skills/<name>/SKILL.md` for agent-specific skills
+
+If the file exists, Lobu loads it automatically at startup.
 
 ## Minimal example
 
@@ -35,20 +44,18 @@ When asked to work with PDFs, use `pdftotext` first.
 name: My Skill
 description: What this skill does
 
-integrations:
-  - id: google
-    authType: oauth
-
 mcpServers:
   my-mcp:
     url: https://my-mcp.example.com
     type: sse
 
-nixConfig:
-  packages: [jq, ripgrep, pandoc]
+nixPackages:
+  - jq
+  - ripgrep
+  - pandoc
 
-networkConfig:
-  allowedDomains:
+network:
+  allow:
     - api.example.com
 ---
 
@@ -64,23 +71,26 @@ The body acts as a system prompt extension.
 |-------|------|-------------|
 | `name` | string | Display name shown in settings and search results |
 | `description` | string | Short summary for the skill registry |
-| `integrations` | array | Third-party services the skill requires |
-| `integrations[].id` | string | Integration identifier such as `google` or `github` |
-| `integrations[].authType` | `oauth` \| `apiKey` | Authentication method |
 | `mcpServers` | object | MCP server connections keyed by server ID |
 | `mcpServers.<id>.url` | string | Server endpoint URL |
-| `mcpServers.<id>.type` | `sse` \| `http` | Transport type |
-| `nixConfig.packages` | string[] | Nix packages to install |
-| `nixConfig.flakeUrl` | string | Nix flake URL for a full dev shell |
-| `networkConfig.allowedDomains` | string[] | Domains the worker sandbox can reach |
+| `mcpServers.<id>.type` | `sse` \| `stdio` | Transport type |
+| `mcpServers.<id>.command` | string | Command for stdio MCP servers |
+| `mcpServers.<id>.args` | string[] | Arguments for stdio MCP servers |
+| `nixPackages` | string[] | System packages to install in the worker |
+| `network.allow` | string[] | Domains the worker sandbox can reach |
+| `network.deny` | string[] | Domains to block |
 
 ## Markdown Body
 
 The markdown body after the frontmatter is appended to the agent's prompt when the skill is active. Use it for workflows, rules, conventions, and domain-specific instructions.
 
+## Notes
+
+- `SKILL.md` frontmatter does not configure tool approval or `pre_approved` MCP tools.
+- For MCP servers that should live directly on the agent rather than inside a skill, configure them in [`lobu.toml`](/reference/lobu-toml/).
+
 ## Related Docs
 
 - [Skills](/getting-started/skills/)
-- [Skills Authoring](/guides/skills-authoring/)
 - [Tool Policy](/guides/tool-policy/)
 - [`lobu.toml` Reference](/reference/lobu-toml/)

@@ -15,6 +15,39 @@ A **skill** is a reusable capability bundle for a Lobu agent. Skills can add ins
 
 When a user enables a skill, the gateway reads the skill manifest, resolves the declared config, and starts the worker with those capabilities in place.
 
+## Create A Local Skill
+
+Lobu supports two local skill locations:
+
+| Type | Path | Scope |
+|---|---|---|
+| Shared skill | `skills/<name>/SKILL.md` | Available to all agents |
+| Agent skill | `agents/<agent>/skills/<name>/SKILL.md` | Available to one agent |
+
+Local skills are discovered automatically at startup. You do not need to list them in `lobu.toml`.
+
+```markdown
+---
+name: Internal API
+description: Query our internal support API
+nixPackages:
+  - jq
+network:
+  allow:
+    - api.example.com
+mcpServers:
+  support-api:
+    url: https://api.example.com/mcp
+    type: sse
+---
+
+# Internal API
+
+Use the support API tools for account lookups and ticket status checks.
+```
+
+For simple instruction-only skills, omit frontmatter and keep only the markdown body.
+
 ## What Does Not Belong In A Skill
 
 - Tool visibility and MCP approval bypasses are configured in [`lobu.toml`](/reference/lobu-toml/), not in `SKILL.md`
@@ -28,6 +61,8 @@ See [Tool Policy](/guides/tool-policy/) for that split.
 
 Integration auth for third-party APIs (GitHub, Google, Linear, etc.) is handled by **Owletto**. Workers access these APIs through Owletto MCP tools, which manage OAuth credentials, token refresh, and API proxying. Workers never see OAuth tokens directly.
 
+Owletto also powers Lobu's richer shared-memory model: workspace-scoped knowledge, typed entities, hybrid recall, connectors, and watchers. See [Memory](/getting-started/memory/) for how that layer works and when to use it instead of local-only memory.
+
 <SkillsRegistryTable client:load />
 
 ---
@@ -35,6 +70,6 @@ Integration auth for third-party APIs (GitHub, Google, Linear, etc.) is handled 
 ## Read Next
 
 - [SKILL.md Reference](/reference/skill-md/) for the file format and supported frontmatter
-- [Skills Authoring](/guides/skills-authoring/) for creating local and shared skills
+- [Memory](/getting-started/memory/) for how Owletto powers Lobu's shared memory layer
 - [`lobu.toml` Reference](/reference/lobu-toml/) for agent-level configuration
 - [Tool Policy](/guides/tool-policy/) for tool visibility and MCP approval overrides

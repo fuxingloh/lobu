@@ -1,3 +1,4 @@
+import { useState } from "preact/hooks";
 import { messagingChannels } from "./platforms";
 
 const GITHUB_URL = "https://github.com/lobu-ai/lobu";
@@ -320,22 +321,111 @@ const d = { color: "#565f89" }; // delimiters / muted
 const h = { color: "#c0caf5" }; // headings
 const m = { color: "#9aa5ce" }; // body text
 
-const editorTree = [
-  { label: "lobu.toml", depth: 0, badge: "config" },
-  { label: "IDENTITY.md", depth: 0, badge: "identity" },
-  { label: "SOUL.md", depth: 0, badge: "rules" },
-  { label: "USER.md", depth: 0, badge: "context" },
-  { label: "skills", depth: 0, badge: "dir" },
-  { label: "ops-triage", depth: 1, badge: "dir" },
-  { label: "SKILL.md", depth: 2, badge: "active" },
+type EditorFile = {
+  path: string;
+  label: string;
+  depth: number;
+  type: "file" | "dir";
+};
+
+const editorFiles: EditorFile[] = [
+  { path: "lobu.toml", label: "lobu.toml", depth: 0, type: "file" },
+  { path: "IDENTITY.md", label: "IDENTITY.md", depth: 0, type: "file" },
+  { path: "SOUL.md", label: "SOUL.md", depth: 0, type: "file" },
+  { path: "USER.md", label: "USER.md", depth: 0, type: "file" },
+  { path: "skills/", label: "skills", depth: 0, type: "dir" },
+  { path: "skills/ops-triage/", label: "ops-triage", depth: 1, type: "dir" },
+  {
+    path: "skills/ops-triage/SKILL.md",
+    label: "SKILL.md",
+    depth: 2,
+    type: "file",
+  },
 ];
 
-function EditorPreview() {
+const AGENT_PROMPT =
+  "Set up a new Lobu agent in this directory. Create lobu.toml, IDENTITY.md, SOUL.md, USER.md, and a skill in skills/ops-triage/SKILL.md with nix packages, a network allowlist, tool permissions, and an MCP server. Follow the Lobu skill conventions at https://lobu.ai/getting-started/skills/.";
+
+const INIT_COMMAND = "npx lobu init";
+
+function useCopy(value: string) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        // Ignore clipboard failures (e.g. insecure context).
+      });
+  };
+  return { copied, handleCopy };
+}
+
+function InitCommand() {
+  const { copied, handleCopy } = useCopy(INIT_COMMAND);
   return (
     <div
-      class="rounded-xl overflow-hidden mb-4"
+      class="inline-flex items-center gap-3 rounded-xl px-4 py-2"
       style={{
-        border: "1px solid var(--color-page-border)",
+        border: "1px solid var(--color-page-border-active)",
+        backgroundColor: "rgba(0,0,0,0.3)",
+      }}
+    >
+      <code
+        class="text-[13px] font-mono"
+        style={{ color: "var(--color-page-text)" }}
+      >
+        <span style={{ color: "#7aa2f7" }}>$ </span>
+        {INIT_COMMAND}
+      </code>
+      <button
+        type="button"
+        onClick={handleCopy}
+        class="text-[11px] font-medium px-2 py-1 rounded-md cursor-pointer transition-colors hover:bg-white/5"
+        style={{
+          color: copied
+            ? "var(--color-tg-accent)"
+            : "var(--color-page-text-muted)",
+          border: "1px solid var(--color-page-border)",
+          backgroundColor: "transparent",
+        }}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+function CopyPromptButton() {
+  const { copied, handleCopy } = useCopy(AGENT_PROMPT);
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      class="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium cursor-pointer transition-colors hover:opacity-90"
+      style={{
+        backgroundColor: copied
+          ? "rgba(122,162,247,0.18)"
+          : "var(--color-page-surface)",
+        color: "var(--color-page-text)",
+        border: "1px solid var(--color-page-border-active)",
+      }}
+    >
+      {copied ? "Copied" : "Copy prompt"}
+    </button>
+  );
+}
+
+function EditorPreview() {
+  const [activePath, setActivePath] = useState("skills/ops-triage/SKILL.md");
+
+  return (
+    <div
+      style={{
         backgroundColor: "var(--color-page-bg-elevated)",
       }}
     >
@@ -375,37 +465,41 @@ function EditorPreview() {
             Files
           </div>
           <div class="space-y-1.5">
-            {editorTree.map((item) => {
-              const isActive = item.badge === "active";
-              return (
-                <div
-                  key={`${item.depth}-${item.label}`}
-                  class="flex items-center gap-2 rounded-md px-2 py-1.5"
-                  style={{
-                    marginLeft: `${item.depth * 14}px`,
-                    backgroundColor: isActive
-                      ? "rgba(122,162,247,0.14)"
-                      : "transparent",
-                    color: isActive
-                      ? "var(--color-page-text)"
-                      : "var(--color-page-text-muted)",
-                  }}
-                >
-                  <span
-                    class="text-[9px] font-medium px-1.5 py-0.5 rounded border"
-                    style={{
-                      borderColor: isActive
-                        ? "rgba(125,207,255,0.35)"
-                        : "var(--color-page-border)",
-                      color: isActive
-                        ? "#7dcfff"
-                        : "var(--color-page-text-muted)",
-                    }}
+            {editorFiles.map((item) => {
+              const isFile = item.type === "file";
+              const isActive = isFile && item.path === activePath;
+              const commonStyle = {
+                marginLeft: `${item.depth * 14}px`,
+                backgroundColor: isActive
+                  ? "rgba(122,162,247,0.14)"
+                  : "transparent",
+                color: isActive
+                  ? "var(--color-page-text)"
+                  : "var(--color-page-text-muted)",
+              };
+
+              if (!isFile) {
+                return (
+                  <div
+                    key={item.path}
+                    class="flex items-center gap-2 rounded-md px-2 py-1.5"
+                    style={commonStyle}
                   >
-                    {item.badge}
-                  </span>
+                    <span class="text-[12px] font-mono">{item.label}/</span>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => setActivePath(item.path)}
+                  class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer transition-colors hover:bg-white/5"
+                  style={commonStyle}
+                >
                   <span class="text-[12px] font-mono">{item.label}</span>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -433,90 +527,226 @@ function EditorPreview() {
 
         <div class="min-w-0">
           <div
-            class="flex flex-wrap items-center gap-2 px-4 py-2.5"
+            class="flex items-stretch"
             style={{
               borderBottom: "1px solid var(--color-page-border)",
               backgroundColor: "rgba(0,0,0,0.16)",
             }}
           >
             <div
-              class="text-[11px] font-mono px-2.5 py-1 rounded-md"
+              class="text-[11px] font-mono px-3 py-2"
               style={{
                 backgroundColor: "rgba(122,162,247,0.12)",
                 color: "var(--color-page-text)",
-                border: "1px solid rgba(122,162,247,0.22)",
+                borderRight: "1px solid var(--color-page-border)",
+                borderTop: "2px solid rgba(122,162,247,0.6)",
               }}
             >
-              skills/ops-triage/SKILL.md
-            </div>
-            <div
-              class="text-[11px] font-mono px-2.5 py-1 rounded-md"
-              style={{
-                color: "var(--color-page-text-muted)",
-                border: "1px solid var(--color-page-border)",
-              }}
-            >
-              lobu.toml
+              {activePath}
             </div>
           </div>
 
+          <FileContent path={activePath} />
+
           <div
-            class="px-4 py-3 text-[11px]"
             style={{
-              color: "var(--color-page-text-muted)",
-              borderBottom: "1px solid var(--color-page-border)",
+              borderTop: "1px solid var(--color-page-border)",
             }}
           >
-            Frontmatter declares packages, network, permissions, and MCP.
-            Markdown below becomes the skill instructions.
+            <div
+              class="flex items-stretch"
+              style={{
+                borderBottom: "1px solid var(--color-page-border)",
+                backgroundColor: "rgba(0,0,0,0.16)",
+              }}
+            >
+              <div
+                class="text-[11px] font-mono px-3 py-2"
+                style={{
+                  backgroundColor: "rgba(122,162,247,0.12)",
+                  color: "var(--color-page-text)",
+                  borderRight: "1px solid var(--color-page-border)",
+                  borderTop: "2px solid rgba(122,162,247,0.6)",
+                }}
+              >
+                terminal
+              </div>
+            </div>
+            <pre
+              class="m-0 p-4 overflow-x-auto text-[11px] leading-6 font-mono"
+              style={codeBlockStyle}
+            >
+              <code>
+                <span style={{ color: "#7aa2f7" }}>$</span> npx lobu run
+                {"\n"}
+                <span style={{ color: "#9ece6a" }}>{">"}</span> reading
+                lobu.toml
+                {"\n"}
+                <span style={{ color: "#9ece6a" }}>{">"}</span> loading{" "}
+                <span style={{ color: "#c0caf5" }}>
+                  skills/ops-triage/SKILL.md
+                </span>
+                {"\n"}
+                <span style={{ color: "#9ece6a" }}>{">"}</span> allowing{" "}
+                <span style={{ color: "#c0caf5" }}>
+                  api.github.com, gmail.googleapis.com, .linear.app
+                </span>
+                {"\n"}
+                <span style={{ color: "#9ece6a" }}>{">"}</span> registering{" "}
+                <span style={{ color: "#c0caf5" }}>github-mcp</span>
+                {"\n"}
+                <span style={{ color: "#9ece6a" }}>{">"}</span> agent ready
+              </code>
+            </pre>
           </div>
-          <SkillYaml />
         </div>
       </div>
     </div>
   );
 }
 
-function TerminalPreview() {
+function FileContent({ path }: { path: string }) {
+  switch (path) {
+    case "lobu.toml":
+      return <LobuToml />;
+    case "IDENTITY.md":
+      return <IdentityMd />;
+    case "SOUL.md":
+      return <SoulMd />;
+    case "USER.md":
+      return <UserMd />;
+    default:
+      return <SkillYaml />;
+  }
+}
+
+const codeBlockClass =
+  "p-4 text-[11px] leading-relaxed font-mono overflow-x-auto m-0";
+const codeBlockStyle = {
+  backgroundColor: "rgba(0,0,0,0.3)",
+  color: "#9aa5ce",
+};
+
+function LobuToml() {
   return (
-    <div
-      class="rounded-xl overflow-hidden"
-      style={{
-        border: "1px solid var(--color-page-border)",
-        backgroundColor: "#0b1020",
-      }}
-    >
-      <div
-        class="px-4 py-2 text-[10px] uppercase tracking-[0.18em]"
-        style={{
-          color: "var(--color-page-text-muted)",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          backgroundColor: "rgba(255,255,255,0.03)",
-        }}
-      >
-        Terminal
-      </div>
-      <pre class="m-0 p-4 overflow-x-auto text-[11px] leading-6 font-mono text-[#9aa5ce]">
-        <code>
-          <span style={{ color: "#7aa2f7" }}>$</span> npx lobu run
-          {"\n"}
-          <span style={{ color: "#9ece6a" }}>{">"}</span> reading lobu.toml
-          {"\n"}
-          <span style={{ color: "#9ece6a" }}>{">"}</span> loading{" "}
-          <span style={{ color: "#c0caf5" }}>skills/ops-triage/SKILL.md</span>
-          {"\n"}
-          <span style={{ color: "#9ece6a" }}>{">"}</span> allowing{" "}
-          <span style={{ color: "#c0caf5" }}>
-            api.github.com, gmail.googleapis.com, .linear.app
-          </span>
-          {"\n"}
-          <span style={{ color: "#9ece6a" }}>{">"}</span> registering{" "}
-          <span style={{ color: "#c0caf5" }}>github-mcp</span>
-          {"\n"}
-          <span style={{ color: "#9ece6a" }}>{">"}</span> agent ready
-        </code>
-      </pre>
-    </div>
+    <pre class={codeBlockClass} style={codeBlockStyle}>
+      <code>
+        <span style={d}>[agent]</span>
+        {"\n"}
+        <span style={k}>name</span> = <span style={s}>"ops-triage"</span>
+        {"\n"}
+        <span style={k}>model</span> ={" "}
+        <span style={s}>"claude/sonnet-4-5"</span>
+        {"\n"}
+        {"\n"}
+        <span style={d}>[agent.skills]</span>
+        {"\n"}
+        <span style={k}>enabled</span> = <span style={d}>[</span>
+        <span style={s}>"ops-triage"</span>
+        <span style={d}>]</span>
+        {"\n"}
+        {"\n"}
+        <span style={d}>[providers.anthropic]</span>
+        {"\n"}
+        <span style={k}>api_key</span> ={" "}
+        <span style={s}>"${"{ANTHROPIC_API_KEY}"}"</span>
+        {"\n"}
+        {"\n"}
+        <span style={d}>[connections.slack]</span>
+        {"\n"}
+        <span style={k}>bot_token</span> ={" "}
+        <span style={s}>"${"{SLACK_BOT_TOKEN}"}"</span>
+        {"\n"}
+        <span style={k}>signing_secret</span> ={" "}
+        <span style={s}>"${"{SLACK_SIGNING_SECRET}"}"</span>
+        {"\n"}
+      </code>
+    </pre>
+  );
+}
+
+function IdentityMd() {
+  return (
+    <pre class={codeBlockClass} style={codeBlockStyle}>
+      <code>
+        <span style={h}># Identity</span>
+        {"\n"}
+        {"\n"}
+        <span style={m}>You are an ops triage specialist helping on-call</span>
+        {"\n"}
+        <span style={m}>
+          engineers prioritize incoming signals and escalate
+        </span>
+        {"\n"}
+        <span style={m}>what matters.</span>
+        {"\n"}
+        {"\n"}
+        <span style={h}>## Scope</span>
+        {"\n"}
+        <span style={m}>- Inbox triage across email, PRs, Linear</span>
+        {"\n"}
+        <span style={m}>- Surface blockers, not busywork</span>
+        {"\n"}
+        <span style={m}>- Escalate P0 issues immediately</span>
+        {"\n"}
+      </code>
+    </pre>
+  );
+}
+
+function SoulMd() {
+  return (
+    <pre class={codeBlockClass} style={codeBlockStyle}>
+      <code>
+        <span style={h}># Soul</span>
+        {"\n"}
+        {"\n"}
+        <span style={m}>- Be concise. Engineers are tired.</span>
+        {"\n"}
+        <span style={m}>- Blockers first, context second.</span>
+        {"\n"}
+        <span style={m}>
+          - Never take destructive actions without approval.
+        </span>
+        {"\n"}
+        <span style={m}>- Link back to source threads for every claim.</span>
+        {"\n"}
+        {"\n"}
+        <span style={h}>## Tone</span>
+        {"\n"}
+        <span style={m}>Calm, direct, no filler. Ship the summary.</span>
+        {"\n"}
+      </code>
+    </pre>
+  );
+}
+
+function UserMd() {
+  return (
+    <pre class={codeBlockClass} style={codeBlockStyle}>
+      <code>
+        <span style={h}># User</span>
+        {"\n"}
+        {"\n"}
+        <span style={m}>- Name: Alex</span>
+        {"\n"}
+        <span style={m}>- Role: Staff SRE</span>
+        {"\n"}
+        <span style={m}>- Timezone: UTC-5</span>
+        {"\n"}
+        <span style={m}>- On-call: Mon-Wed rotation</span>
+        {"\n"}
+        {"\n"}
+        <span style={h}>## Preferences</span>
+        {"\n"}
+        <span style={m}>- Linear for issue tracking</span>
+        {"\n"}
+        <span style={m}>- PagerDuty for incidents</span>
+        {"\n"}
+        <span style={m}>- Morning standup at 09:30 ET</span>
+        {"\n"}
+      </code>
+    </pre>
   );
 }
 
@@ -610,19 +840,19 @@ function SkillYaml() {
 
 export function SkillsSection() {
   return (
-    <section class="pt-28 pb-16 px-8">
+    <section class="pt-32 pb-24 px-4 sm:px-8">
       <div class="max-w-3xl mx-auto">
         {/* Hero */}
-        <div class="text-center mb-16">
+        <div class="text-center mb-12">
           <h1
             class="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-5"
             style={{ color: "var(--color-page-text)" }}
           >
-            Build reproducible{" "}
-            <span style={{ color: "var(--color-tg-accent)" }}>Lobu skills</span>
+            Build reliable agents with{" "}
+            <span style={{ color: "var(--color-tg-accent)" }}>Lobu Skills</span>
           </h1>
           <p
-            class="text-lg max-w-xl mx-auto mb-8 leading-relaxed"
+            class="text-lg sm:text-xl leading-8 max-w-[40rem] mx-auto m-0"
             style={{ color: "var(--color-page-text-muted)" }}
           >
             A skill isn't a prompt template — it's a full sandboxed computer.
@@ -637,19 +867,27 @@ export function SkillsSection() {
             class="text-xl font-bold mb-2 text-center"
             style={{ color: "var(--color-page-text)" }}
           >
-            Define your agent in files
+            Start a new agent in seconds
           </h2>
           <p
             class="text-sm text-center mb-8 max-w-lg mx-auto"
             style={{ color: "var(--color-page-text-muted)" }}
           >
-            Each skill declares its own packages, network access, tool
-            permissions, and auth — the platform provisions a matching sandbox
-            automatically.
+            Run the init command locally, or paste a prompt into your coding
+            agent and let it scaffold the project for you.
           </p>
 
-          <EditorPreview />
-          <TerminalPreview />
+          <div class="flex flex-wrap items-center justify-center gap-3 mb-8">
+            <InitCommand />
+            <CopyPromptButton />
+          </div>
+
+          <div
+            class="rounded-xl overflow-hidden"
+            style={{ border: "1px solid var(--color-page-border)" }}
+          >
+            <EditorPreview />
+          </div>
         </div>
 
         {/* Anatomy of a skill */}
@@ -658,7 +896,7 @@ export function SkillsSection() {
             class="text-xl font-bold mb-6 text-center"
             style={{ color: "var(--color-page-text)" }}
           >
-            A skill is a full computer
+            An agent is a reproducible environment with capabilities
           </h2>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {anatomy.map((item) => (
