@@ -70,6 +70,11 @@ describe("GrantStore", () => {
       expect(await store.hasGrant("agent-1", "api.example.com")).toBe(true);
     });
 
+    test("matches leading-dot domain wildcard pattern", async () => {
+      await store.grant("agent-1", ".example.com", null);
+      expect(await store.hasGrant("agent-1", "api.example.com")).toBe(true);
+    });
+
     test("domain wildcard does not match two-part domains", async () => {
       await store.grant("agent-1", "*.example.com", null);
       // "example.com" has only 2 parts, so wildcard check is skipped
@@ -98,6 +103,12 @@ describe("GrantStore", () => {
       expect(await store.isDenied("agent-1", "evil.com")).toBe(true);
     });
 
+    test("matches denied leading-dot wildcard pattern", async () => {
+      await store.grant("agent-1", ".evil.com", null, true);
+      expect(await store.isDenied("agent-1", ".evil.com")).toBe(true);
+      expect(await store.hasGrant("agent-1", "sub.evil.com")).toBe(false);
+    });
+
     test("returns false for allowed grant", async () => {
       await store.grant("agent-1", "good.com", null);
       expect(await store.isDenied("agent-1", "good.com")).toBe(false);
@@ -114,6 +125,13 @@ describe("GrantStore", () => {
       expect(await store.hasGrant("agent-1", "api.openai.com")).toBe(true);
       await store.revoke("agent-1", "api.openai.com");
       expect(await store.hasGrant("agent-1", "api.openai.com")).toBe(false);
+    });
+
+    test("removes normalized wildcard grant variants", async () => {
+      await store.grant("agent-1", "*.github.com", null);
+      expect(await store.hasGrant("agent-1", "api.github.com")).toBe(true);
+      await store.revoke("agent-1", ".github.com");
+      expect(await store.hasGrant("agent-1", "api.github.com")).toBe(false);
     });
   });
 

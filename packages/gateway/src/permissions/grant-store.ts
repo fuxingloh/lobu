@@ -11,6 +11,29 @@ export interface Grant {
 
 const KEY_PREFIX = "grant:";
 
+function normalizeDomainPattern(pattern: string): string {
+  if (pattern.startsWith("*.")) {
+    return `.${pattern.slice(2)}`;
+  }
+  return pattern;
+}
+
+function getDomainGrantCandidates(pattern: string): string[] {
+  const normalized = normalizeDomainPattern(pattern);
+  if (normalized.startsWith("/")) {
+    return [normalized];
+  }
+
+  const candidates = new Set<string>([normalized]);
+  if (normalized.startsWith(".")) {
+    candidates.add(`*.${normalized.slice(1)}`);
+  } else if (normalized.includes(".")) {
+    candidates.add(normalized);
+  }
+
+  return [...candidates];
+}
+
 /**
  * Unified grant store for URL-pattern permissions.
  *
@@ -35,6 +58,7 @@ export class GrantStore {
     expiresAt: number | null,
     denied?: boolean
   ): Promise<void> {
+    pattern = normalizeDomainPattern(pattern);
     const key = this.buildKey(agentId, pattern);
     const value = JSON.stringify({
       expiresAt,
@@ -80,11 +104,14 @@ export class GrantStore {
    * Returns false if the grant has `denied: true`.
    */
   async hasGrant(agentId: string, pattern: string): Promise<boolean> {
+    pattern = normalizeDomainPattern(pattern);
     // Exact match
-    const exactKey = this.buildKey(agentId, pattern);
     try {
-      const parsed = this.parseValue(await this.redis.get(exactKey));
-      if (parsed) return !parsed.denied;
+      for (const candidate of getDomainGrantCandidates(pattern)) {
+        const exactKey = this.buildKey(agentId, candidate);
+        const parsed = this.parseValue(await this.redis.get(exactKey));
+        if (parsed) return !parsed.denied;
+      }
     } catch (error) {
       logger.error("Failed to check grant", { agentId, pattern, error });
       return false;
@@ -115,15 +142,23 @@ export class GrantStore {
     if (!pattern.startsWith("/")) {
       const parts = pattern.split(".");
       if (parts.length > 2) {
-        const wildcardDomain = `*.${parts.slice(1).join(".")}`;
-        const wildcardKey = this.buildKey(agentId, wildcardDomain);
+        const wildcardDomains = [
+          `.${parts.slice(1).join(".")}`,
+          `*.${parts.slice(1).join(".")}`,
+        ];
         try {
-          const parsed = this.parseValue(await this.redis.get(wildcardKey));
-          if (parsed) return !parsed.denied;
+          for (const wildcardDomain of wildcardDomains) {
+            const wildcardKey = this.buildKey(
+              agentId,
+              normalizeDomainPattern(wildcardDomain)
+            );
+            const parsed = this.parseValue(await this.redis.get(wildcardKey));
+            if (parsed) return !parsed.denied;
+          }
         } catch (error) {
           logger.error("Failed to check wildcard domain grant", {
             agentId,
-            pattern: wildcardDomain,
+            pattern,
             error,
           });
         }
@@ -137,10 +172,15 @@ export class GrantStore {
    * Check if a pattern is explicitly denied for an agent.
    */
   async isDenied(agentId: string, pattern: string): Promise<boolean> {
-    const key = this.buildKey(agentId, pattern);
     try {
-      const parsed = this.parseValue(await this.redis.get(key));
-      return parsed?.denied === true;
+      for (const candidate of getDomainGrantCandidates(pattern)) {
+        const key = this.buildKey(agentId, candidate);
+        const parsed = this.parseValue(await this.redis.get(key));
+        if (parsed?.denied === true) {
+          return true;
+        }
+      }
+      return false;
     } catch (error) {
       logger.error("Failed to check denied grant", {
         agentId,
@@ -203,9 +243,12 @@ export class GrantStore {
    * Revoke a grant for an agent.
    */
   async revoke(agentId: string, pattern: string): Promise<void> {
-    const key = this.buildKey(agentId, pattern);
     try {
-      await this.redis.del(key);
+      const patterns = new Set(getDomainGrantCandidates(pattern));
+      patterns.add(normalizeDomainPattern(pattern));
+      await this.redis.del(
+        ...[...patterns].map((candidate) => this.buildKey(agentId, candidate))
+      );
       logger.info("Revoked grant", { agentId, pattern });
     } catch (error) {
       logger.error("Failed to revoke grant", { agentId, pattern, error });
