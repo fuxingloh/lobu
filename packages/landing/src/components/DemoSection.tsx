@@ -267,7 +267,7 @@ export function DemoSection(props: {
             href="/skills"
             hrefLabel="Skills page"
           >
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-4 md:grid-cols-3">
               <div>
                 <div
                   class="text-[10px] uppercase tracking-[0.18em] mb-2"
@@ -276,6 +276,15 @@ export function DemoSection(props: {
                   Skills
                 </div>
                 <PillList items={activeUseCase.skills.skills} />
+              </div>
+              <div>
+                <div
+                  class="text-[10px] uppercase tracking-[0.18em] mb-2"
+                  style={{ color: "var(--color-page-text-muted)" }}
+                >
+                  Nix packages
+                </div>
+                <PillList items={activeUseCase.skills.nixPackages} />
               </div>
               <div>
                 <div

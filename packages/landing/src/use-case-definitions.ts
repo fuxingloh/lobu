@@ -75,6 +75,7 @@ export type SkillWorkspacePreviewData = {
   agentId: string;
   skillId: string;
   skills: string[];
+  nixPackages: string[];
   allowedDomains: string[];
   mcpServer: string;
   providerId: string;
@@ -105,6 +106,7 @@ export type LandingUseCaseSkillsDefinition = {
   agentId: string;
   skillId: string;
   skills: string[];
+  nixPackages: string[];
   allowedDomains: string[];
   mcpServer: string;
   providerId: string;
@@ -194,6 +196,7 @@ export const landingUseCases = {
       agentId: "legal-review",
       skillId: "legal-review",
       skills: ["westlaw-mcp", "contract-drafter", "case-search"],
+      nixPackages: ["poppler", "ripgrep"],
       allowedDomains: ["api.westlaw.com", ".courtlistener.com"],
       mcpServer: "westlaw-mcp",
       providerId: "anthropic",
@@ -246,6 +249,7 @@ export const landingUseCases = {
       agentId: "devops-control",
       skillId: "devops-control",
       skills: ["github-mcp", "pagerduty-mcp", "k8s-tools"],
+      nixPackages: ["gh", "kubectl", "jq"],
       allowedDomains: ["api.github.com", "api.pagerduty.com", ".k8s.example.com"],
       mcpServer: "github-mcp",
       providerId: "anthropic",
@@ -298,6 +302,7 @@ export const landingUseCases = {
       agentId: "support-desk",
       skillId: "support-desk",
       skills: ["zendesk-mcp", "knowledge-base", "sentiment"],
+      nixPackages: ["jq", "ripgrep"],
       allowedDomains: ["subdomain.zendesk.com", ".intercomcdn.com"],
       mcpServer: "zendesk-mcp",
       providerId: "anthropic",
@@ -542,6 +547,7 @@ export const landingUseCases = {
       agentId: "finance-ops",
       skillId: "finance-ops",
       skills: ["quickbooks-mcp", "stripe-mcp", "csv-tools"],
+      nixPackages: ["qsv", "jq", "sqlite"],
       allowedDomains: ["quickbooks.api.intuit.com", "api.stripe.com"],
       mcpServer: "stripe-mcp",
       providerId: "anthropic",
