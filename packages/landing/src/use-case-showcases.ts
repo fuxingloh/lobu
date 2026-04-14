@@ -4,8 +4,6 @@ import {
   type HowItWorksPanel,
   type LandingUseCaseDefinition,
   type LandingUseCaseId,
-  type LandingUseCaseMemoryDefinition,
-  type LandingUseCaseSkillsDefinition,
   type MemoryExample,
   type SkillWorkspacePreviewData,
 } from "./use-case-definitions";
@@ -24,6 +22,8 @@ type RuntimeJourney = {
   outcomeLabel: string;
   outcome: string[];
 };
+
+type RuntimeJourneyInput = Omit<RuntimeJourney, "requestLabel" | "outcomeLabel">;
 
 type CampaignMeta = {
   title: string;
@@ -1173,591 +1173,8 @@ const memoryStepPanels: Record<
   },
 };
 
-const fallbackSkills: Partial<
-  Record<LandingUseCaseId, LandingUseCaseSkillsDefinition>
-> = {
-  sales: {
-    description:
-      "Track renewals, summarize deal risk, and monitor rollout signals",
-    agentId: "sales-ops",
-    skillId: "sales-ops",
-    skills: ["salesforce-mcp", "gong-mcp", "hubspot-sync"],
-    nixPackages: ["qsv", "jq"],
-    allowedDomains: ["api.salesforce.com", "api.gong.io", "api.hubapi.com"],
-    mcpServer: "salesforce-mcp",
-    providerId: "anthropic",
-    model: "claude/sonnet-4-5",
-    apiKeyEnv: "ANTHROPIC_API_KEY",
-    skillInstructions: [
-      "Lead with renewal risk, rollout state, and the next commercial action.",
-      "Keep every commercial summary tied to an account, owner, and source signal.",
-    ],
-  },
-  delivery: {
-    description: "Track milestones, blockers, owners, and rollout notes",
-    agentId: "delivery-ops",
-    skillId: "delivery-ops",
-    skills: ["linear-mcp", "github-mcp", "docs-sync"],
-    nixPackages: ["gh", "jq"],
-    allowedDomains: ["api.linear.app", "api.github.com", ".docs.example.com"],
-    mcpServer: "linear-mcp",
-    providerId: "anthropic",
-    model: "claude/sonnet-4-5",
-    apiKeyEnv: "ANTHROPIC_API_KEY",
-    skillInstructions: [
-      "Start with blockers, dependencies, and milestone movement.",
-      "End every update with an owner and the next follow-up.",
-    ],
-  },
-  leadership: {
-    description:
-      "Extract decisions, blockers, and assignments from executive materials",
-    agentId: "leadership-ops",
-    skillId: "leadership-ops",
-    skills: ["google-drive-mcp", "meeting-notes", "board-packet-sync"],
-    nixPackages: ["poppler", "pandoc"],
-    allowedDomains: ["www.googleapis.com", ".drive.google.com", ".notion.so"],
-    mcpServer: "google-drive-mcp",
-    providerId: "anthropic",
-    model: "claude/sonnet-4-5",
-    apiKeyEnv: "ANTHROPIC_API_KEY",
-    skillInstructions: [
-      "Separate approved, pending, and blocked outcomes in every summary.",
-      "Keep assigned follow-ups attached to owners and deadlines.",
-    ],
-  },
-};
-
-const fallbackMemory: Partial<
-  Record<LandingUseCaseId, LandingUseCaseMemoryDefinition>
-> = {
+const runtimeContent: Record<LandingUseCaseId, RuntimeJourneyInput> = {
   legal: {
-    id: "contract",
-    description:
-      "Store contracts, clauses, counterparties, and risk so every review starts with context.",
-    sourceLabel: "Example prompt",
-    sourceText:
-      "Remember that Redwood Capital's NDA keeps residuals broad, asks for Delaware venue, and still lacks a cap on the confidentiality term.",
-    entitySelections: {
-      Contract: "legal-contract",
-      Clause: "legal-clause",
-      Risk: "legal-risk",
-      Counterparty: "legal-counterparty",
-    },
-    howItWorks: [
-      {
-        id: "model",
-        label: "1",
-        title: "Model the world",
-        detail:
-          "Represent contracts, clauses, risks, and counterparties as typed objects so review history and negotiations stay queryable.",
-        chips: ["Contract", "Clause", "Risk", "Counterparty"],
-      },
-      {
-        id: "connect",
-        label: "2",
-        title: "Connect sources",
-        detail:
-          "Bring in uploaded agreements, shared drives, research tools, and custom parsing pipelines through connector-backed ingestion and MCP proxying.",
-        chips: ["File upload", "Drive", "Research", "Custom SDK"],
-        links: [docsLinks.mcpProxy, docsLinks.connectorSdk],
-      },
-      {
-        id: "auth",
-        label: "3",
-        title: "Let users connect their data",
-        detail:
-          "Use OAuth for document systems, API keys for legal research, and manual uploads for negotiated drafts without exposing credentials to the agent runtime.",
-        chips: ["OAuth", "API keys", "File upload", "Manual review"],
-        links: [docsLinks.memoryDocs, docsLinks.mcpAuthFlow],
-      },
-      {
-        id: "reuse",
-        label: "4",
-        title: "Reuse context across agents",
-        detail:
-          "The same contract memory powers legal agents wherever teams work.",
-        chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
-      },
-      {
-        id: "fresh",
-        label: "5",
-        title: "Keep it fresh",
-        detail:
-          "Watchers track new drafts, changes in negotiated language, and unresolved risk so redlines stay grounded in the latest document state.",
-      },
-    ],
-    watcher: {
-      name: "Contract review tracker",
-      schedule: "Every 12 hours",
-      prompt:
-        "Check Redwood Capital contract changes, unresolved risks, and new draft versions.",
-      extractionSchema:
-        "{ changed_clauses[], unresolved_risks[], new_counterparty_terms[] }",
-      schemaEvolution:
-        "Started with clause + risk capture. After repeated NDA reviews, added negotiated_position and fallback_language fields.",
-    },
-    highlights: [
-      { label: "Contract", value: "Redwood NDA" },
-      { label: "Counterparty", value: "Redwood Capital" },
-      { label: "Risk", value: "No cap on confidentiality term" },
-      { label: "Negotiation point", value: "Broad residuals + Delaware venue" },
-    ],
-    nodeHighlights: {
-      "legal-root": [
-        { label: "Contract", value: "Redwood NDA" },
-        { label: "Counterparty", value: "Redwood Capital" },
-        { label: "Open risk", value: "No cap on confidentiality term" },
-        { label: "Clause note", value: "Residuals remain broad" },
-      ],
-      "legal-contract": [
-        { label: "Type", value: "Contract" },
-        { label: "Name", value: "Redwood NDA" },
-        { label: "Counterparty", value: "Redwood Capital" },
-        { label: "Venue", value: "Delaware" },
-      ],
-      "legal-clause": [
-        { label: "Type", value: "Clause" },
-        { label: "Clause", value: "Residuals" },
-        { label: "State", value: "Broad language still present" },
-        {
-          label: "Why it matters",
-          value: "Could weaken confidentiality protections",
-        },
-      ],
-      "legal-risk": [
-        { label: "Type", value: "Risk" },
-        { label: "Risk", value: "Unlimited confidentiality term" },
-        { label: "Severity", value: "Needs counsel review" },
-        { label: "Source", value: "Current NDA draft" },
-      ],
-      "legal-counterparty": [
-        { label: "Type", value: "Counterparty" },
-        { label: "Name", value: "Redwood Capital" },
-        { label: "Context", value: "Negotiating NDA" },
-        { label: "Known request", value: "Delaware venue" },
-      ],
-    },
-    recordTree: {
-      id: "legal-root",
-      label: "Record: Redwood NDA review",
-      kind: "Model record",
-      summary:
-        "One contract review note becomes a linked contract record with clause state, counterparty context, and durable legal risk.",
-      chips: ["contract memory", "auditable", "reviewable"],
-      children: [
-        {
-          id: "legal-contract",
-          label: "Entity: Redwood NDA",
-          kind: "Contract",
-          summary:
-            "Primary contract record used for future reviews, approvals, and negotiation history.",
-          chips: ["primary", "agreement"],
-        },
-        {
-          id: "legal-clause",
-          label: "Clause: residuals",
-          kind: "Clause",
-          summary:
-            "Clause-level review stays attached to the contract instead of disappearing inside a one-off summary.",
-          chips: ["clause", "review"],
-        },
-        {
-          id: "legal-risk",
-          label: "Risk: unlimited confidentiality term",
-          kind: "Risk",
-          summary:
-            "Open risk is queryable later when the team asks what still needs counsel approval.",
-          chips: ["risk", "open issue"],
-        },
-        {
-          id: "legal-counterparty",
-          label: "Counterparty: Redwood Capital",
-          kind: "Counterparty",
-          summary:
-            "Counterparty context helps future drafts and negotiation summaries stay grounded in the same deal thread.",
-          chips: ["counterparty", "context"],
-        },
-      ],
-    },
-    relations: [
-      {
-        source: "Redwood NDA",
-        sourceType: "Contract",
-        label: "contains_clause",
-        target: "Residuals clause",
-        targetType: "Clause",
-        note: "The clause stays attached to the agreement being reviewed.",
-      },
-      {
-        source: "Residuals clause",
-        sourceType: "Clause",
-        label: "creates_risk",
-        target: "Unlimited confidentiality term",
-        targetType: "Risk",
-        note: "Risk is linked to the language that caused it.",
-      },
-      {
-        source: "Redwood NDA",
-        sourceType: "Contract",
-        label: "belongs_to_counterparty",
-        target: "Redwood Capital",
-        targetType: "Counterparty",
-        note: "Counterparty context remains queryable across future drafts.",
-      },
-    ],
-  },
-  devops: {
-    id: "incident",
-    description:
-      "Track incidents, services, deploys, and remediation work in one shared operational memory graph.",
-    sourceLabel: "Example prompt",
-    sourceText:
-      "Remember that checkout-api incident started right after deploy 2026.04.13.2, impacts EU checkout traffic, and rollback depends on PR #482 landing first.",
-    entitySelections: {
-      Incident: "devops-incident",
-      Service: "devops-service",
-      Deploy: "devops-deploy",
-      "Pull request": "devops-pr",
-    },
-    howItWorks: [
-      {
-        id: "model",
-        label: "1",
-        title: "Model the world",
-        detail:
-          "Represent incidents, services, deploys, and pull requests as first-class objects so on-call context survives after the thread scrolls away.",
-        chips: ["Incident", "Service", "Deploy", "Pull request"],
-      },
-      {
-        id: "connect",
-        label: "2",
-        title: "Connect sources",
-        detail:
-          "Turn live operational signals into structured incident memory.",
-        chips: ["PagerDuty", "GitHub", "Deploy logs", "Custom SDK"],
-        links: [docsLinks.mcpProxy, docsLinks.connectorSdk],
-      },
-      {
-        id: "auth",
-        label: "3",
-        title: "Let users connect their data",
-        detail:
-          "Let teams bring the tools they already use, while keeping credentials outside the worker.",
-        chips: ["OAuth", "Service account", "API keys", "Historical import"],
-        links: [docsLinks.memoryDocs, docsLinks.mcpAuthFlow],
-      },
-      {
-        id: "reuse",
-        label: "4",
-        title: "Reuse context across agents",
-        detail:
-          "The same incident memory powers operational agents wherever teams work.",
-        chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
-      },
-      {
-        id: "fresh",
-        label: "5",
-        title: "Keep it fresh",
-        detail:
-          "Watchers pull in new alerts, deploy state, and merged fixes so the runtime sees the latest impact and rollback options.",
-      },
-    ],
-    watcher: {
-      name: "Incident freshness monitor",
-      schedule: "Every 5 minutes",
-      prompt:
-        "Track checkout-api incident state, deploy rollbacks, and the status of PR #482.",
-      extractionSchema:
-        "{ incident_state, impacted_regions[], rollback_ready, blocking_prs[] }",
-      schemaEvolution:
-        "Started with incident_state + deploy_id. After repeated incidents, added rollback_ready and impacted_regions fields.",
-    },
-    highlights: [
-      { label: "Incident", value: "checkout-api degradation" },
-      { label: "Service", value: "EU checkout" },
-      { label: "Trigger", value: "Deploy 2026.04.13.2" },
-      { label: "Blocker", value: "PR #482 must merge before rollback" },
-    ],
-    nodeHighlights: {
-      "devops-root": [
-        { label: "Incident", value: "checkout-api degradation" },
-        { label: "Service", value: "EU checkout" },
-        { label: "Trigger", value: "Deploy 2026.04.13.2" },
-        { label: "Blocked by", value: "PR #482" },
-      ],
-      "devops-incident": [
-        { label: "Type", value: "Incident" },
-        { label: "Status", value: "Active" },
-        { label: "Impact", value: "EU checkout traffic degraded" },
-        { label: "Started after", value: "Deploy 2026.04.13.2" },
-      ],
-      "devops-service": [
-        { label: "Type", value: "Service" },
-        { label: "Name", value: "checkout-api" },
-        { label: "Region", value: "EU" },
-        { label: "Customer impact", value: "Checkout latency and failures" },
-      ],
-      "devops-deploy": [
-        { label: "Type", value: "Deploy" },
-        { label: "ID", value: "2026.04.13.2" },
-        { label: "State", value: "Suspected trigger" },
-        { label: "Action", value: "Rollback under review" },
-      ],
-      "devops-pr": [
-        { label: "Type", value: "Pull request" },
-        { label: "PR", value: "#482" },
-        { label: "Role", value: "Rollback prerequisite" },
-        { label: "Status", value: "Waiting to merge" },
-      ],
-    },
-    recordTree: {
-      id: "devops-root",
-      label: "Record: checkout-api incident",
-      kind: "Model record",
-      summary:
-        "Incident state links the active outage, affected service, triggering deploy, and required remediation work in one graph.",
-      chips: ["incident memory", "live context", "operational"],
-      children: [
-        {
-          id: "devops-incident",
-          label: "Entity: checkout-api degradation",
-          kind: "Incident",
-          summary:
-            "The active incident stays queryable across handoffs and status updates.",
-          chips: ["incident", "active"],
-        },
-        {
-          id: "devops-service",
-          label: "Service: EU checkout",
-          kind: "Service",
-          summary:
-            "Service impact is preserved separately from the incident narrative.",
-          chips: ["service", "impact"],
-        },
-        {
-          id: "devops-deploy",
-          label: "Deploy: 2026.04.13.2",
-          kind: "Deploy",
-          summary:
-            "The triggering rollout remains attached to the incident for future analysis.",
-          chips: ["deploy", "trigger"],
-        },
-        {
-          id: "devops-pr",
-          label: "PR: #482",
-          kind: "Pull request",
-          summary:
-            "Remediation work stays linked to the operational event it is blocking.",
-          chips: ["code change", "blocker"],
-        },
-      ],
-    },
-    relations: [
-      {
-        source: "checkout-api degradation",
-        sourceType: "Incident",
-        label: "affects_service",
-        target: "EU checkout",
-        targetType: "Service",
-        note: "Impact stays attached to the service that is degraded.",
-      },
-      {
-        source: "checkout-api degradation",
-        sourceType: "Incident",
-        label: "triggered_by_deploy",
-        target: "Deploy 2026.04.13.2",
-        targetType: "Deploy",
-        note: "The rollout remains linked to the operational event it caused.",
-      },
-      {
-        source: "checkout-api degradation",
-        sourceType: "Incident",
-        label: "blocked_by_pr",
-        target: "PR #482",
-        targetType: "Pull request",
-        note: "The required fix remains queryable for future handoffs.",
-      },
-    ],
-  },
-  finance: {
-    id: "variance",
-    description:
-      "Track accounts and transactions so close workflows can reuse the same structured state.",
-    sourceLabel: "Example prompt",
-    sourceText:
-      "Remember that March close shows a $42k Stripe payout variance on Account 4100, refunds are the likely cause, and the reconciliation note must land in the month-end deck.",
-    entitySelections: {
-      Account: "finance-account",
-      Transaction: "finance-transaction",
-      Variance: "finance-variance",
-      Report: "finance-report",
-    },
-    howItWorks: [
-      {
-        id: "model",
-        label: "1",
-        title: "Model the world",
-        detail:
-          "Represent accounts, transactions, variances, and reports as linked objects so close state survives across spreadsheets, dashboards, and chat threads.",
-        chips: ["Account", "Transaction", "Variance", "Report"],
-      },
-      {
-        id: "connect",
-        label: "2",
-        title: "Connect sources",
-        detail:
-          "Pull data from accounting systems, payment processors, CSV imports, and close checklists through MCP tools and scheduled syncs.",
-        chips: ["ERP", "Stripe", "CSV", "Close checklist"],
-        links: [docsLinks.mcpProxy, docsLinks.connectorSdk],
-      },
-      {
-        id: "auth",
-        label: "3",
-        title: "Let users connect their data",
-        detail:
-          "Use API keys and service accounts for finance systems while keeping access scoped outside the worker runtime.",
-        chips: ["API keys", "Service account", "Manual import"],
-        links: [docsLinks.memoryDocs, docsLinks.mcpAuthFlow],
-      },
-      {
-        id: "reuse",
-        label: "4",
-        title: "Reuse context across agents",
-        detail:
-          "The same variance memory powers finance agents wherever teams work.",
-        chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
-      },
-      {
-        id: "fresh",
-        label: "5",
-        title: "Keep it fresh",
-        detail:
-          "Watchers keep balances, exception lists, and report status current as new payouts and adjustments arrive.",
-      },
-    ],
-    watcher: {
-      name: "Month-end variance tracker",
-      schedule: "Every 6 hours",
-      prompt:
-        "Track Account 4100 variance, refund activity, and month-end deck readiness.",
-      extractionSchema:
-        "{ variance_amount, likely_causes[], unresolved_items[], report_status }",
-      schemaEvolution:
-        "Started with variance_amount + report_status. After repeated closes, added likely_causes and unresolved_items.",
-    },
-    highlights: [
-      { label: "Account", value: "4100" },
-      { label: "Variance", value: "$42k" },
-      { label: "Likely cause", value: "Delayed refunds" },
-      { label: "Reporting task", value: "Month-end deck reconciliation note" },
-    ],
-    nodeHighlights: {
-      "finance-root": [
-        { label: "Account", value: "4100" },
-        { label: "Variance", value: "$42k" },
-        { label: "Likely cause", value: "Refund timing" },
-        { label: "Report", value: "Month-end deck" },
-      ],
-      "finance-account": [
-        { label: "Type", value: "Account" },
-        { label: "Account", value: "4100" },
-        { label: "State", value: "Needs reconciliation" },
-        { label: "Cycle", value: "March close" },
-      ],
-      "finance-transaction": [
-        { label: "Type", value: "Transaction set" },
-        { label: "Source", value: "Stripe payouts" },
-        { label: "Signal", value: "Refund timing mismatch" },
-        { label: "Period", value: "March" },
-      ],
-      "finance-variance": [
-        { label: "Type", value: "Variance" },
-        { label: "Amount", value: "$42k" },
-        { label: "Status", value: "Needs explanation" },
-        { label: "Cause", value: "Refund timing" },
-      ],
-      "finance-report": [
-        { label: "Type", value: "Report" },
-        { label: "Name", value: "Month-end deck" },
-        { label: "Needs", value: "Reconciliation note" },
-        { label: "Owner", value: "Finance ops" },
-      ],
-    },
-    recordTree: {
-      id: "finance-root",
-      label: "Record: March close variance",
-      kind: "Model record",
-      summary:
-        "A reconciliation note becomes a reusable finance record with the affected account, variance, transaction context, and reporting destination.",
-      chips: ["finance memory", "close workflow", "structured"],
-      children: [
-        {
-          id: "finance-account",
-          label: "Account: 4100",
-          kind: "Account",
-          summary:
-            "The account record stores the close state and associated exceptions.",
-          chips: ["account", "close"],
-        },
-        {
-          id: "finance-transaction",
-          label: "Transactions: Stripe payouts",
-          kind: "Transaction",
-          summary:
-            "Transaction context stays attached to the variance it explains.",
-          chips: ["payments", "source"],
-        },
-        {
-          id: "finance-variance",
-          label: "Variance: $42k",
-          kind: "Variance",
-          summary:
-            "The anomaly remains queryable later for reporting and follow-up work.",
-          chips: ["variance", "exception"],
-        },
-        {
-          id: "finance-report",
-          label: "Report: month-end deck",
-          kind: "Report",
-          summary:
-            "Reporting outputs stay connected to the supporting data behind them.",
-          chips: ["reporting", "evidence"],
-        },
-      ],
-    },
-    relations: [
-      {
-        source: "Stripe payouts",
-        sourceType: "Transaction",
-        label: "reconciles_to",
-        target: "Account 4100",
-        targetType: "Account",
-        note: "Transaction evidence stays linked to the account it rolls into.",
-      },
-      {
-        source: "Refund timing mismatch",
-        sourceType: "Issue",
-        label: "creates_variance",
-        target: "$42k variance",
-        targetType: "Variance",
-        note: "The likely cause stays attached to the anomaly it produced.",
-      },
-      {
-        source: "$42k variance",
-        sourceType: "Variance",
-        label: "summarized_in",
-        target: "Month-end deck",
-        targetType: "Report",
-        note: "Reporting context remains attached to the finance event it explains.",
-      },
-    ],
-  },
-};
-
-const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
-  legal: {
-    requestLabel: "Incoming request",
     request:
       "Review Redwood's NDA, flag risk, and tell me what still needs counsel approval.",
     summary:
@@ -1779,7 +1196,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
           "Owletto stores the contract, clause, risk, and counterparty graph so future reviews begin with the same evidence.",
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Clause-level risk summary with citations",
       "Recommended edits and unresolved approval items",
@@ -1787,7 +1203,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   devops: {
-    requestLabel: "Incoming request",
     request: "What's blocking today's deploy, and can we roll back safely?",
     summary:
       "Combine live operational checks with persistent incident memory so on-call engineers get a useful answer fast.",
@@ -1811,7 +1226,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["incident memory", "service graph"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "A current deploy-risk answer with blockers called out",
       "Incident and rollback context shared across the team",
@@ -1819,7 +1233,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   support: {
-    requestLabel: "Incoming request",
     request:
       "Draft a response for Alex Kim, note the owner, and remind me about the Thursday follow-up.",
     summary:
@@ -1844,7 +1257,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["contact memory", "follow-ups", "preferences"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Faster first replies with consistent context",
       "Less re-triage across shifts and escalations",
@@ -1852,7 +1264,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   finance: {
-    requestLabel: "Incoming request",
     request:
       "Explain the Stripe variance on Account 4100 and prep the month-end note.",
     summary:
@@ -1877,7 +1288,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["variance memory", "reporting context"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "A structured explanation for the variance",
       "Operator-ready notes for the month-end deck",
@@ -1885,7 +1295,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   sales: {
-    requestLabel: "Incoming request",
     request:
       "What changed in Northstar before the October renewal, and what should we do next?",
     summary:
@@ -1910,7 +1319,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["account memory", "renewal risk"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Renewal summaries grounded in account evidence",
       "Expansion and risk signals in one place",
@@ -1918,7 +1326,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   delivery: {
-    requestLabel: "Incoming request",
     request:
       "Give me the Monday Phoenix rollout update with blockers, owners, and the next escalation.",
     summary:
@@ -1943,7 +1350,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["project memory", "blockers", "owners"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Consistent rollout updates with owners and blockers",
       "Project context that survives across standups and escalations",
@@ -1951,7 +1357,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   leadership: {
-    requestLabel: "Incoming request",
     request:
       "Summarize this board memo: what was approved, what is blocked, and who owns the next action?",
     summary:
@@ -1976,7 +1381,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["decision memory", "assignments", "blockers"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Action-oriented board summaries grounded in source material",
       "Durable decision history across review cycles",
@@ -1984,7 +1388,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   "agent-community": {
-    requestLabel: "Incoming request",
     request:
       "Who in the community should Sarah meet this week, and draft intro messages for the best two matches.",
     summary:
@@ -2009,7 +1412,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["member graph", "connected profiles", "intro history"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Higher-quality member discovery and introductions",
       "Fresh profile context without manual curation",
@@ -2017,7 +1419,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   "market-intelligence": {
-    requestLabel: "Incoming request",
     request:
       "What's new with Airtable this week, and how do they compare to Notion?",
     summary:
@@ -2042,7 +1443,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["brand memory", "mentions", "positioning"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Weekly competitive scans with feature and pricing changes",
       "Durable brand and product memory for pattern recognition",
@@ -2050,7 +1450,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   ecommerce: {
-    requestLabel: "Incoming request",
     request:
       "Switch Emma's subscription from monthly to annual and skip next month's delivery.",
     summary:
@@ -2075,7 +1474,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["customer memory", "subscriptions", "preferences"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Faster subscription and order changes with approval flows",
       "Customer context that persists across interactions",
@@ -2083,7 +1481,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   careops: {
-    requestLabel: "Incoming request",
     request:
       "Check James McManus's appointment status and summarize his treatment progress.",
     summary:
@@ -2108,7 +1505,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["patient memory", "therapists", "treatments"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Current patient status and appointment availability",
       "Treatment progress summaries across sessions",
@@ -2116,7 +1512,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
     ],
   },
   "venture-capital": {
-    requestLabel: "Incoming request",
     request:
       "What's the latest on Lovable, and what other AI dev tools should we track?",
     summary:
@@ -2141,7 +1536,6 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
         chips: ["portfolio memory", "deal flow", "network"],
       },
     ],
-    outcomeLabel: "What the team gets",
     outcome: [
       "Company summaries with funding and team history",
       "Portfolio health and competitive signals",
@@ -2150,19 +1544,10 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
   },
 };
 
-function getSkillsDefinition(
+function enrichMemory(
   useCaseId: LandingUseCaseId,
-  useCase: LandingUseCaseDefinition
-): LandingUseCaseSkillsDefinition {
-  return useCase.skills ?? fallbackSkills[useCaseId]!;
-}
-
-function getMemoryDefinition(
-  useCaseId: LandingUseCaseId,
-  useCase: LandingUseCaseDefinition
-): LandingUseCaseMemoryDefinition {
-  const memory = useCase.memory ?? fallbackMemory[useCaseId]!;
-
+  memory: LandingUseCaseDefinition["memory"]
+): LandingUseCaseDefinition["memory"] {
   return {
     ...memory,
     howItWorks: memory.howItWorks.map((step) => ({
@@ -2186,7 +1571,7 @@ function toSkillPreview(
   useCaseId: LandingUseCaseId,
   useCase: LandingUseCaseDefinition
 ): ShowcaseSkillWorkspacePreview {
-  const skills = getSkillsDefinition(useCaseId, useCase);
+  const { skills } = useCase;
 
   return {
     useCaseId,
@@ -2213,7 +1598,7 @@ function toMemoryExample(
   useCaseId: LandingUseCaseId,
   useCase: LandingUseCaseDefinition
 ): ShowcaseMemoryExample {
-  const memory = getMemoryDefinition(useCaseId, useCase);
+  const memory = enrichMemory(useCaseId, useCase.memory);
 
   return {
     useCaseId,
@@ -2238,7 +1623,7 @@ function toMemoryExample(
 function toCampaignMeta(
   useCaseId: LandingUseCaseId,
   useCase: LandingUseCaseDefinition,
-  runtime: RuntimeJourney
+  runtime: RuntimeJourneyInput
 ): CampaignMeta {
   return {
     title: `Deploy secure ${useCase.label.toLowerCase()} agents in your infrastructure`,
@@ -2255,13 +1640,18 @@ export const landingUseCaseShowcases: LandingUseCaseShowcase[] = (
     [LandingUseCaseId, LandingUseCaseDefinition]
   >
 ).map(([useCaseId, useCase]) => {
-  const runtime = runtimeContent[useCaseId];
+  const input = runtimeContent[useCaseId];
+  const runtime: RuntimeJourney = {
+    ...input,
+    requestLabel: "Incoming request",
+    outcomeLabel: "What the team gets",
+  };
 
   return {
     id: useCaseId,
     label: useCase.label,
     examplePath: useCase.examplePath,
-    campaign: toCampaignMeta(useCaseId, useCase, runtime),
+    campaign: toCampaignMeta(useCaseId, useCase, input),
     runtime,
     skills: toSkillPreview(useCaseId, useCase),
     memory: toMemoryExample(useCaseId, useCase),

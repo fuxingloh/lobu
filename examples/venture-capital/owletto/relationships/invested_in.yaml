@@ -1,0 +1,15 @@
+slug: invested_in
+name: Invested In
+description: Investor has invested in this company
+metadata_schema:
+  type: object
+  properties:
+    round:
+      type: string
+    amount:
+      type: number
+    lead:
+      type: boolean
+    date:
+      type: string
+      format: date

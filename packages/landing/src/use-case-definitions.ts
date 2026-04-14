@@ -1,3 +1,5 @@
+import { generatedUseCaseModels } from "./generated/use-case-models";
+
 export type MemoryField = {
   label: string;
   value: string;
@@ -107,10 +109,6 @@ export type LandingUseCaseAgentDefinition = {
 
 export type LandingUseCaseModelDefinition = {
   entities: string[];
-  relationships: Array<{
-    label: string;
-    note: string;
-  }>;
 };
 
 export type LandingUseCaseSkillsDefinition = {
@@ -153,8 +151,8 @@ export type LandingUseCaseDefinition = {
   examplePath: string;
   agent: LandingUseCaseAgentDefinition;
   model: LandingUseCaseModelDefinition;
-  skills?: LandingUseCaseSkillsDefinition;
-  memory?: LandingUseCaseMemoryDefinition;
+  skills: LandingUseCaseSkillsDefinition;
+  memory: LandingUseCaseMemoryDefinition;
   owlettoOrg?: string;
 };
 
@@ -168,172 +166,411 @@ export const technicalLinks = {
   mcpAuthFlow: { label: "MCP auth flow", href: "/guides/mcp-proxy/" },
 };
 
+function g(id: string) {
+  return generatedUseCaseModels[id];
+}
+
+type HowItWorksStepConfig = {
+  detail: string;
+  chips?: string[];
+  links?: ExampleLink[];
+  title?: string;
+};
+
+function buildHowItWorks(config: {
+  model: HowItWorksStepConfig;
+  connect: HowItWorksStepConfig;
+  auth: HowItWorksStepConfig;
+  reuse: HowItWorksStepConfig;
+  fresh: { detail: string; title?: string };
+}): HowItWorksStep[] {
+  return [
+    {
+      id: "model",
+      label: "1",
+      title: config.model.title ?? "Model the world",
+      detail: config.model.detail,
+      chips: config.model.chips,
+      links: config.model.links,
+    },
+    {
+      id: "connect",
+      label: "2",
+      title: config.connect.title ?? "Connect sources",
+      detail: config.connect.detail,
+      chips: config.connect.chips,
+      links: config.connect.links,
+    },
+    {
+      id: "auth",
+      label: "3",
+      title: config.auth.title ?? "Let users connect their data",
+      detail: config.auth.detail,
+      chips: config.auth.chips,
+      links: config.auth.links,
+    },
+    {
+      id: "reuse",
+      label: "4",
+      title: config.reuse.title ?? "Reuse context across agents",
+      detail: config.reuse.detail,
+      chips: config.reuse.chips,
+      links: config.reuse.links,
+    },
+    {
+      id: "fresh",
+      label: "5",
+      title: config.fresh.title ?? "Keep it fresh",
+      detail: config.fresh.detail,
+    },
+  ];
+}
+
 export const landingUseCases = {
   legal: {
     id: "legal",
     label: "Legal",
     examplePath: "legal",
-    agent: {
-      identity: [
-        "You review contracts, summarize risk, and surface missing protections.",
-        "Support legal teams with fast clause analysis and cited research notes.",
+    agent: g("legal").agent,
+    model: g("legal").model,
+    skills: g("legal").skills,
+    memory: {
+      id: "contract",
+      description:
+        "Store contracts, clauses, counterparties, and risk so every review starts with context.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that Redwood Capital's NDA keeps residuals broad, asks for Delaware venue, and still lacks a cap on the confidentiality term.",
+      entitySelections: {
+        Contract: "legal-contract",
+        Clause: "legal-clause",
+        Risk: "legal-risk",
+        Counterparty: "legal-counterparty",
+      },
+      howItWorks: buildHowItWorks({
+        model: {
+          detail:
+            "Represent contracts, clauses, risks, and counterparties as typed objects so review history and negotiations stay queryable.",
+          chips: ["Contract", "Clause", "Risk", "Counterparty"],
+        },
+        connect: {
+          detail:
+            "Bring in uploaded agreements, shared drives, research tools, and custom parsing pipelines through connector-backed ingestion and MCP proxying.",
+          chips: ["File upload", "Drive", "Research", "Custom SDK"],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        auth: {
+          detail:
+            "Use OAuth for document systems, API keys for legal research, and manual uploads for negotiated drafts without exposing credentials to the agent runtime.",
+          chips: ["OAuth", "API keys", "File upload", "Manual review"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        reuse: {
+          detail:
+            "The same contract memory powers legal agents wherever teams work.",
+          chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
+        },
+        fresh: {
+          detail:
+            "Watchers track new drafts, changes in negotiated language, and unresolved risk so redlines stay grounded in the latest document state.",
+        },
+      }),
+      watcher: {
+        name: "Contract review tracker",
+        schedule: "Every 12 hours",
+        prompt:
+          "Check Redwood Capital contract changes, unresolved risks, and new draft versions.",
+        extractionSchema:
+          "{ changed_clauses[], unresolved_risks[], new_counterparty_terms[] }",
+        schemaEvolution:
+          "Started with clause + risk capture. After repeated NDA reviews, added negotiated_position and fallback_language fields.",
+      },
+      highlights: [
+        { label: "Contract", value: "Redwood NDA" },
+        { label: "Counterparty", value: "Redwood Capital" },
+        { label: "Risk", value: "No cap on confidentiality term" },
+        { label: "Negotiation point", value: "Broad residuals + Delaware venue" },
       ],
-      soul: [
-        "- Be precise and cautious.",
-        "- Separate facts, risks, and recommendations.",
-        "- Flag language that needs counsel approval.",
-      ],
-      user: [
-        "- Team: Commercial legal",
-        "- Priority: Turn NDAs around quickly",
-        "- Preference: Redlines with short rationale",
-      ],
-    },
-    model: {
-      entities: ["Contract", "Clause", "Risk", "Counterparty"],
-      relationships: [
+      nodeHighlights: {
+        "legal-root": [
+          { label: "Contract", value: "Redwood NDA" },
+          { label: "Counterparty", value: "Redwood Capital" },
+          { label: "Open risk", value: "No cap on confidentiality term" },
+          { label: "Clause note", value: "Residuals remain broad" },
+        ],
+        "legal-contract": [
+          { label: "Type", value: "Contract" },
+          { label: "Name", value: "Redwood NDA" },
+          { label: "Counterparty", value: "Redwood Capital" },
+          { label: "Venue", value: "Delaware" },
+        ],
+        "legal-clause": [
+          { label: "Type", value: "Clause" },
+          { label: "Clause", value: "Residuals" },
+          { label: "State", value: "Broad language still present" },
+          {
+            label: "Why it matters",
+            value: "Could weaken confidentiality protections",
+          },
+        ],
+        "legal-risk": [
+          { label: "Type", value: "Risk" },
+          { label: "Risk", value: "Unlimited confidentiality term" },
+          { label: "Severity", value: "Needs counsel review" },
+          { label: "Source", value: "Current NDA draft" },
+        ],
+        "legal-counterparty": [
+          { label: "Type", value: "Counterparty" },
+          { label: "Name", value: "Redwood Capital" },
+          { label: "Context", value: "Negotiating NDA" },
+          { label: "Known request", value: "Delaware venue" },
+        ],
+      },
+      recordTree: {
+        id: "legal-root",
+        label: "Record: Redwood NDA review",
+        kind: "Model record",
+        summary:
+          "One contract review note becomes a linked contract record with clause state, counterparty context, and durable legal risk.",
+        chips: ["contract memory", "auditable", "reviewable"],
+        children: [
+          {
+            id: "legal-contract",
+            label: "Entity: Redwood NDA",
+            kind: "Contract",
+            summary:
+              "Primary contract record used for future reviews, approvals, and negotiation history.",
+            chips: ["primary", "agreement"],
+          },
+          {
+            id: "legal-clause",
+            label: "Clause: residuals",
+            kind: "Clause",
+            summary:
+              "Clause-level review stays attached to the contract instead of disappearing inside a one-off summary.",
+            chips: ["clause", "review"],
+          },
+          {
+            id: "legal-risk",
+            label: "Risk: unlimited confidentiality term",
+            kind: "Risk",
+            summary:
+              "Open risk is queryable later when the team asks what still needs counsel approval.",
+            chips: ["risk", "open issue"],
+          },
+          {
+            id: "legal-counterparty",
+            label: "Counterparty: Redwood Capital",
+            kind: "Counterparty",
+            summary:
+              "Counterparty context helps future drafts and negotiation summaries stay grounded in the same deal thread.",
+            chips: ["counterparty", "context"],
+          },
+        ],
+      },
+      relations: [
         {
+          source: "Redwood NDA",
+          sourceType: "Contract",
           label: "contains_clause",
-          note: "Represent how a contract is composed so risky language stays attached to the right section.",
+          target: "Residuals clause",
+          targetType: "Clause",
+          note: "The clause stays attached to the agreement being reviewed.",
         },
         {
+          source: "Residuals clause",
+          sourceType: "Clause",
           label: "creates_risk",
-          note: "Keep legal risk linked to the clause or term that caused it.",
+          target: "Unlimited confidentiality term",
+          targetType: "Risk",
+          note: "Risk is linked to the language that caused it.",
         },
         {
+          source: "Redwood NDA",
+          sourceType: "Contract",
           label: "belongs_to_counterparty",
-          note: "Tie agreements and negotiation context back to the right external party.",
+          target: "Redwood Capital",
+          targetType: "Counterparty",
+          note: "Counterparty context remains queryable across future drafts.",
         },
       ],
     },
-    skills: {
-      description: "Draft contracts, search case law, review clauses",
-      agentId: "legal-review",
-      skillId: "legal-review",
-      skills: ["westlaw-mcp", "contract-drafter", "case-search"],
-      nixPackages: ["poppler", "ripgrep"],
-      allowedDomains: ["api.westlaw.com", ".courtlistener.com"],
-      mcpServer: "westlaw-mcp",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Summarize material risk before drafting edits.",
-        "Cite authority or precedent when recommending changes.",
-      ],
-    },
+    owlettoOrg: g("legal").owlettoOrg,
   },
   devops: {
     id: "devops",
     label: "DevOps",
     examplePath: "devops",
-    agent: {
-      identity: [
-        "You help platform teams triage incidents, reviews, and deploy safety checks.",
-        "Keep humans aligned on what is broken, blocked, or ready to ship.",
+    agent: g("devops").agent,
+    model: g("devops").model,
+    skills: g("devops").skills,
+    memory: {
+      id: "incident",
+      description:
+        "Track incidents, services, deploys, and remediation work in one shared operational memory graph.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that checkout-api incident started right after deploy 2026.04.13.2, impacts EU checkout traffic, and rollback depends on PR #482 landing first.",
+      entitySelections: {
+        Incident: "devops-incident",
+        Service: "devops-service",
+        Deploy: "devops-deploy",
+        "Pull request": "devops-pr",
+      },
+      howItWorks: buildHowItWorks({
+        model: {
+          detail:
+            "Represent incidents, services, deploys, and pull requests as first-class objects so on-call context survives after the thread scrolls away.",
+          chips: ["Incident", "Service", "Deploy", "Pull request"],
+        },
+        connect: {
+          detail:
+            "Turn live operational signals into structured incident memory.",
+          chips: ["PagerDuty", "GitHub", "Deploy logs", "Custom SDK"],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        auth: {
+          detail:
+            "Let teams bring the tools they already use, while keeping credentials outside the worker.",
+          chips: ["OAuth", "Service account", "API keys", "Historical import"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        reuse: {
+          detail:
+            "The same incident memory powers operational agents wherever teams work.",
+          chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
+        },
+        fresh: {
+          detail:
+            "Watchers pull in new alerts, deploy state, and merged fixes so the runtime sees the latest impact and rollback options.",
+        },
+      }),
+      watcher: {
+        name: "Incident freshness monitor",
+        schedule: "Every 5 minutes",
+        prompt:
+          "Track checkout-api incident state, deploy rollbacks, and the status of PR #482.",
+        extractionSchema:
+          "{ incident_state, impacted_regions[], rollback_ready, blocking_prs[] }",
+        schemaEvolution:
+          "Started with incident_state + deploy_id. After repeated incidents, added rollback_ready and impacted_regions fields.",
+      },
+      highlights: [
+        { label: "Incident", value: "checkout-api degradation" },
+        { label: "Service", value: "EU checkout" },
+        { label: "Trigger", value: "Deploy 2026.04.13.2" },
+        { label: "Blocker", value: "PR #482 must merge before rollback" },
       ],
-      soul: [
-        "- Prefer signal over noise.",
-        "- Highlight user impact and rollout risk.",
-        "- Never auto-deploy without approval.",
-      ],
-      user: [
-        "- Team: Platform engineering",
-        "- Rotation: Primary on-call this week",
-        "- Preference: Incident-first summaries",
-      ],
-    },
-    model: {
-      entities: ["Incident", "Service", "Deploy", "Pull request"],
-      relationships: [
+      nodeHighlights: {
+        "devops-root": [
+          { label: "Incident", value: "checkout-api degradation" },
+          { label: "Service", value: "EU checkout" },
+          { label: "Trigger", value: "Deploy 2026.04.13.2" },
+          { label: "Blocked by", value: "PR #482" },
+        ],
+        "devops-incident": [
+          { label: "Type", value: "Incident" },
+          { label: "Status", value: "Active" },
+          { label: "Impact", value: "EU checkout traffic degraded" },
+          { label: "Started after", value: "Deploy 2026.04.13.2" },
+        ],
+        "devops-service": [
+          { label: "Type", value: "Service" },
+          { label: "Name", value: "checkout-api" },
+          { label: "Region", value: "EU" },
+          { label: "Customer impact", value: "Checkout latency and failures" },
+        ],
+        "devops-deploy": [
+          { label: "Type", value: "Deploy" },
+          { label: "ID", value: "2026.04.13.2" },
+          { label: "State", value: "Suspected trigger" },
+          { label: "Action", value: "Rollback under review" },
+        ],
+        "devops-pr": [
+          { label: "Type", value: "Pull request" },
+          { label: "PR", value: "#482" },
+          { label: "Role", value: "Rollback prerequisite" },
+          { label: "Status", value: "Waiting to merge" },
+        ],
+      },
+      recordTree: {
+        id: "devops-root",
+        label: "Record: checkout-api incident",
+        kind: "Model record",
+        summary:
+          "Incident state links the active outage, affected service, triggering deploy, and required remediation work in one graph.",
+        chips: ["incident memory", "live context", "operational"],
+        children: [
+          {
+            id: "devops-incident",
+            label: "Entity: checkout-api degradation",
+            kind: "Incident",
+            summary:
+              "The active incident stays queryable across handoffs and status updates.",
+            chips: ["incident", "active"],
+          },
+          {
+            id: "devops-service",
+            label: "Service: EU checkout",
+            kind: "Service",
+            summary:
+              "Service impact is preserved separately from the incident narrative.",
+            chips: ["service", "impact"],
+          },
+          {
+            id: "devops-deploy",
+            label: "Deploy: 2026.04.13.2",
+            kind: "Deploy",
+            summary:
+              "The triggering rollout remains attached to the incident for future analysis.",
+            chips: ["deploy", "trigger"],
+          },
+          {
+            id: "devops-pr",
+            label: "PR: #482",
+            kind: "Pull request",
+            summary:
+              "Remediation work stays linked to the operational event it is blocking.",
+            chips: ["code change", "blocker"],
+          },
+        ],
+      },
+      relations: [
         {
+          source: "checkout-api degradation",
+          sourceType: "Incident",
           label: "affects_service",
-          note: "Attach incidents to the systems they degrade so impact stays visible.",
+          target: "EU checkout",
+          targetType: "Service",
+          note: "Impact stays attached to the service that is degraded.",
         },
         {
+          source: "checkout-api degradation",
+          sourceType: "Incident",
           label: "triggered_by_deploy",
-          note: "Link operational events back to the rollout or config change that caused them.",
+          target: "Deploy 2026.04.13.2",
+          targetType: "Deploy",
+          note: "The rollout remains linked to the operational event it caused.",
         },
         {
+          source: "checkout-api degradation",
+          sourceType: "Incident",
           label: "blocked_by_pr",
-          note: "Keep remediation work connected to the code changes that need action.",
+          target: "PR #482",
+          targetType: "Pull request",
+          note: "The required fix remains queryable for future handoffs.",
         },
       ],
     },
-    skills: {
-      description: "Triage PRs, manage incidents, deploy services",
-      agentId: "devops-control",
-      skillId: "devops-control",
-      skills: ["github-mcp", "pagerduty-mcp", "k8s-tools"],
-      nixPackages: ["gh", "kubectl", "jq"],
-      allowedDomains: [
-        "api.github.com",
-        "api.pagerduty.com",
-        ".k8s.example.com",
-      ],
-      mcpServer: "github-mcp",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Start with active incidents, then pending reviews and deploys.",
-        "Call out rollback steps when release risk is high.",
-      ],
-    },
+    owlettoOrg: g("devops").owlettoOrg,
   },
   support: {
     id: "support",
     label: "Support",
     examplePath: "support",
-    agent: {
-      identity: [
-        "You help support teams route tickets, draft replies, and escalate urgent issues.",
-        "Balance empathy with fast, accurate resolution paths.",
-      ],
-      soul: [
-        "- Be calm and helpful.",
-        "- Confirm what the customer needs next.",
-        "- Escalate outages or billing risk immediately.",
-      ],
-      user: [
-        "- Team: Support operations",
-        "- SLA: First reply under 15 minutes",
-        "- Preference: Reusable macros where possible",
-      ],
-    },
-    model: {
-      entities: ["Person", "Organization", "Preference", "Task"],
-      relationships: [
-        {
-          label: "works_at",
-          note: "Link contacts to the companies and accounts they represent.",
-        },
-        {
-          label: "prefers",
-          note: "Persist communication preferences so future replies stay aligned.",
-        },
-        {
-          label: "created_task",
-          note: "Turn requests and promises into follow-ups with clear ownership.",
-        },
-      ],
-    },
-    skills: {
-      description: "Route tickets, draft responses, escalate issues",
-      agentId: "support-desk",
-      skillId: "support-desk",
-      skills: ["zendesk-mcp", "knowledge-base", "sentiment"],
-      nixPackages: ["jq", "ripgrep"],
-      allowedDomains: ["subdomain.zendesk.com", ".intercomcdn.com"],
-      mcpServer: "zendesk-mcp",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Propose the next best reply and the internal follow-up owner.",
-        "Detect sentiment shifts before queues back up.",
-      ],
-    },
+    agent: g("support").agent,
+    model: g("support").model,
+    skills: g("support").skills,
     memory: {
       id: "person",
       description:
@@ -347,51 +584,36 @@ export const landingUseCases = {
         Preference: "person-attribute-preference",
         Task: "person-task",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
-          title: "Model the world",
+      howItWorks: buildHowItWorks({
+        model: {
           detail:
             "Define the people, organizations, preferences, and follow-ups your agents should recognize across conversations and synced contact data.",
           chips: ["Person", "Organization", "Preference", "Task"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Proxy MCP servers and ingest contact context from messaging apps, CRM syncs, email, and custom Connector SDK integrations through one runtime.",
           chips: ["Slack", "CRM sync", "Email", "Custom SDK", "MCP proxy"],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Support OAuth for inbox and calendar context, API keys for internal tools, and imports for historical contacts without exposing credentials to agents.",
           chips: ["OAuth", "API keys", "CSV import", "Manual import"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
-          title: "Reuse context across agents",
+        reuse: {
           detail:
             "The same relationship memory powers support agents wherever teams work.",
           chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers monitor new activity and update ownership, preferences, and follow-ups as the relationship changes.",
         },
-      ],
+      }),
       watcher: {
-        name: "Contact freshness",
+        name: g("support").watcher!.name,
         schedule: "Every 24 hours",
         prompt:
           "Monitor Alex Kim's organization for role changes, new preferences, and overdue follow-ups.",
@@ -526,98 +748,182 @@ export const landingUseCases = {
         },
       ],
     },
+    owlettoOrg: g("support").owlettoOrg,
   },
   finance: {
     id: "finance",
     label: "Finance",
     examplePath: "finance",
-    agent: {
-      identity: [
-        "You help finance teams reconcile data, explain variance, and prepare reporting runs.",
-        "Spot anomalies early and summarize them in operator language.",
+    agent: g("finance").agent,
+    model: g("finance").model,
+    skills: g("finance").skills,
+    memory: {
+      id: "variance",
+      description:
+        "Track accounts and transactions so close workflows can reuse the same structured state.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that March close shows a $42k Stripe payout variance on Account 4100, refunds are the likely cause, and the reconciliation note must land in the month-end deck.",
+      entitySelections: {
+        Account: "finance-account",
+        Transaction: "finance-transaction",
+        Variance: "finance-variance",
+        Report: "finance-report",
+      },
+      howItWorks: buildHowItWorks({
+        model: {
+          detail:
+            "Represent accounts, transactions, variances, and reports as linked objects so close state survives across spreadsheets, dashboards, and chat threads.",
+          chips: ["Account", "Transaction", "Variance", "Report"],
+        },
+        connect: {
+          detail:
+            "Pull data from accounting systems, payment processors, CSV imports, and close checklists through MCP tools and scheduled syncs.",
+          chips: ["ERP", "Stripe", "CSV", "Close checklist"],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        auth: {
+          detail:
+            "Use API keys and service accounts for finance systems while keeping access scoped outside the worker runtime.",
+          chips: ["API keys", "Service account", "Manual import"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        reuse: {
+          detail:
+            "The same variance memory powers finance agents wherever teams work.",
+          chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
+        },
+        fresh: {
+          detail:
+            "Watchers keep balances, exception lists, and report status current as new payouts and adjustments arrive.",
+        },
+      }),
+      watcher: {
+        name: "Month-end variance tracker",
+        schedule: "Every 6 hours",
+        prompt:
+          "Track Account 4100 variance, refund activity, and month-end deck readiness.",
+        extractionSchema:
+          "{ variance_amount, likely_causes[], unresolved_items[], report_status }",
+        schemaEvolution:
+          "Started with variance_amount + report_status. After repeated closes, added likely_causes and unresolved_items.",
+      },
+      highlights: [
+        { label: "Account", value: "4100" },
+        { label: "Variance", value: "$42k" },
+        { label: "Likely cause", value: "Delayed refunds" },
+        { label: "Reporting task", value: "Month-end deck reconciliation note" },
       ],
-      soul: [
-        "- Be exact with numbers and dates.",
-        "- Separate confirmed variance from possible causes.",
-        "- Escalate payment risk quickly.",
-      ],
-      user: [
-        "- Team: Finance ops",
-        "- Close: Month-end in progress",
-        "- Preference: Clear exceptions list",
-      ],
-    },
-    model: {
-      entities: ["Account", "Transaction", "Variance", "Report"],
-      relationships: [
+      nodeHighlights: {
+        "finance-root": [
+          { label: "Account", value: "4100" },
+          { label: "Variance", value: "$42k" },
+          { label: "Likely cause", value: "Refund timing" },
+          { label: "Report", value: "Month-end deck" },
+        ],
+        "finance-account": [
+          { label: "Type", value: "Account" },
+          { label: "Account", value: "4100" },
+          { label: "State", value: "Needs reconciliation" },
+          { label: "Cycle", value: "March close" },
+        ],
+        "finance-transaction": [
+          { label: "Type", value: "Transaction set" },
+          { label: "Source", value: "Stripe payouts" },
+          { label: "Signal", value: "Refund timing mismatch" },
+          { label: "Period", value: "March" },
+        ],
+        "finance-variance": [
+          { label: "Type", value: "Variance" },
+          { label: "Amount", value: "$42k" },
+          { label: "Status", value: "Needs explanation" },
+          { label: "Cause", value: "Refund timing" },
+        ],
+        "finance-report": [
+          { label: "Type", value: "Report" },
+          { label: "Name", value: "Month-end deck" },
+          { label: "Needs", value: "Reconciliation note" },
+          { label: "Owner", value: "Finance ops" },
+        ],
+      },
+      recordTree: {
+        id: "finance-root",
+        label: "Record: March close variance",
+        kind: "Model record",
+        summary:
+          "A reconciliation note becomes a reusable finance record with the affected account, variance, transaction context, and reporting destination.",
+        chips: ["finance memory", "close workflow", "structured"],
+        children: [
+          {
+            id: "finance-account",
+            label: "Account: 4100",
+            kind: "Account",
+            summary:
+              "The account record stores the close state and associated exceptions.",
+            chips: ["account", "close"],
+          },
+          {
+            id: "finance-transaction",
+            label: "Transactions: Stripe payouts",
+            kind: "Transaction",
+            summary:
+              "Transaction context stays attached to the variance it explains.",
+            chips: ["payments", "source"],
+          },
+          {
+            id: "finance-variance",
+            label: "Variance: $42k",
+            kind: "Variance",
+            summary:
+              "The anomaly remains queryable later for reporting and follow-up work.",
+            chips: ["variance", "exception"],
+          },
+          {
+            id: "finance-report",
+            label: "Report: month-end deck",
+            kind: "Report",
+            summary:
+              "Reporting outputs stay connected to the supporting data behind them.",
+            chips: ["reporting", "evidence"],
+          },
+        ],
+      },
+      relations: [
         {
+          source: "Stripe payouts",
+          sourceType: "Transaction",
           label: "reconciles_to",
-          note: "Tie transactions and balances back to the accounts they roll into.",
+          target: "Account 4100",
+          targetType: "Account",
+          note: "Transaction evidence stays linked to the account it rolls into.",
         },
         {
+          source: "Refund timing mismatch",
+          sourceType: "Issue",
           label: "creates_variance",
-          note: "Keep anomalies attached to the source records that produced them.",
+          target: "$42k variance",
+          targetType: "Variance",
+          note: "The likely cause stays attached to the anomaly it produced.",
         },
         {
+          source: "$42k variance",
+          sourceType: "Variance",
           label: "summarized_in",
-          note: "Let agents trace reporting outputs back to the supporting data.",
+          target: "Month-end deck",
+          targetType: "Report",
+          note: "Reporting context remains attached to the finance event it explains.",
         },
       ],
     },
-    skills: {
-      description: "Reconcile accounts, generate reports, flag anomalies",
-      agentId: "finance-ops",
-      skillId: "finance-ops",
-      skills: ["quickbooks-mcp", "stripe-mcp", "csv-tools"],
-      nixPackages: ["qsv", "jq", "sqlite"],
-      allowedDomains: ["quickbooks.api.intuit.com", "api.stripe.com"],
-      mcpServer: "stripe-mcp",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Lead with exceptions, then summarize reconciled balances.",
-        "Prepare operator-ready notes for anomalies that need review.",
-      ],
-    },
+    owlettoOrg: g("finance").owlettoOrg,
   },
   sales: {
     id: "sales",
     label: "Sales",
     examplePath: "sales",
-    agent: {
-      identity: [
-        "You help revenue teams track account health, rollout progress, and renewal signals.",
-        "Keep every commercial update tied to the people, products, and risks behind it.",
-      ],
-      soul: [
-        "- Focus on what changes account trajectory.",
-        "- Separate confirmed signals from speculation.",
-        "- Flag renewal risk early and clearly.",
-      ],
-      user: [
-        "- Team: Revenue operations",
-        "- Priority: Protect renewals and identify expansion",
-        "- Preference: Account summaries with clear next steps",
-      ],
-    },
-    model: {
-      entities: ["Organization", "Region", "Team", "Product", "Renewal risk"],
-      relationships: [
-        {
-          label: "expanded_into",
-          note: "Track where an account is growing so territory and rollout context stay explicit.",
-        },
-        {
-          label: "runs",
-          note: "Link the internal team or customer function to the pilot they own.",
-        },
-        {
-          label: "affects",
-          note: "Connect commercial signals directly to the renewal or expansion they influence.",
-        },
-      ],
-    },
+    agent: g("sales").agent,
+    model: g("sales").model,
+    skills: g("sales").skills,
     memory: {
       id: "company",
       description: "Track accounts, pilots, renewal risk, and buying signals.",
@@ -631,19 +937,13 @@ export const landingUseCases = {
         Product: "company-pilot",
         "Renewal risk": "company-risk",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
-          title: "Model the world",
+      howItWorks: buildHowItWorks({
+        model: {
           detail:
             "Represent accounts as organizations with regions, teams, pilots, and risks instead of flattening everything into CRM notes.",
           chips: ["Organization", "Region", "Team", "Product", "Renewal risk"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest CRM updates, product telemetry, support signals, and internal notes through supported connectors, MCP proxying, and custom SDK integrations.",
           chips: [
@@ -655,33 +955,24 @@ export const landingUseCases = {
           ],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Mix OAuth for SaaS apps, API keys for services, and service accounts for internal pipelines while keeping credentials scoped outside the agent runtime.",
           chips: ["OAuth", "API keys", "Service account", "Scheduled imports"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
-          title: "Reuse context across agents",
+        reuse: {
           detail:
             "The same account memory powers revenue agents wherever teams work.",
           chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers turn ongoing account changes into updated risk, expansion, and renewal state without rewriting the whole record by hand.",
         },
-      ],
+      }),
       watcher: {
-        name: "Account health monitor",
+        name: g("sales").watcher!.name,
         schedule: "Every 12 hours",
         prompt:
           "Poll CRM data for Northstar Foods. Track expansion progress, risk level changes, and renewal timeline.",
@@ -816,44 +1107,15 @@ export const landingUseCases = {
         },
       ],
     },
+    owlettoOrg: g("sales").owlettoOrg,
   },
   delivery: {
     id: "delivery",
     label: "Delivery",
     examplePath: "delivery",
-    agent: {
-      identity: [
-        "You help delivery teams keep milestones, blockers, owners, and artifacts aligned.",
-        "Turn operational updates into reusable project context instead of one-off status notes.",
-      ],
-      soul: [
-        "- Lead with blockers and dependencies.",
-        "- Preserve ownership and evidence.",
-        "- Keep leadership updates concise and factual.",
-      ],
-      user: [
-        "- Team: Delivery operations",
-        "- Priority: Keep rollouts unblocked",
-        "- Preference: Weekly risk snapshots",
-      ],
-    },
-    model: {
-      entities: ["Project", "Milestone", "Stakeholder", "Blocker", "Document"],
-      relationships: [
-        {
-          label: "owned_by",
-          note: "Keep project ownership queryable across updates and artifacts.",
-        },
-        {
-          label: "blocked_by",
-          note: "Tie blockers directly to the project and milestone they threaten.",
-        },
-        {
-          label: "documented_in",
-          note: "Preserve the source documents and reviews behind key project state.",
-        },
-      ],
-    },
+    agent: g("delivery").agent,
+    model: g("delivery").model,
+    skills: g("delivery").skills,
     memory: {
       id: "project",
       description:
@@ -868,51 +1130,36 @@ export const landingUseCases = {
         Blocker: "project-blocker",
         Document: "project-doc",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
-          title: "Model the world",
+      howItWorks: buildHowItWorks({
+        model: {
           detail:
             "Treat projects as first-class objects with milestones, owners, blockers, artifacts, and recurring reporting expectations.",
           chips: ["Project", "Milestone", "Stakeholder", "Blocker", "Document"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Bring project state in from GitHub, Linear, Slack, docs, and internal app events through MCP proxying or custom Connector SDKs.",
           chips: ["GitHub", "Linear", "Slack", "Docs", "Custom SDK"],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Support OAuth for engineering tools, API keys for internal services, and source-specific imports for historical project state and artifacts.",
           chips: ["OAuth", "API keys", "Webhooks", "Manual import"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
-          title: "Reuse context across agents",
+        reuse: {
           detail:
             "The same project memory powers delivery agents wherever teams work.",
           chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers turn new blockers, milestone changes, and reporting cadences into updated project memory and ready-to-send summaries.",
         },
-      ],
+      }),
       watcher: {
-        name: "Phoenix rollout tracker",
+        name: g("delivery").watcher!.name,
         schedule: "Every Monday at 9 AM",
         prompt:
           "Check Phoenix migration blockers, milestone progress, and generate the weekly risk summary for leadership.",
@@ -1058,44 +1305,15 @@ export const landingUseCases = {
         },
       ],
     },
+    owlettoOrg: g("delivery").owlettoOrg,
   },
   leadership: {
     id: "leadership",
     label: "Leadership",
     examplePath: "leadership",
-    agent: {
-      identity: [
-        "You help leadership teams turn memos, decisions, and board materials into reusable operating context.",
-        "Keep decisions, blockers, and assignments attached to their source evidence.",
-      ],
-      soul: [
-        "- Preserve decision history.",
-        "- Keep blockers and owners explicit.",
-        "- Separate approved, pending, and blocked outcomes.",
-      ],
-      user: [
-        "- Team: Executive operations",
-        "- Priority: Preserve decision context between reviews",
-        "- Preference: Action-oriented summaries",
-      ],
-    },
-    model: {
-      entities: ["Document", "Decision", "Region", "Risk", "Task"],
-      relationships: [
-        {
-          label: "approved",
-          note: "Keep approved decisions queryable without re-reading the whole source memo.",
-        },
-        {
-          label: "blocked_by",
-          note: "Attach blocked decisions to the dependency that is holding them up.",
-        },
-        {
-          label: "assigned",
-          note: "Turn follow-up work into durable ownership instead of transient notes.",
-        },
-      ],
-    },
+    agent: g("leadership").agent,
+    model: g("leadership").model,
+    skills: g("leadership").skills,
     memory: {
       id: "document",
       description:
@@ -1110,19 +1328,13 @@ export const landingUseCases = {
         Risk: "document-blocker",
         Task: "document-task",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
-          title: "Model the world",
+      howItWorks: buildHowItWorks({
+        model: {
           detail:
             "Treat source files as evidence objects, then extract decisions, blockers, regions, and tasks into linked structured memory.",
           chips: ["Document", "Decision", "Region", "Risk", "Task"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest uploads, cloud docs, PDFs, browser-backed systems, and custom SDK feeds while routing MCP access through the proxy layer.",
           chips: [
@@ -1134,33 +1346,24 @@ export const landingUseCases = {
           ],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Let users authorize Drive and knowledge tools with OAuth, attach API-backed sources, or import documents directly when manual capture makes more sense.",
           chips: ["OAuth", "Browser auth", "API keys", "File upload"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
-          title: "Reuse context across agents",
+        reuse: {
           detail:
             "The same decision memory powers leadership agents wherever teams work.",
           chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers keep pending decisions, legal blockers, and assigned tasks current as new board materials and follow-ups arrive.",
         },
-      ],
+      }),
       watcher: {
-        name: "Board action tracker",
+        name: g("leadership").watcher!.name,
         schedule: "Daily at 8 AM",
         prompt:
           "Track board action items: check Elena's forecast delivery, legal review status, and upcoming board packet deadlines.",
@@ -1292,91 +1495,15 @@ export const landingUseCases = {
         },
       ],
     },
+    owlettoOrg: g("leadership").owlettoOrg,
   },
   "agent-community": {
     id: "agent-community",
     label: "Agent Community",
     examplePath: "agent-community",
-    agent: {
-      identity: [
-        "You help private communities discover aligned members, explain why they should meet, and draft warm introductions.",
-        "Turn connected public profiles and member-provided context into a live community graph that stays useful over time.",
-      ],
-      soul: [
-        "- Prefer high-signal, opt-in matching over broad outreach.",
-        "- Explain why two members should meet before drafting any introduction.",
-        "- Never send introductions without approval.",
-      ],
-      user: [
-        "- Team: Community operations",
-        "- Priority: High-quality member introductions without manual profile research",
-        "- Preference: Slack and email drafts with clear rationale",
-      ],
-    },
-    model: {
-      entities: [
-        "Member",
-        "Company",
-        "Project",
-        "Repository",
-        "Post",
-        "Topic",
-        "Match",
-      ],
-      relationships: [
-        {
-          label: "works_at",
-          note: "Keep member context tied to the company or organization they currently represent.",
-        },
-        {
-          label: "building_project",
-          note: "Track the products, startups, or initiatives members are actively working on.",
-        },
-        {
-          label: "maintains_repo",
-          note: "Link members to repositories so technical interests and recent activity stay queryable.",
-        },
-        {
-          label: "writes_about",
-          note: "Capture blog posts, newsletters, and public writing so matching includes current thinking, not just static bios.",
-        },
-        {
-          label: "interested_in",
-          note: "Store durable interests and goals that can be reused across matching and introductions.",
-        },
-        {
-          label: "matches_with",
-          note: "Represent suggested introductions with reasons and confidence so outreach history is auditable.",
-        },
-        {
-          label: "introduced_to",
-          note: "Track completed introductions so the system avoids duplicate outreach and preserves relationship history.",
-        },
-      ],
-    },
-    skills: {
-      description:
-        "Keep member profiles fresh, surface good matches, and draft approved introductions",
-      agentId: "agent-community",
-      skillId: "agent-community",
-      skills: [
-        "github-mcp",
-        "linkedin-mcp",
-        "newsletter-monitor",
-        "web-profile-sync",
-        "profile-import",
-      ],
-      nixPackages: ["playwright", "jq"],
-      allowedDomains: ["api.github.com", "linkedin.com", ".substack.com"],
-      mcpServer: "web-profile-sync",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Prioritize opt-in matching and explain the reason for every suggested introduction.",
-        "Draft outreach for Slack or email, but only send after approval.",
-      ],
-    },
+    agent: g("agent-community").agent,
+    model: g("agent-community").model,
+    skills: g("agent-community").skills,
     memory: {
       id: "member",
       description:
@@ -1393,19 +1520,14 @@ export const landingUseCases = {
         Topic: "community-topic",
         Match: "community-match",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
+      howItWorks: buildHowItWorks({
+        model: {
           title: "Model the member graph",
           detail:
             "Represent members, companies, projects, repos, posts, topics, and introductions as linked objects so the community can remember who is building what and why they should meet.",
           chips: ["Member", "Project", "Repository", "Post", "Topic", "Match"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest GitHub, LinkedIn, newsletters, personal websites, and manual profile forms through MCP proxying, public feeds, and Connector SDK integrations.",
           chips: [
@@ -1418,9 +1540,7 @@ export const landingUseCases = {
           ],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
+        auth: {
           title: "Let members connect their data",
           detail:
             "Use MCP login and OAuth for connected accounts, support RSS and public-site ingestion for newsletters and blogs, and allow manual profile imports without exposing credentials to agents.",
@@ -1433,24 +1553,19 @@ export const landingUseCases = {
           ],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
+        reuse: {
           title: "Reuse context everywhere",
           detail:
             "The same member graph powers community concierge agents in Slack, internal dashboards, and MCP clients like OpenClaw, ChatGPT, and Claude.",
           chips: ["Slack", "Dashboard", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "A scheduled watcher turns new launches, posts, project updates, and hiring signals into suggestions about which members might care and which warm introductions to draft next.",
         },
-      ],
+      }),
       watcher: {
-        name: "Opportunity matcher",
+        name: g("agent-community").watcher!.name,
         schedule: "Every 12 hours",
         prompt:
           "Monitor connected profiles, newsletters, websites, and member updates for new launches, posts, hiring signals, funding news, and project changes. Identify which members are likely to care, explain why, and queue approved intro or outreach drafts.",
@@ -1634,54 +1749,15 @@ export const landingUseCases = {
         },
       ],
     },
-    owlettoOrg: "venture-capital",
+    owlettoOrg: g("agent-community").owlettoOrg,
   },
   "market-intelligence": {
     id: "market-intelligence",
     label: "Market Intelligence",
     examplePath: "market-intelligence",
-    agent: {
-      identity: [
-        "You track brands, products, and market signals across the competitive landscape.",
-        "Monitor company positioning, product launches, and strategic shifts.",
-      ],
-      soul: [
-        "- Distinguish signal from noise in market chatter.",
-        "- Preserve source context for every insight.",
-        "- Cross-reference mentions across brands and products.",
-      ],
-      user: [
-        "- Team: Product strategy and competitive intelligence",
-        "- Priority: Track competitive moves and customer sentiment",
-        "- Preference: Weekly market scans with alert-driven updates",
-      ],
-    },
-    model: {
-      entities: ["Brand", "Product"],
-      relationships: [
-        {
-          label: "mentions",
-          note: "Track content mentions across news, reviews, and social channels to understand market presence.",
-        },
-      ],
-    },
-    skills: {
-      description:
-        "Monitor brands, track product launches, analyze market trends",
-      agentId: "market-intel",
-      skillId: "market-intel",
-      skills: ["product-hunt-mcp", "crunchbase-mcp", "web-monitor"],
-      nixPackages: ["playwright", "jq"],
-      allowedDomains: ["producthunt.com", "crunchbase.com", ".techcrunch.com"],
-      mcpServer: "web-monitor",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Flag significant product changes and pricing shifts.",
-        "Track competitive responses to new feature launches.",
-      ],
-    },
+    agent: g("market-intelligence").agent,
+    model: g("market-intelligence").model,
+    skills: g("market-intelligence").skills,
     memory: {
       id: "brand",
       description:
@@ -1693,19 +1769,14 @@ export const landingUseCases = {
         Brand: "brand-entity",
         Product: "brand-product",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
+      howItWorks: buildHowItWorks({
+        model: {
           title: "Model the market",
           detail:
             "Represent brands and products as first-class objects with positioning, features, and competitive relationships.",
           chips: ["Brand", "Product", "Positioning", "Features"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest from Product Hunt, review sites, news sources, and social mentions through supported connectors and MCP proxying.",
           chips: [
@@ -1717,33 +1788,25 @@ export const landingUseCases = {
           ],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Support OAuth for review platforms, RSS feeds for news, and API keys for private sources while keeping credentials scoped outside the agent runtime.",
           chips: ["OAuth", "RSS feeds", "API keys", "Manual import"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
+        reuse: {
           title: "Reuse context everywhere",
           detail:
             "Market intelligence powers competitive analysis agents in Slack, strategy tools, and MCP clients like OpenClaw, ChatGPT, and Claude.",
           chips: ["Slack", "Strategy tools", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers turn new product launches, feature announcements, and market shifts into updated brand and product memory.",
         },
-      ],
+      }),
       watcher: {
-        name: "Competitive brand tracker",
+        name: g("market-intelligence").watcher!.name,
         schedule: "Every 6 hours",
         prompt:
           "Monitor Airtable for new features, pricing changes, and competitive positioning against similar tools.",
@@ -1818,70 +1881,15 @@ export const landingUseCases = {
         },
       ],
     },
-    owlettoOrg: "market-intelligence",
+    owlettoOrg: g("market-intelligence").owlettoOrg,
   },
   careops: {
     id: "careops",
     label: "Healthcare",
     examplePath: "careops",
-    agent: {
-      identity: [
-        "You help healthcare practices manage patient care, appointments, and treatment workflows.",
-        "Track therapist assignments, treatment plans, and operational coordination.",
-      ],
-      soul: [
-        "- Protect patient privacy and confidentiality.",
-        "- Preserve treatment history and provider assignments.",
-        "- Flag scheduling conflicts and care gaps immediately.",
-      ],
-      user: [
-        "- Team: Clinical operations and practice management",
-        "- Priority: Coordinate care and track patient progress",
-        "- Preference: Clear therapist availability and patient status",
-      ],
-    },
-    model: {
-      entities: ["Patient", "Appointment", "Treatment", "Therapist", "Vendor"],
-      relationships: [
-        {
-          label: "assigned_to",
-          note: "Track which therapist is responsible for each patient and their care coordination.",
-        },
-        {
-          label: "has_appointment",
-          note: "Link scheduled appointments to patients and treatment plans.",
-        },
-        {
-          label: "on_treatment",
-          note: "Connect patients to their active treatment plans and care protocols.",
-        },
-        {
-          label: "treats",
-          note: "Track therapist-patient relationships and care assignments.",
-        },
-        {
-          label: "covered_by",
-          note: "Link patients and treatments to insurance vendors for billing.",
-        },
-      ],
-    },
-    skills: {
-      description:
-        "Schedule appointments, track treatment progress, coordinate care",
-      agentId: "careops",
-      skillId: "careops",
-      skills: ["calendar-mcp", "ehr-mcp", "insurance-portal"],
-      nixPackages: ["ripgrep", "jq"],
-      allowedDomains: [".ehr.com", ".insurance-portal.com"],
-      mcpServer: "calendar-mcp",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Confirm patient identity and authorization before discussing care details.",
-        "Flag appointments that need rescheduling or therapist follow-up.",
-      ],
-    },
+    agent: g("careops").agent,
+    model: g("careops").model,
+    skills: g("careops").skills,
     memory: {
       id: "patient",
       description:
@@ -1895,36 +1903,26 @@ export const landingUseCases = {
         Treatment: "patient-treatment",
         Therapist: "patient-therapist",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
+      howItWorks: buildHowItWorks({
+        model: {
           title: "Model patient care",
           detail:
             "Represent patients, appointments, treatments, and therapists as linked entities that capture the full care context.",
           chips: ["Patient", "Appointment", "Treatment", "Therapist"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest from EHR systems, calendar feeds, patient portals, and email threads through supported connectors and MCP proxying.",
           chips: ["EHR", "Calendars", "Patient portal", "Email", "Custom SDK"],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Support OAuth for EHR and calendar systems, API keys for practice management tools, and HIPAA-compliant imports for patient data.",
           chips: ["OAuth", "EHR integration", "API keys", "Secure import"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
+        reuse: {
           title: "Reuse context everywhere",
           detail:
             "Patient care context powers coordination agents in practice portals, messaging apps, and MCP clients like OpenClaw, ChatGPT, and Claude.",
@@ -1936,16 +1934,13 @@ export const landingUseCases = {
             "Claude",
           ],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers turn new appointments, treatment plan updates, and therapist assignments into current patient memory.",
         },
-      ],
+      }),
       watcher: {
-        name: "Patient care tracker",
+        name: g("careops").watcher!.name,
         schedule: "Every morning at 7 AM",
         prompt:
           "Check James McManus for appointment changes, treatment progress, and insurance coverage status.",
@@ -2054,62 +2049,15 @@ export const landingUseCases = {
         },
       ],
     },
-    owlettoOrg: "careops",
+    owlettoOrg: g("careops").owlettoOrg,
   },
   ecommerce: {
     id: "ecommerce",
     label: "Ecommerce",
     examplePath: "ecommerce",
-    agent: {
-      identity: [
-        "You help ecommerce teams manage subscriptions, process order changes, and resolve customer requests.",
-        "Handle routine operations like plan switches, skipped deliveries, and address updates while escalating refunds and cancellations for approval.",
-      ],
-      soul: [
-        "- Confirm customer identity before making changes.",
-        "- Never cancel subscriptions or issue refunds without approval.",
-        "- Be helpful and concise — customers want fast resolution.",
-      ],
-      user: [
-        "- Team: Ecommerce operations",
-        "- Priority: Fast self-service for subscription and order changes",
-        "- Preference: Resolve in one interaction when possible",
-      ],
-    },
-    model: {
-      entities: ["Customer", "Subscription", "Order", "Product"],
-      relationships: [
-        {
-          label: "subscribed_to",
-          note: "Track which plans and products each customer subscribes to.",
-        },
-        {
-          label: "placed_order",
-          note: "Link orders to customers so purchase history stays queryable.",
-        },
-        {
-          label: "has_preference",
-          note: "Persist communication and delivery preferences across interactions.",
-        },
-      ],
-    },
-    skills: {
-      description:
-        "Manage subscriptions, process orders, handle customer requests",
-      agentId: "ecommerce-ops",
-      skillId: "ecommerce-ops",
-      skills: ["shopify-mcp", "recharge-mcp", "customer-tools"],
-      nixPackages: ["jq", "ripgrep"],
-      allowedDomains: [".myshopify.com", "api.rechargeapps.com"],
-      mcpServer: "shopify-mcp",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Confirm the customer and their current subscription before making changes.",
-        "Request approval for cancellations, refunds, and large credits.",
-      ],
-    },
+    agent: g("ecommerce").agent,
+    model: g("ecommerce").model,
+    skills: g("ecommerce").skills,
     memory: {
       id: "customer",
       description:
@@ -2123,51 +2071,37 @@ export const landingUseCases = {
         Order: "ecommerce-order",
         Product: "ecommerce-product",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
+      howItWorks: buildHowItWorks({
+        model: {
           title: "Model the store",
           detail:
             "Represent customers, subscriptions, orders, and products as linked entities so every interaction starts with full purchase context.",
           chips: ["Customer", "Subscription", "Order", "Product"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest from Shopify, subscription platforms, helpdesk tools, and customer communications through supported connectors and MCP proxying.",
           chips: ["Shopify", "Recharge", "Helpdesk", "Email", "Custom SDK"],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Support OAuth for Shopify and subscription platforms, API keys for helpdesk tools, and imports for customer migration data.",
           chips: ["OAuth", "API keys", "CSV import", "Webhooks"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
-          title: "Reuse context across agents",
+        reuse: {
           detail:
             "The same customer memory powers ecommerce agents wherever teams work.",
           chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers turn new orders, subscription changes, and support interactions into updated customer memory.",
         },
-      ],
+      }),
       watcher: {
-        name: "Customer activity tracker",
+        name: g("ecommerce").watcher!.name,
         schedule: "Every 6 hours",
         prompt:
           "Monitor Emma Torres for new orders, subscription changes, delivery requests, and support interactions.",
@@ -2283,73 +2217,15 @@ export const landingUseCases = {
         },
       ],
     },
+    owlettoOrg: g("ecommerce").owlettoOrg,
   },
   "venture-capital": {
     id: "venture-capital",
     label: "Venture Capital",
     examplePath: "venture-capital",
-    agent: {
-      identity: [
-        "You help VC firms track companies, founders, and investment opportunities.",
-        "Monitor portfolio companies, sourcing pipeline, and market signals.",
-      ],
-      soul: [
-        "- Distinguish signal from noise in deal flow.",
-        "- Preserve investment memos and decision context.",
-        "- Track competitive dynamics and market shifts.",
-      ],
-      user: [
-        "- Team: Investment partners and sourcing team",
-        "- Priority: Track portfolio health and new opportunities",
-        "- Preference: Company summaries with clear investment signals",
-      ],
-    },
-    model: {
-      entities: ["Company", "Founder", "Investor", "Fund Round", "Sector"],
-      relationships: [
-        {
-          label: "founded_by",
-          note: "Track founding teams and their backgrounds for pattern recognition.",
-        },
-        {
-          label: "invested_in",
-          note: "Keep investment history and portfolio connections visible.",
-        },
-        {
-          label: "works_at",
-          note: "Track founder and executive movements across companies.",
-        },
-        {
-          label: "in_sector",
-          note: "Connect companies to investment sectors and thesis areas.",
-        },
-        {
-          label: "round_of",
-          note: "Link funding rounds to companies and lead investors.",
-        },
-        {
-          label: "sourced_by",
-          note: "Track deal sourcing and network connections.",
-        },
-      ],
-    },
-    skills: {
-      description:
-        "Track companies, monitor deal flow, analyze portfolio metrics",
-      agentId: "vc-tracking",
-      skillId: "vc-tracking",
-      skills: ["crunchbase-mcp", "linkedin-mcp", "news-monitor"],
-      nixPackages: ["playwright", "jq"],
-      allowedDomains: ["crunchbase.com", "linkedin.com", ".techcrunch.com"],
-      mcpServer: "news-monitor",
-      providerId: "anthropic",
-      model: "claude/sonnet-4-5",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      skillInstructions: [
-        "Flag significant funding rounds and executive changes.",
-        "Track portfolio company expansion into new markets.",
-      ],
-    },
+    agent: g("venture-capital").agent,
+    model: g("venture-capital").model,
+    skills: g("venture-capital").skills,
     memory: {
       id: "company",
       description:
@@ -2364,19 +2240,14 @@ export const landingUseCases = {
         Sector: "company-sector",
         Investor: "company-investor",
       },
-      howItWorks: [
-        {
-          id: "model",
-          label: "1",
+      howItWorks: buildHowItWorks({
+        model: {
           title: "Model the venture landscape",
           detail:
             "Represent companies, founders, investors, and funding rounds as linked entities for deal tracking and pattern recognition.",
           chips: ["Company", "Founder", "Investor", "Fund Round", "Sector"],
         },
-        {
-          id: "connect",
-          label: "2",
-          title: "Connect sources",
+        connect: {
           detail:
             "Ingest from Crunchbase, LinkedIn, news sources, and internal deal memos through supported connectors and MCP proxying.",
           chips: [
@@ -2388,33 +2259,25 @@ export const landingUseCases = {
           ],
           links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
         },
-        {
-          id: "auth",
-          label: "3",
-          title: "Let users connect their data",
+        auth: {
           detail:
             "Support OAuth for data providers, API keys for premium sources, and manual imports for proprietary deal information.",
           chips: ["OAuth", "API keys", "CSV import", "Manual entry"],
           links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
         },
-        {
-          id: "reuse",
-          label: "4",
+        reuse: {
           title: "Reuse context everywhere",
           detail:
             "Investment intelligence powers deal review agents in internal tools, messaging apps, and MCP clients like OpenClaw, ChatGPT, and Claude.",
           chips: ["Deal tools", "Slack", "OpenClaw", "ChatGPT", "Claude"],
         },
-        {
-          id: "fresh",
-          label: "5",
-          title: "Keep it fresh",
+        fresh: {
           detail:
             "Watchers turn new funding rounds, portfolio updates, and market signals into current company memory.",
         },
-      ],
+      }),
       watcher: {
-        name: "Portfolio company monitor",
+        name: g("venture-capital").watcher!.name,
         schedule: "Every 12 hours",
         prompt:
           "Check Lovable for new funding, product launches, team growth, and competitive positioning changes.",
@@ -2532,7 +2395,7 @@ export const landingUseCases = {
         },
       ],
     },
-    owlettoOrg: "venture-capital",
+    owlettoOrg: g("venture-capital").owlettoOrg,
   },
 } satisfies Record<string, LandingUseCaseDefinition>;
 
