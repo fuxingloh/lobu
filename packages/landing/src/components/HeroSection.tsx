@@ -31,11 +31,8 @@ const SecondaryCtaIcon = ({ external }: { external: boolean }) =>
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M14 3h7v7" />
-      <path d="M10 14 21 3" />
-      <path d="M21 14v7h-7" />
-      <path d="M3 10V3h7" />
-      <path d="m3 3 7 7" />
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
     </svg>
   );
 
@@ -52,6 +49,9 @@ export function HeroSection(props: {
   const memoryHref = `/memory/for/${activeUseCase.id}`;
   const skillsHref = `/skills/for/${activeUseCase.id}`;
   const owlettoUrl = getOwlettoUrl(activeUseCase.id);
+  const primaryCtaLabel = props.heroCopy
+    ? `See ${activeUseCase.label} demo`
+    : "See live demo";
   const secondaryCta = props.heroCopy
     ? {
         href: `${GITHUB_URL}/tree/main/examples/${activeUseCase.examplePath}`,
@@ -60,7 +60,7 @@ export function HeroSection(props: {
       }
     : {
         href: GETTING_STARTED_HREF,
-        label: "Read getting started",
+        label: "Get started",
         external: false,
       };
 
@@ -137,7 +137,7 @@ export function HeroSection(props: {
               color: "var(--color-page-bg)",
             }}
           >
-            Open in Owletto
+            {primaryCtaLabel}
           </a>
           <a
             href={secondaryCta.href}
