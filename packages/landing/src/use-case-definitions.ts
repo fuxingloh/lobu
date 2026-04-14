@@ -1367,11 +1367,7 @@ export const landingUseCases = {
         "profile-import",
       ],
       nixPackages: ["playwright", "jq"],
-      allowedDomains: [
-        "api.github.com",
-        "linkedin.com",
-        ".substack.com",
-      ],
+      allowedDomains: ["api.github.com", "linkedin.com", ".substack.com"],
       mcpServer: "web-profile-sync",
       providerId: "anthropic",
       model: "claude/sonnet-4-5",
@@ -1404,14 +1400,7 @@ export const landingUseCases = {
           title: "Model the member graph",
           detail:
             "Represent members, companies, projects, repos, posts, topics, and introductions as linked objects so the community can remember who is building what and why they should meet.",
-          chips: [
-            "Member",
-            "Project",
-            "Repository",
-            "Post",
-            "Topic",
-            "Match",
-          ],
+          chips: ["Member", "Project", "Repository", "Post", "Topic", "Match"],
         },
         {
           id: "connect",
@@ -1645,7 +1634,7 @@ export const landingUseCases = {
         },
       ],
     },
-    owlettoOrg: "agent-community",
+    owlettoOrg: "venture-capital",
   },
   "market-intelligence": {
     id: "market-intelligence",
