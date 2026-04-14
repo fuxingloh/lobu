@@ -23,6 +23,9 @@ export function Footer() {
           class="flex items-center gap-5 text-xs"
           style={{ color: "var(--color-page-text-muted)" }}
         >
+          <a href="/privacy" class="hover:underline">
+            Privacy
+          </a>
           <a
             href={GITHUB_URL}
             target="_blank"
