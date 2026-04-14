@@ -2,11 +2,19 @@ const GITHUB_URL = "https://github.com/lobu-ai/lobu";
 const GITHUB_STARS_BADGE =
   "https://img.shields.io/github/stars/lobu-ai/lobu?style=social";
 
-const leftLinks = [
-  { label: "Memory", href: "/memory" },
-  { label: "Skills", href: "/skills" },
-  { label: "Pricing", href: "/pricing" },
-];
+function getUseCaseFromPath(path: string): string | undefined {
+  const match = path.match(/\/for\/([^/]+)/);
+  return match?.[1];
+}
+
+function getLeftLinks(currentPath: string) {
+  const useCaseId = getUseCaseFromPath(currentPath);
+  return [
+    { label: "Memory", href: useCaseId ? `/memory/for/${useCaseId}` : "/memory" },
+    { label: "Skills", href: "/skills" },
+    { label: "Pricing", href: "/pricing" },
+  ];
+}
 
 const rightLinks = [
   { label: "Docs", href: "/getting-started" },
@@ -24,6 +32,10 @@ type NavProps = {
 };
 
 export function Nav({ currentPath = "/" }: NavProps) {
+  const useCaseId = getUseCaseFromPath(currentPath);
+  const homeHref = useCaseId ? `/for/${useCaseId}` : "/";
+  const leftLinks = getLeftLinks(currentPath);
+
   return (
     <nav
       class="fixed top-0 left-0 right-0 z-50 px-4 sm:px-8 py-3"
@@ -35,7 +47,7 @@ export function Nav({ currentPath = "/" }: NavProps) {
     >
       <div class="max-w-[60rem] mx-auto flex items-center gap-3 min-w-0">
         <a
-          href="/"
+          href={homeHref}
           class="flex items-center gap-2 text-lg font-bold tracking-tight sm:mr-8 shrink-0"
           style={{ color: "var(--color-page-text)" }}
         >

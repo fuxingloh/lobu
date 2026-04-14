@@ -220,8 +220,7 @@ const memoryStepPanels: Record<
       items: [
         {
           label: "Community concierge",
-          detail:
-            "Answers questions like who should meet this week and why.",
+          detail: "Answers questions like who should meet this week and why.",
           platform: { id: "slack", label: "Slack" },
         },
         {
@@ -234,6 +233,95 @@ const memoryStepPanels: Record<
           label: "Intro drafting workflow",
           detail:
             "Prepares warm intro drafts for Slack or email and waits for approval before sending.",
+          platform: { id: "claude", label: "Claude" },
+        },
+      ],
+    },
+  },
+  ecommerce: {
+    connect: {
+      title: "Ecommerce source inputs",
+      description:
+        "Customer and subscription memory comes from the platforms where purchase and support activity happens.",
+      items: [
+        {
+          meta: "Shopify",
+          label: "Store and order data",
+          detail:
+            "Pull customer profiles, order history, and product catalog from the Shopify Admin API.",
+        },
+        {
+          meta: "Subscriptions",
+          label: "Recurring billing",
+          detail:
+            "Sync subscription plans, billing cycles, skips, and cancellations from Recharge or native Shopify subscriptions.",
+        },
+        {
+          meta: "Helpdesk",
+          label: "Support interactions",
+          detail:
+            "Capture customer requests, resolutions, and follow-ups from support channels.",
+        },
+        {
+          meta: "Email & chat",
+          label: "Customer communications",
+          detail:
+            "Track delivery preferences, complaints, and feedback from direct customer messages.",
+        },
+      ],
+    },
+    auth: {
+      title: "How store data is connected",
+      description:
+        "Connect ecommerce platforms while keeping API credentials outside the agent runtime.",
+      items: [
+        {
+          meta: "OAuth",
+          label: "Shopify and subscriptions",
+          detail:
+            "Authorize Shopify Admin API and subscription platform access once for customer and order data.",
+        },
+        {
+          meta: "API key",
+          label: "Helpdesk and tools",
+          detail:
+            "Store scoped credentials centrally for support ticketing and communication tools.",
+        },
+        {
+          meta: "Webhooks",
+          label: "Real-time events",
+          detail:
+            "Receive order, subscription, and fulfillment updates as they happen without polling.",
+        },
+        {
+          meta: "Agent boundary",
+          label: "Scoped access",
+          detail:
+            "The ecommerce agent receives customer context, not raw store credentials or payment data.",
+        },
+      ],
+    },
+    reuse: {
+      title: "Ecommerce agents",
+      description:
+        "The same customer and subscription memory powers ecommerce agents wherever teams work.",
+      items: [
+        {
+          label: "Subscription manager",
+          detail:
+            "Handles plan changes, skips, and upgrades with customer context and approval flows.",
+          platform: { id: "slack", label: "Slack" },
+        },
+        {
+          label: "Order support agent",
+          detail:
+            "Resolves order inquiries, tracks deliveries, and processes returns.",
+          platform: { id: "openclaw", label: "OpenClaw" },
+        },
+        {
+          label: "Customer insights assistant",
+          detail:
+            "Summarizes customer history, preferences, and lifetime value for support and sales.",
           platform: { id: "claude", label: "Claude" },
         },
       ],
@@ -1958,6 +2046,39 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
       "Weekly competitive scans with feature and pricing changes",
       "Durable brand and product memory for pattern recognition",
       "Shared market context across product and strategy teams",
+    ],
+  },
+  ecommerce: {
+    requestLabel: "Incoming request",
+    request:
+      "Switch Emma's subscription from monthly to annual and skip next month's delivery.",
+    summary:
+      "Automate subscription management and order operations so customers get fast resolution and the team keeps full context.",
+    steps: [
+      {
+        title: "Runtime handles the customer request",
+        detail:
+          "Lobu receives the request in chat, pulls the customer's subscription and order state, and asks for approval before making changes.",
+        chips: ["Slack", "WhatsApp", "approval flow"],
+      },
+      {
+        title: "Skills connect the store systems",
+        detail:
+          "The ecommerce skill bundles Shopify, subscription management, and customer tools through one installable workflow.",
+        chips: ["Shopify", "Recharge", "customer tools"],
+      },
+      {
+        title: "Memory preserves the customer graph",
+        detail:
+          "Owletto stores customers, subscriptions, orders, and preferences so every interaction starts with full purchase context.",
+        chips: ["customer memory", "subscriptions", "preferences"],
+      },
+    ],
+    outcomeLabel: "What the team gets",
+    outcome: [
+      "Faster subscription and order changes with approval flows",
+      "Customer context that persists across interactions",
+      "Shared memory across support, sales, and operations",
     ],
   },
   careops: {

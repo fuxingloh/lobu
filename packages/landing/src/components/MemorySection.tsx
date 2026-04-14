@@ -96,9 +96,7 @@ export function MemorySection(props: {
             activeId={activeUseCaseId}
             label="Pick a use case"
             onSelect={props.linkTabsToPages ? undefined : setActiveUseCaseId}
-            hrefForId={
-              props.linkTabsToPages ? (id) => `/memory/for/${id}` : undefined
-            }
+            hrefForId={props.linkTabsToPages ? (id) => `/memory/for/${id}` : undefined}
           />
         </div>
 

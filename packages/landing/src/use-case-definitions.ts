@@ -2056,6 +2056,234 @@ export const landingUseCases = {
     },
     owlettoOrg: "careops",
   },
+  ecommerce: {
+    id: "ecommerce",
+    label: "Ecommerce",
+    examplePath: "ecommerce",
+    agent: {
+      identity: [
+        "You help ecommerce teams manage subscriptions, process order changes, and resolve customer requests.",
+        "Handle routine operations like plan switches, skipped deliveries, and address updates while escalating refunds and cancellations for approval.",
+      ],
+      soul: [
+        "- Confirm customer identity before making changes.",
+        "- Never cancel subscriptions or issue refunds without approval.",
+        "- Be helpful and concise — customers want fast resolution.",
+      ],
+      user: [
+        "- Team: Ecommerce operations",
+        "- Priority: Fast self-service for subscription and order changes",
+        "- Preference: Resolve in one interaction when possible",
+      ],
+    },
+    model: {
+      entities: ["Customer", "Subscription", "Order", "Product"],
+      relationships: [
+        {
+          label: "subscribed_to",
+          note: "Track which plans and products each customer subscribes to.",
+        },
+        {
+          label: "placed_order",
+          note: "Link orders to customers so purchase history stays queryable.",
+        },
+        {
+          label: "has_preference",
+          note: "Persist communication and delivery preferences across interactions.",
+        },
+      ],
+    },
+    skills: {
+      description:
+        "Manage subscriptions, process orders, handle customer requests",
+      agentId: "ecommerce-ops",
+      skillId: "ecommerce-ops",
+      skills: ["shopify-mcp", "recharge-mcp", "customer-tools"],
+      nixPackages: ["jq", "ripgrep"],
+      allowedDomains: [".myshopify.com", "api.rechargeapps.com"],
+      mcpServer: "shopify-mcp",
+      providerId: "anthropic",
+      model: "claude/sonnet-4-5",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      skillInstructions: [
+        "Confirm the customer and their current subscription before making changes.",
+        "Request approval for cancellations, refunds, and large credits.",
+      ],
+    },
+    memory: {
+      id: "customer",
+      description:
+        "Track customers, subscriptions, order history, and preferences across interactions.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that Emma Torres has a monthly coffee subscription on the Gold plan, requested to skip next month's delivery, and prefers email communication for order updates.",
+      entitySelections: {
+        Customer: "ecommerce-customer",
+        Subscription: "ecommerce-subscription",
+        Order: "ecommerce-order",
+        Product: "ecommerce-product",
+      },
+      howItWorks: [
+        {
+          id: "model",
+          label: "1",
+          title: "Model the store",
+          detail:
+            "Represent customers, subscriptions, orders, and products as linked entities so every interaction starts with full purchase context.",
+          chips: ["Customer", "Subscription", "Order", "Product"],
+        },
+        {
+          id: "connect",
+          label: "2",
+          title: "Connect sources",
+          detail:
+            "Ingest from Shopify, subscription platforms, helpdesk tools, and customer communications through supported connectors and MCP proxying.",
+          chips: ["Shopify", "Recharge", "Helpdesk", "Email", "Custom SDK"],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        {
+          id: "auth",
+          label: "3",
+          title: "Let users connect their data",
+          detail:
+            "Support OAuth for Shopify and subscription platforms, API keys for helpdesk tools, and imports for customer migration data.",
+          chips: ["OAuth", "API keys", "CSV import", "Webhooks"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        {
+          id: "reuse",
+          label: "4",
+          title: "Reuse context across agents",
+          detail:
+            "The same customer memory powers ecommerce agents wherever teams work.",
+          chips: ["Slack", "OpenClaw", "ChatGPT", "Claude"],
+        },
+        {
+          id: "fresh",
+          label: "5",
+          title: "Keep it fresh",
+          detail:
+            "Watchers turn new orders, subscription changes, and support interactions into updated customer memory.",
+        },
+      ],
+      watcher: {
+        name: "Customer activity tracker",
+        schedule: "Every 6 hours",
+        prompt:
+          "Monitor Emma Torres for new orders, subscription changes, delivery requests, and support interactions.",
+        extractionSchema:
+          "{ subscription_status, pending_changes[], recent_orders[], communication_preferences, open_requests[] }",
+        schemaEvolution:
+          "Started with subscription_status + orders. After repeated interactions, added delivery_preferences and skip_history to capture recurring patterns.",
+      },
+      highlights: [
+        { label: "Customer", value: "Emma Torres" },
+        { label: "Subscription", value: "Gold plan (monthly)" },
+        { label: "Pending request", value: "Skip next delivery" },
+        { label: "Preference", value: "Email for order updates" },
+      ],
+      nodeHighlights: {
+        "ecommerce-root": [
+          { label: "Customer", value: "Emma Torres" },
+          { label: "Plan", value: "Gold (monthly)" },
+          { label: "Request", value: "Skip next delivery" },
+          { label: "Preference", value: "Email for order updates" },
+        ],
+        "ecommerce-customer": [
+          { label: "Type", value: "Customer" },
+          { label: "Name", value: "Emma Torres" },
+          { label: "Status", value: "Active subscriber" },
+          { label: "Preference", value: "Email communication" },
+        ],
+        "ecommerce-subscription": [
+          { label: "Type", value: "Subscription" },
+          { label: "Plan", value: "Gold" },
+          { label: "Frequency", value: "Monthly" },
+          { label: "Pending", value: "Skip next delivery" },
+        ],
+        "ecommerce-order": [
+          { label: "Type", value: "Order" },
+          { label: "Product", value: "Coffee subscription box" },
+          { label: "Status", value: "Next delivery pending skip" },
+          { label: "Customer", value: "Emma Torres" },
+        ],
+        "ecommerce-product": [
+          { label: "Type", value: "Product" },
+          { label: "Name", value: "Coffee subscription box" },
+          { label: "Plan tier", value: "Gold" },
+          { label: "Delivery", value: "Monthly" },
+        ],
+      },
+      recordTree: {
+        id: "ecommerce-root",
+        label: "Record: Emma Torres customer update",
+        kind: "Model record",
+        summary:
+          "Customer record combines subscription state, pending requests, and communication preferences into reusable ecommerce context.",
+        chips: ["customer-graph", "subscription", "actionable"],
+        children: [
+          {
+            id: "ecommerce-customer",
+            label: "Entity: Emma Torres",
+            kind: "Customer",
+            summary:
+              "Primary customer node holds subscription status, preferences, and interaction history.",
+            chips: ["primary", "customer"],
+          },
+          {
+            id: "ecommerce-subscription",
+            label: "Subscription: Gold plan",
+            kind: "Subscription",
+            summary:
+              "Active subscription tracks plan tier, billing cycle, and pending changes like skips or upgrades.",
+            chips: ["active", "recurring"],
+          },
+          {
+            id: "ecommerce-order",
+            label: "Order: next delivery",
+            kind: "Order",
+            summary:
+              "Pending order reflects the skip request and will update when the next cycle processes.",
+            chips: ["pending", "delivery"],
+          },
+          {
+            id: "ecommerce-product",
+            label: "Product: Coffee subscription box",
+            kind: "Product",
+            summary:
+              "Product node links to the subscription plan and delivery schedule.",
+            chips: ["product", "catalog"],
+          },
+        ],
+      },
+      relations: [
+        {
+          source: "Emma Torres",
+          sourceType: "customer",
+          label: "subscribed_to",
+          target: "Gold plan",
+          targetType: "subscription",
+          note: "Subscription relationship tracks plan, billing, and pending changes.",
+        },
+        {
+          source: "Emma Torres",
+          sourceType: "customer",
+          label: "placed_order",
+          target: "Coffee subscription box",
+          targetType: "order",
+          note: "Order history stays linked to customer for fulfillment and support context.",
+        },
+        {
+          source: "Emma Torres",
+          sourceType: "customer",
+          label: "has_preference",
+          target: "Email communication",
+          targetType: "preference",
+          note: "Communication preferences persist across interactions and agents.",
+        },
+      ],
+    },
+  },
   "venture-capital": {
     id: "venture-capital",
     label: "Venture Capital",
