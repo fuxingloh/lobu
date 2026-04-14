@@ -1,3 +1,4 @@
+version: 1
 slug: match
 name: Match
 description: A suggested introduction between two members with reasons and confidence

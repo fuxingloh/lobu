@@ -1,3 +1,4 @@
+version: 1
 slug: reconciliation-monitor
 name: Reconciliation monitor
 schedule: "0 6 * * 1-5"

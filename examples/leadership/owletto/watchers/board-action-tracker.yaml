@@ -1,3 +1,4 @@
+version: 1
 slug: board-action-tracker
 name: Board action tracker
 schedule: "0 8 * * *"

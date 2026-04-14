@@ -1,3 +1,4 @@
+version: 1
 slug: subscription
 name: Subscription
 description: A recurring subscription plan with billing cycle and pending changes

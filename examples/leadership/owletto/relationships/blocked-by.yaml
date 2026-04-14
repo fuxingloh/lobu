@@ -1,3 +1,4 @@
+version: 1
 slug: blocked-by
 name: Blocked By
 description: Attach blocked decisions to the dependency that is holding them up.

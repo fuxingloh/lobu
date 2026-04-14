@@ -1,3 +1,4 @@
+version: 1
 slug: vendor
 name: Vendor
 description: An insurance vendor or payer that covers patient treatments and services

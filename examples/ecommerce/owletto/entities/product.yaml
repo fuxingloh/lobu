@@ -1,3 +1,4 @@
+version: 1
 slug: product
 name: Product
 description: A product in the catalog linked to subscriptions and orders

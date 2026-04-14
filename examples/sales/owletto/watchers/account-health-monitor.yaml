@@ -1,3 +1,4 @@
+version: 1
 slug: account-health-monitor
 name: Account health monitor
 schedule: "0 */12 * * *"

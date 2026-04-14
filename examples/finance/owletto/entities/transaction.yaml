@@ -1,3 +1,4 @@
+version: 1
 slug: transaction
 name: Transaction
 description: A financial transaction that affects account balances

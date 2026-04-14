@@ -1,3 +1,4 @@
+version: 1
 slug: order
 name: Order
 description: A customer order with fulfillment status and delivery details

@@ -1,3 +1,4 @@
+version: 1
 slug: team
 name: Team
 description: An internal team or customer function that owns a pilot or initiative

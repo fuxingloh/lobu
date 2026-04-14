@@ -1,3 +1,4 @@
+version: 1
 slug: deploy
 name: Deploy
 description: A deployment or rollout of code or configuration to a service environment

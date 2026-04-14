@@ -1,3 +1,4 @@
+version: 1
 slug: contact-freshness
 name: Contact freshness
 schedule: "0 0 * * *"

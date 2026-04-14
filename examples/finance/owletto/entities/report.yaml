@@ -1,3 +1,4 @@
+version: 1
 slug: report
 name: Report
 description: A financial report or summary generated from account and transaction data

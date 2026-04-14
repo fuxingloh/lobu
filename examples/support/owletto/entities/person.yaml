@@ -1,3 +1,4 @@
+version: 1
 slug: person
 name: Person
 description: A contact or customer who interacts with the support team

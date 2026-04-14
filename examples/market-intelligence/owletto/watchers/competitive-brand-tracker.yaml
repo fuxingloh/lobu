@@ -1,3 +1,4 @@
+version: 1
 slug: competitive-brand-tracker
 name: Competitive brand tracker
 schedule: "0 */6 * * *"

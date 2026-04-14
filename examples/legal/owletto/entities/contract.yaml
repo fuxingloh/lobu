@@ -1,3 +1,4 @@
+version: 1
 slug: contract
 name: Contract
 description: A legal agreement between parties with defined terms, obligations, and conditions

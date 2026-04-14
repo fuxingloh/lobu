@@ -1,3 +1,4 @@
+version: 1
 slug: incident
 name: Incident
 description: An operational event that degrades or disrupts a service and requires investigation

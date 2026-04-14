@@ -1,3 +1,4 @@
+version: 1
 slug: fund-round
 name: Fund Round
 description: Investment round (seed, series A, etc.)

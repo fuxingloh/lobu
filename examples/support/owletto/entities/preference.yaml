@@ -1,3 +1,4 @@
+version: 1
 slug: preference
 name: Preference
 description: A communication or interaction preference that persists across conversations

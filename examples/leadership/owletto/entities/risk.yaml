@@ -1,3 +1,4 @@
+version: 1
 slug: risk
 name: Risk
 description: A blocker or dependency that is holding up a decision or initiative

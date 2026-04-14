@@ -1,3 +1,4 @@
+version: 1
 slug: customer
 name: Customer
 description: A customer with subscriptions, orders, and communication preferences

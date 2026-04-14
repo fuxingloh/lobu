@@ -1,3 +1,4 @@
+version: 1
 slug: organization
 name: Organization
 description: A customer account or prospect being tracked by the revenue team

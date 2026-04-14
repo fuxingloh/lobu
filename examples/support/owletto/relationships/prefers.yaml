@@ -1,3 +1,4 @@
+version: 1
 slug: prefers
 name: Prefers
 description: Persist communication preferences so future replies stay aligned.

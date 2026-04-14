@@ -1,3 +1,4 @@
+version: 1
 slug: post
 name: Post
 description: A blog post, newsletter, or public writing by a community member

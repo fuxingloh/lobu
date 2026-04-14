@@ -1,3 +1,4 @@
+version: 1
 slug: appointment
 name: Appointment
 description: A scheduled session between a patient and therapist

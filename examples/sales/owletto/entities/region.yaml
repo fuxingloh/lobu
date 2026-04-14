@@ -1,3 +1,4 @@
+version: 1
 slug: region
 name: Region
 description: A geographic region where an account is expanding or operating

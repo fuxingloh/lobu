@@ -1,3 +1,4 @@
+version: 1
 slug: patient-care-tracker
 name: Patient care tracker
 schedule: "0 7 * * *"

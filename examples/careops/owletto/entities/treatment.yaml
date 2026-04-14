@@ -1,3 +1,4 @@
+version: 1
 slug: treatment
 name: Treatment
 description: An active treatment plan with therapy type, frequency, and progress milestones

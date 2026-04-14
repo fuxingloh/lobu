@@ -1,3 +1,4 @@
+version: 1
 slug: phoenix-rollout-tracker
 name: Phoenix rollout tracker
 schedule: "0 9 * * 1"

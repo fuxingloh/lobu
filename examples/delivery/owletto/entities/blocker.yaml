@@ -1,3 +1,4 @@
+version: 1
 slug: blocker
 name: Blocker
 description: A dependency or issue that is blocking project progress

@@ -1,3 +1,4 @@
+version: 1
 slug: document
 name: Document
 description: A project artifact, review, or reference document

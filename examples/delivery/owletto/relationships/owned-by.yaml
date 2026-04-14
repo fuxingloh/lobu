@@ -1,3 +1,4 @@
+version: 1
 slug: owned-by
 name: Owned By
 description: Keep project ownership queryable across updates and artifacts.

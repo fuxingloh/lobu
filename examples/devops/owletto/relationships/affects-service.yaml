@@ -1,3 +1,4 @@
+version: 1
 slug: affects-service
 name: Affects Service
 description: Attach incidents to the systems they degrade so impact stays visible.

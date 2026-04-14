@@ -1,3 +1,4 @@
+version: 1
 slug: task
 name: Task
 description: An assigned follow-up action extracted from a leadership document or meeting

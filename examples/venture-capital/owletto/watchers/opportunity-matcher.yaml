@@ -1,3 +1,4 @@
+version: 1
 slug: opportunity-matcher
 name: Opportunity Matcher
 schedule: "0 */12 * * *"

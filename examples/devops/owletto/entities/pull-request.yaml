@@ -1,3 +1,4 @@
+version: 1
 slug: pull-request
 name: Pull Request
 description: A code change request that needs review, testing, or approval before merge

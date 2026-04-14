@@ -1,3 +1,4 @@
+version: 1
 slug: counterparty
 name: Counterparty
 description: An external party involved in a contract or legal agreement

@@ -1,3 +1,4 @@
+version: 1
 org: ecommerce
 name: Ecommerce
 description: Manage subscriptions, process order changes, and resolve customer requests

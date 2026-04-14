@@ -1,3 +1,4 @@
+version: 1
 slug: incident-monitor
 name: Incident monitor
 schedule: "*/15 * * * *"

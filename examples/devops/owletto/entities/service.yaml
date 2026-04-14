@@ -1,3 +1,4 @@
+version: 1
 slug: service
 name: Service
 description: A deployed application or infrastructure component that the team operates
