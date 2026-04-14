@@ -110,7 +110,7 @@ Lobu makes this split explicit.
 
 - Every agent has a local workspace.
 - If `MEMORY_URL` is not set, Lobu uses `@openclaw/native-memory`, so memory stays local to that workspace.
-- If `MEMORY_URL` is set, Lobu uses `@lobu/owletto-openclaw`, which writes durable memory into Owletto.
+- If `MEMORY_URL` is set, Lobu uses `@lobu/owletto-openclaw` when that plugin is installed, otherwise it falls back to native memory.
 
 Owletto is the shared organizational memory layer:
 

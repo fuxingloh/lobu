@@ -4,10 +4,7 @@ type UseCaseSummaryProps = {
   className?: string;
 };
 
-export function formatUseCaseSummaryTitle(
-  label: string,
-  prefix = "Lobu for "
-) {
+export function formatUseCaseSummaryTitle(label: string, prefix = "Lobu for ") {
   return prefix ? `${prefix}${label}` : label;
 }
 

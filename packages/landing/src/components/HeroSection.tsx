@@ -1,5 +1,8 @@
 import type { LandingUseCaseId } from "../use-case-definitions";
-import { getLandingUseCaseShowcase, landingUseCaseOptions } from "../use-case-showcases";
+import {
+  getLandingUseCaseShowcase,
+  landingUseCaseOptions,
+} from "../use-case-showcases";
 import { formatUseCaseSummaryTitle, UseCaseSummary } from "./UseCaseSummary";
 import { UseCaseTabs } from "./UseCaseTabs";
 
@@ -27,6 +30,7 @@ export function HeroSection(props: {
   linkTabsToCampaigns?: boolean;
 }) {
   const activeUseCase = getLandingUseCaseShowcase(props.activeUseCaseId);
+  const memoryHref = `/memory/for/${activeUseCase.id}`;
 
   return (
     <section class="pt-24 pb-4 px-8 relative">
@@ -66,7 +70,7 @@ export function HeroSection(props: {
           </a>
           , <br />
           <a
-            href="/memory"
+            href={memoryHref}
             class="underline decoration-dotted underline-offset-2 transition-opacity hover:opacity-80"
             style={{ color: "var(--color-page-text-muted)" }}
           >
@@ -124,7 +128,9 @@ export function HeroSection(props: {
                 ? undefined
                 : (id) => props.onActiveUseCaseChange?.(id as LandingUseCaseId)
             }
-            hrefForId={props.linkTabsToCampaigns ? (id) => `/for/${id}` : undefined}
+            hrefForId={
+              props.linkTabsToCampaigns ? (id) => `/for/${id}` : undefined
+            }
           />
           <UseCaseSummary
             title={formatUseCaseSummaryTitle(activeUseCase.label)}

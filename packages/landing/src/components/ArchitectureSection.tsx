@@ -46,12 +46,6 @@ export function ArchitectureSection() {
                 border: "1px solid var(--color-page-border)",
               }}
             >
-              <div
-                class="text-[11px] uppercase tracking-[0.18em] mb-2"
-                style={{ color: "var(--color-tg-accent)" }}
-              >
-                Related page
-              </div>
               <h3
                 class="text-lg font-semibold mb-2"
                 style={{ color: "var(--color-page-text)" }}

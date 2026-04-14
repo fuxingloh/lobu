@@ -1,4 +1,4 @@
-import { createLogger } from "@lobu/core";
+import { createLogger, normalizeDomainPattern } from "@lobu/core";
 
 const logger = createLogger("grant-store");
 
@@ -10,13 +10,6 @@ export interface Grant {
 }
 
 const KEY_PREFIX = "grant:";
-
-function normalizeDomainPattern(pattern: string): string {
-  if (pattern.startsWith("*.")) {
-    return `.${pattern.slice(2)}`;
-  }
-  return pattern;
-}
 
 function getDomainGrantCandidates(pattern: string): string[] {
   const normalized = normalizeDomainPattern(pattern);

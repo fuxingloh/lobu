@@ -1,5 +1,6 @@
 import { useMemo, useState } from "preact/hooks";
 import type { LandingUseCaseId } from "../use-case-definitions";
+import { landingUseCases } from "../use-case-definitions";
 import {
   DEFAULT_LANDING_USE_CASE_ID,
   getLandingUseCaseShowcase,
@@ -49,6 +50,13 @@ export function MemorySection(props: {
     () => getLandingUseCaseShowcase(activeUseCaseId),
     [activeUseCaseId]
   );
+  const owlettoUrl = useMemo(() => {
+    const useCaseDef = landingUseCases[activeUseCaseId];
+    if ("owlettoOrg" in useCaseDef && useCaseDef.owlettoOrg) {
+      return `${OWLETTO_URL}/${useCaseDef.owlettoOrg}`;
+    }
+    return OWLETTO_URL;
+  }, [activeUseCaseId]);
 
   return (
     <section class="pt-32 pb-24 px-4 sm:px-8">
@@ -68,7 +76,7 @@ export function MemorySection(props: {
           startTitle="Start Owletto in seconds"
           actions={
             <a
-              href={OWLETTO_URL}
+              href={owlettoUrl}
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-lg transition-all hover:opacity-90"
@@ -86,7 +94,9 @@ export function MemorySection(props: {
           tabs={landingUseCaseOptions}
           activeId={activeUseCaseId}
           onSelect={props.linkTabsToPages ? undefined : setActiveUseCaseId}
-          hrefForId={props.linkTabsToPages ? (id) => `/memory/for/${id}` : undefined}
+          hrefForId={
+            props.linkTabsToPages ? (id) => `/memory/for/${id}` : undefined
+          }
           className="mb-10"
         />
 
@@ -104,17 +114,15 @@ export function MemorySection(props: {
         <SectionDivider />
 
         <CompactContentRail className="text-center">
-          <h2
-            class="text-2xl font-bold mb-3"
-            style={{ color: textColor }}
-          >
+          <h2 class="text-2xl font-bold mb-3" style={{ color: textColor }}>
             Start building shared memory
           </h2>
           <p
             class="text-sm mb-6 max-w-md mx-auto leading-relaxed"
             style={{ color: textMuted }}
           >
-            Model the right entities, connect your sources, and keep long-term context available across every agent workflow.
+            Model the right entities, connect your sources, and keep long-term
+            context available across every agent workflow.
           </p>
           <div class="flex flex-wrap gap-3 justify-center">
             <a

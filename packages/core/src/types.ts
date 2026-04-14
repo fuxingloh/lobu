@@ -230,7 +230,8 @@ export interface HistoryMessage {
  *
  * Domain pattern format:
  * - "example.com" - exact match
- * - ".example.com" or "*.example.com" - matches subdomains
+ * - ".example.com" - canonical wildcard form (matches root + subdomains)
+ * - "*.example.com" - accepted as input and normalized to ".example.com"
  */
 export interface NetworkConfig {
   /** Domains the worker is allowed to access. Empty array = no network access. */

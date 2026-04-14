@@ -33,6 +33,8 @@ A Next.js app where:
 
 ```bash
 npm install @lobu/gateway
+# or
+bun add @lobu/gateway
 ```
 
 ## Step 2: Create the catch-all route
@@ -44,6 +46,7 @@ import { Lobu } from "@lobu/gateway";
 
 const lobu = new Lobu({
   redis: process.env.REDIS_URL!,
+  adminPassword: process.env.LOBU_ADMIN_PASSWORD!,
   agents: [
     {
       id: "assistant",
@@ -78,6 +81,7 @@ That's the entire integration. `lobu.initialize()` runs once; every request afte
 # .env.local
 REDIS_URL=redis://localhost:6379
 OPENROUTER_API_KEY=sk-or-...
+LOBU_ADMIN_PASSWORD=change-me
 ```
 
 ## Step 4: Chat with your agent
@@ -88,14 +92,17 @@ Start your Next.js app and send a message:
 npm run dev
 
 curl -X POST http://localhost:3000/api/lobu/api/v1/agents/assistant/messages \
+  -H "Authorization: Bearer $LOBU_ADMIN_PASSWORD" \
   -H "Content-Type: application/json" \
   -d '{ "platform": "api", "content": "Hello, what can you do?" }'
 ```
 
-Or use the Lobu CLI:
+Or use the Lobu CLI after adding a local context and logging in once:
 
 ```bash
-npx @lobu/cli@latest chat "Hello" --gateway http://localhost:3000/api/lobu
+npx @lobu/cli@latest context add local --api-url http://localhost:3000/api/lobu
+npx @lobu/cli@latest login --admin-password -c local
+npx @lobu/cli@latest chat "Hello" -c local
 ```
 
 ## What's happening under the hood
@@ -172,7 +179,7 @@ By embedding Lobu, your app inherits:
 - **Built-in evals** — automated quality testing across models
 - **OpenAPI docs** — full API reference at `/api/lobu/api/docs`
 
-No Docker, no Kubernetes, no infrastructure to manage. Just `npm install` and mount.
+No Docker, no Kubernetes, no infrastructure to manage. Just install the package and mount it.
 
 ## Next steps
 

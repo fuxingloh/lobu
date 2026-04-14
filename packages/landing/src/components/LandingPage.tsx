@@ -20,7 +20,6 @@ export function LandingPage(props: {
         activeUseCaseId={activeUseCaseId}
         onActiveUseCaseChange={setActiveUseCaseId}
         linkTabsToCampaigns={props.linkTabsToCampaigns}
-
       />
       <DemoSection
         activeUseCaseId={activeUseCaseId}

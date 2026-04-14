@@ -34,13 +34,7 @@ function useCopy(value?: string) {
   return { copied, handleCopy };
 }
 
-function CopyButton({
-  value,
-  label,
-}: {
-  value?: string;
-  label: string;
-}) {
+function CopyButton({ value, label }: { value?: string; label: string }) {
   const { copied, handleCopy } = useCopy(value);
 
   if (!value) return null;
@@ -84,7 +78,9 @@ function CopyPromptButton({
         onBlur={() => setPreviewOpen(false)}
         onMouseEnter={() => setPreviewOpen(true)}
         onMouseLeave={() => setPreviewOpen(false)}
-        aria-describedby={previewOpen ? "command-hero-prompt-preview" : undefined}
+        aria-describedby={
+          previewOpen ? "command-hero-prompt-preview" : undefined
+        }
         class="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium cursor-pointer transition-colors hover:opacity-90"
         style={{
           backgroundColor: copied

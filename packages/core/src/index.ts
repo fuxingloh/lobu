@@ -140,6 +140,7 @@ export * from "./utils/env";
 export * from "./utils/json";
 export * from "./utils/lock";
 export type { McpToolDef } from "./utils/mcp-tool-instructions";
+export * from "./utils/network-domains";
 export * from "./utils/retry";
 export * from "./utils/sanitize";
 export * from "./worker/auth";

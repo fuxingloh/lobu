@@ -53,8 +53,7 @@ Our approach in Lobu: install CLI tools directly via [Nix](https://nixos.org/), 
 
 ```yaml
 # No MCP stdio server needed
-nixConfig:
-  packages: [git, gh]
+nixPackages: [git, gh]
 
 # Agent just runs: gh pr list --repo owner/repo
 ```
@@ -90,22 +89,20 @@ Here's a video processing skill:
 name: Video Processor
 description: Process and transcode video files with metadata extraction
 
-nixConfig:
-  packages: [ffmpeg, jq, mediainfo]
+nixPackages:
+  - ffmpeg
+  - jq
+  - mediainfo
 
 mcpServers:
   cloud-storage:
     url: https://storage-mcp.example.com/mcp
     type: sse
 
-networkConfig:
-  allowedDomains:
+network:
+  allow:
     - storage.googleapis.com
     - api.cloudflare.com
-
-toolsConfig:
-  allowedTools: [Read, Write, Bash]
-  deniedTools: [DeleteFile]
 ---
 
 # Video Processor
@@ -120,30 +117,23 @@ You process video files using ffmpeg. For every video task:
 Never delete source files.
 ```
 
-`nixConfig.packages` installs ffmpeg, jq, and mediainfo via Nix. `networkConfig.allowedDomains` configures the sandbox to only allow those two domains. `mcpServers` registers a cloud storage MCP server behind the gateway proxy with per-user credential injection. `toolsConfig` lets the agent read, write, and use Bash, but blocks file deletion. The markdown body gets injected into the agent's system prompt.
+`nixPackages` installs ffmpeg, jq, and mediainfo via Nix. `network.allow` configures the sandbox to only allow those two domains. `mcpServers` registers a cloud storage MCP server behind the gateway proxy with per-user credential injection. The markdown body gets injected into the agent's system prompt. If you want to lock down tool visibility or pre-approve specific MCP calls, that lives in `lobu.toml`, not in `SKILL.md`.
 
-When a user enables this skill, the gateway resolves every section. The worker entrypoint runs `nix-shell -p ffmpeg jq mediainfo --command "bun run src/index.ts"`. All three tools land on `$PATH`. The network sandbox blocks everything except the two declared domains. The MCP server is available. The agent starts and has no idea any of this happened.
+When a user enables this skill, the gateway resolves every section. The worker starts with those binaries on `$PATH`, the network sandbox blocks everything except the declared domains, and the MCP server is available. The agent starts and has no idea any of this happened.
 
 Same SKILL.md. Same environment. Every time.
 
 #### Nix persistence
 
-First boot pays the install cost. After that packages are cached on the workspace volume (Docker) or PVC (Kubernetes). Survives container restarts and scale-to-zero. For complex environments you can point at a [Nix flake](https://nixos.wiki/wiki/Flakes) instead:
-
-```yaml
-nixConfig:
-  flakeUrl: "github:user/my-agent-env"
-```
-
-Fully reproducible, pinned dependencies, custom derivations if you need them.
+First boot pays the install cost. After that packages are cached on the workspace volume (Docker) or PVC (Kubernetes), so they survive container restarts and scale-to-zero.
 
 #### The CLI
 
 ```bash
-$ lobu skills search "video"
+$ npx @lobu/cli@latest skills search "video"
   video-processor  Process and transcode video files  [integration]
 
-$ lobu skills add video-processor
+$ npx @lobu/cli@latest skills add video-processor
   Added "video-processor" to lobu.toml
 ```
 

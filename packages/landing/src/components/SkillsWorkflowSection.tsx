@@ -6,7 +6,10 @@ import {
   type DeliverySurface,
 } from "./platforms";
 import { ContentRail } from "./ContentRail";
-import type { LandingUseCaseId, LandingUseCaseShowcase } from "../use-case-showcases";
+import type {
+  LandingUseCaseId,
+  LandingUseCaseShowcase,
+} from "../use-case-showcases";
 
 type TermLink = { label: string; href: string; selected?: boolean };
 
@@ -19,7 +22,13 @@ type TermLine = {
 type UseCaseInitConfig = {
   agentName: string;
   skills: { label: string; selected: boolean }[];
-  selectedPlatform: "slack" | "whatsapp" | "telegram" | "discord" | "teams" | "google-chat";
+  selectedPlatform:
+    | "slack"
+    | "whatsapp"
+    | "telegram"
+    | "discord"
+    | "teams"
+    | "google-chat";
   memory: "filesystem" | "owletto";
 };
 
@@ -129,7 +138,10 @@ const useCaseInitConfigs: Record<LandingUseCaseId, UseCaseInitConfig> = {
 function getInitLinesForUseCase(useCase: LandingUseCaseShowcase): TermLine[] {
   const config = useCaseInitConfigs[useCase.id];
   return [
-    { text: `$ npx @lobu/cli@latest init ${config.agentName}`, color: "#4ade80" },
+    {
+      text: `$ npx @lobu/cli@latest init ${config.agentName}`,
+      color: "#4ade80",
+    },
     { text: "", color: "" },
     { text: "🤖 Welcome to Lobu!", color: "#facc15" },
     { text: "", color: "" },
@@ -145,7 +157,9 @@ function getInitLinesForUseCase(useCase: LandingUseCaseShowcase): TermLine[] {
     {
       text: "? Worker network access?",
       color: "#c9cdd4",
-      links: [{ label: "Restricted", href: "/guides/security/", selected: true }],
+      links: [
+        { label: "Restricted", href: "/guides/security/", selected: true },
+      ],
     },
     {
       text: "? AI provider?",

@@ -16,5 +16,7 @@ export function ContentRail({
   className = "",
   variant = "inset",
 }: ContentRailProps) {
-  return <div class={`${railClasses[variant]} ${className}`.trim()}>{children}</div>;
+  return (
+    <div class={`${railClasses[variant]} ${className}`.trim()}>{children}</div>
+  );
 }

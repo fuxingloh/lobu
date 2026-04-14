@@ -34,6 +34,12 @@ describe("GrantStore", () => {
       const parsed = JSON.parse(raw!);
       expect(parsed.denied).toBe(true);
     });
+
+    test("preserves MCP path casing when storing grants", async () => {
+      await store.grant("agent-1", "/mcp/Gmail/tools/SendEmail", null);
+      const raw = await redis.get("grant:agent-1:/mcp/Gmail/tools/SendEmail");
+      expect(raw).not.toBeNull();
+    });
   });
 
   describe("hasGrant", () => {
@@ -55,6 +61,13 @@ describe("GrantStore", () => {
       await store.grant("agent-1", "/mcp/gmail/tools/*", null);
       expect(
         await store.hasGrant("agent-1", "/mcp/gmail/tools/send_email")
+      ).toBe(true);
+    });
+
+    test("matches exact MCP path with original casing", async () => {
+      await store.grant("agent-1", "/mcp/Gmail/tools/SendEmail", null);
+      expect(
+        await store.hasGrant("agent-1", "/mcp/Gmail/tools/SendEmail")
       ).toBe(true);
     });
 

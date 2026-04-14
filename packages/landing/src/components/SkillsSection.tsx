@@ -677,7 +677,7 @@ function RegistryGroup({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-export function SkillsSection() {
+export function SkillsSection(props: { linkTabsToCampaigns?: boolean }) {
   const [activeUseCaseId, setActiveUseCaseId] = useState<LandingUseCaseId>(
     DEFAULT_LANDING_USE_CASE_ID
   );
@@ -709,7 +709,14 @@ export function SkillsSection() {
           <UseCaseTabs
             tabs={landingUseCaseOptions}
             activeId={activeUseCaseId}
-            onSelect={(id) => setActiveUseCaseId(id as LandingUseCaseId)}
+            onSelect={
+              props.linkTabsToCampaigns
+                ? undefined
+                : (id) => setActiveUseCaseId(id as LandingUseCaseId)
+            }
+            hrefForId={
+              props.linkTabsToCampaigns ? (id) => `/for/${id}` : undefined
+            }
             className="mb-5"
           />
 
@@ -730,7 +737,7 @@ export function SkillsSection() {
             </div>
             <div class="text-center mt-4">
               <a
-                href={`${GITHUB_URL}/tree/main/examples/${activeUseCaseId}`}
+                href={`${GITHUB_URL}/tree/main/examples/${activeUseCase.examplePath}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-xs font-medium hover:underline inline-flex items-center gap-1.5"

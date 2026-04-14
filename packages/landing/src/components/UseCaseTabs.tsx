@@ -19,7 +19,9 @@ export function UseCaseTabs({
   className = "",
 }: UseCaseTabsProps) {
   return (
-    <div class={`flex flex-wrap items-center justify-center gap-2 ${className}`.trim()}>
+    <div
+      class={`flex flex-wrap items-center justify-center gap-2 ${className}`.trim()}
+    >
       {tabs.map((tab) => {
         const active = tab.id === activeId;
         const commonClass =

@@ -32,7 +32,8 @@ const plans: PricingPlan[] = [
   {
     name: "Open Source",
     price: "Free",
-    description: "Run Lobu on your own infrastructure with the full open-source stack.",
+    description:
+      "Run Lobu on your own infrastructure with the full open-source stack.",
     features: [
       "Unlimited agents and users",
       `All delivery surfaces (${deliverySurfacesLabel})`,

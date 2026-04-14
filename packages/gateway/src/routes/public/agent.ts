@@ -9,6 +9,7 @@ import {
   type InstalledProvider,
   type McpServerConfig,
   type NetworkConfig,
+  normalizeDomainPatterns,
   verifyWorkerToken,
 } from "@lobu/core";
 import { streamSSE } from "hono/streaming";
@@ -206,6 +207,13 @@ function validateNetworkConfig(config: NetworkConfig): string | null {
     }
   }
   return null;
+}
+
+function normalizeNetworkConfig(config: NetworkConfig): NetworkConfig {
+  return {
+    allowedDomains: normalizeDomainPatterns(config.allowedDomains),
+    deniedDomains: normalizeDomainPatterns(config.deniedDomains),
+  };
 }
 
 function validateMcpServerConfig(
@@ -548,9 +556,13 @@ export function createAgentApi(
       );
     }
 
+    const normalizedNetworkConfig = networkConfig
+      ? normalizeNetworkConfig(networkConfig as NetworkConfig)
+      : undefined;
+
     // Validate network config
-    if (networkConfig) {
-      const error = validateNetworkConfig(networkConfig as NetworkConfig);
+    if (normalizedNetworkConfig) {
+      const error = validateNetworkConfig(normalizedNetworkConfig);
       if (error) return c.json({ success: false, error }, 400);
     }
 
@@ -681,7 +693,7 @@ export function createAgentApi(
       status: "created",
       provider,
       model,
-      networkConfig: networkConfig as NetworkConfig | undefined,
+      networkConfig: normalizedNetworkConfig,
       mcpConfig: mcpServers
         ? { mcpServers: mcpServers as Record<string, McpServerConfig> }
         : undefined,

@@ -16,7 +16,7 @@ import { SkillsSection } from "../components/SkillsSection";
   >
     <Nav currentPath={Astro.url.pathname} />
     <main class="relative z-[1]">
-      <SkillsSection client:load />
+      <SkillsSection client:load linkTabsToCampaigns />
     </main>
     <Footer />
   </div>

@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { normalizeDomainPatterns } from "./utils/network-domains";
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
@@ -59,10 +60,15 @@ const skillsSchema = z.object({
 
 // ── Network ─────────────────────────────────────────────────────────────────
 
-const networkSchema = z.object({
-  allowed: z.array(z.string()).optional(),
-  denied: z.array(z.string()).optional(),
-});
+const networkSchema = z
+  .object({
+    allowed: z.array(z.string()).optional(),
+    denied: z.array(z.string()).optional(),
+  })
+  .transform((network) => ({
+    allowed: normalizeDomainPatterns(network.allowed),
+    denied: normalizeDomainPatterns(network.denied),
+  }));
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 

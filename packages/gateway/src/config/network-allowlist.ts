@@ -1,4 +1,4 @@
-import { createLogger } from "@lobu/core";
+import { createLogger, normalizeDomainPatterns } from "@lobu/core";
 
 const logger = createLogger("network-allowlist");
 
@@ -23,10 +23,13 @@ export function loadAllowedDomains(): string[] {
       return ["*"];
     }
 
-    const parsed = trimmed
-      .split(",")
-      .map((d) => d.trim())
-      .filter((d) => d.length > 0);
+    const parsed =
+      normalizeDomainPatterns(
+        trimmed
+          .split(",")
+          .map((d) => d.trim())
+          .filter((d) => d.length > 0)
+      ) ?? [];
 
     domains.push(...parsed);
     logger.debug(
@@ -56,10 +59,13 @@ export function loadDisallowedDomains(): string[] {
 
   const disallowedDomains = process.env.WORKER_DISALLOWED_DOMAINS;
   if (disallowedDomains) {
-    const parsed = disallowedDomains
-      .split(",")
-      .map((d) => d.trim())
-      .filter((d) => d.length > 0);
+    const parsed =
+      normalizeDomainPatterns(
+        disallowedDomains
+          .split(",")
+          .map((d) => d.trim())
+          .filter((d) => d.length > 0)
+      ) ?? [];
 
     domains.push(...parsed);
     logger.debug(

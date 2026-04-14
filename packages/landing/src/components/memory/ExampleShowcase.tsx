@@ -45,7 +45,41 @@ function getDefaultSelectedNodeId(example: (typeof examples)[number]) {
   );
 }
 
-function getDerivedPanelTable(stepId: string, step: (typeof examples)[number]["howItWorks"][number]) {
+function normalizeNodeReference(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getNodeAliases(
+  node: RecordNode,
+  highlights: Array<{ value: string }>
+): string[] {
+  const labelAlias = node.label.includes(": ")
+    ? node.label.split(": ")[1]
+    : node.label;
+
+  return [labelAlias, ...highlights.map((highlight) => highlight.value)]
+    .map(normalizeNodeReference)
+    .filter(Boolean);
+}
+
+function relationMatchesNode(reference: string, nodeAliases: string[]) {
+  const normalizedReference = normalizeNodeReference(reference);
+
+  return nodeAliases.some(
+    (alias) =>
+      alias === normalizedReference ||
+      alias.includes(normalizedReference) ||
+      normalizedReference.includes(alias)
+  );
+}
+
+function getDerivedPanelTable(
+  stepId: string,
+  step: (typeof examples)[number]["howItWorks"][number]
+) {
   if (step.panel?.table) {
     return step.panel.table;
   }
@@ -223,10 +257,7 @@ function StepChip({
 
   if (!onClick) {
     return (
-      <span
-        class="px-3 py-1 rounded-full text-xs border"
-        style={style}
-      >
+      <span class="px-3 py-1 rounded-full text-xs border" style={style}>
         {label}
       </span>
     );
@@ -303,6 +334,7 @@ export function ExampleShowcase(props: {
     Object.entries(activeExample.entitySelections ?? {}).find(
       ([, nodeId]) => nodeId === selectedNodeId
     )?.[0] ?? selectedNode.kind;
+  const selectedNodeAliases = getNodeAliases(selectedNode, selectedHighlights);
 
   const switchExample = (id: string) => {
     onActiveUseCaseChange?.(id);
@@ -323,9 +355,33 @@ export function ExampleShowcase(props: {
       ) : null}
 
       <UseCaseSummary
-        title={formatUseCaseSummaryTitle(activeExample.title, summaryTitlePrefix)}
+        title={formatUseCaseSummaryTitle(
+          activeExample.title,
+          summaryTitlePrefix
+        )}
         description={activeExample.description}
       />
+
+      <div class="text-center mb-4">
+        <a
+          href={`https://github.com/lobu-ai/lobu/tree/main/examples/${activeExample.examplePath}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-xs font-medium hover:underline inline-flex items-center gap-1.5"
+          style={{ color: "var(--color-tg-accent)" }}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+          </svg>
+          See full example on GitHub →
+        </a>
+      </div>
 
       <CompactContentRail className="mb-5">
         <div
@@ -418,23 +474,26 @@ export function ExampleShowcase(props: {
                           Entities
                         </div>
                         <div class="flex flex-wrap gap-1.5">
-                        {(step.chips ?? activeExample.entityTypes).map((type) => {
-                          const targetNodeId = activeExample.entitySelections?.[type];
+                          {(step.chips ?? activeExample.entityTypes).map(
+                            (type) => {
+                              const targetNodeId =
+                                activeExample.entitySelections?.[type];
 
-                          return (
-                            <StepChip
-                              key={type}
-                              label={type}
-                              active={targetNodeId === selectedNodeId}
-                              onClick={
-                                targetNodeId
-                                  ? () => setSelectedNodeId(targetNodeId)
-                                  : undefined
-                              }
-                              color={accentPurple}
-                            />
-                          );
-                        })}
+                              return (
+                                <StepChip
+                                  key={type}
+                                  label={type}
+                                  active={targetNodeId === selectedNodeId}
+                                  onClick={
+                                    targetNodeId
+                                      ? () => setSelectedNodeId(targetNodeId)
+                                      : undefined
+                                  }
+                                  color={accentPurple}
+                                />
+                              );
+                            }
+                          )}
                         </div>
                       </div>
                     </div>
@@ -500,14 +559,18 @@ export function ExampleShowcase(props: {
 
                       {/* Relevant relationships for the selected node */}
                       {(() => {
-                        // Strip the prefix (e.g., "Entity: ", "Incident: ") from the label for comparison
-                        const selectedNodeName = selectedNode.label.includes(": ")
-                          ? selectedNode.label.split(": ")[1]
-                          : selectedNode.label;
-
-                        const relevantRelations = activeExample.relations.filter(
-                          (r) => r.source === selectedNodeName || r.target === selectedNodeName
-                        );
+                        const relevantRelations =
+                          activeExample.relations.filter(
+                            (relation) =>
+                              relationMatchesNode(
+                                relation.source,
+                                selectedNodeAliases
+                              ) ||
+                              relationMatchesNode(
+                                relation.target,
+                                selectedNodeAliases
+                              )
+                          );
                         if (relevantRelations.length === 0) return null;
 
                         return (
@@ -520,8 +583,14 @@ export function ExampleShowcase(props: {
                             </div>
                             <div class="flex flex-wrap gap-2">
                               {relevantRelations.map((relation) => {
-                                const isSelectedSource = relation.source === selectedNodeName;
-                                const isSelectedTarget = relation.target === selectedNodeName;
+                                const isSelectedSource = relationMatchesNode(
+                                  relation.source,
+                                  selectedNodeAliases
+                                );
+                                const isSelectedTarget = relationMatchesNode(
+                                  relation.target,
+                                  selectedNodeAliases
+                                );
 
                                 return (
                                   <div
@@ -531,7 +600,9 @@ export function ExampleShowcase(props: {
                                     <span
                                       class="px-1.5 py-0.5 rounded-full text-[10px]"
                                       style={{
-                                        color: isSelectedSource ? accentPurple : textColor,
+                                        color: isSelectedSource
+                                          ? accentPurple
+                                          : textColor,
                                         backgroundColor: isSelectedSource
                                           ? "rgba(192, 132, 252, 0.12)"
                                           : "rgba(103, 232, 249, 0.08)",
@@ -540,14 +611,19 @@ export function ExampleShowcase(props: {
                                           : "1px solid rgba(103, 232, 249, 0.22)",
                                       }}
                                     >
-                                      <span class="font-semibold">{relation.sourceType}</span> {relation.source}
+                                      <span class="font-semibold">
+                                        {relation.sourceType}
+                                      </span>{" "}
+                                      {relation.source}
                                     </span>
                                     <span
                                       class="px-1 py-0.5 rounded-full text-[9px] uppercase tracking-[0.12em]"
                                       style={{
                                         color: accentCyan,
-                                        backgroundColor: "rgba(103, 232, 249, 0.06)",
-                                        border: "1px solid rgba(103, 232, 249, 0.18)",
+                                        backgroundColor:
+                                          "rgba(103, 232, 249, 0.06)",
+                                        border:
+                                          "1px solid rgba(103, 232, 249, 0.18)",
                                       }}
                                     >
                                       {relation.label}
@@ -555,7 +631,9 @@ export function ExampleShowcase(props: {
                                     <span
                                       class="px-1.5 py-0.5 rounded-full text-[10px]"
                                       style={{
-                                        color: isSelectedTarget ? accentPurple : textColor,
+                                        color: isSelectedTarget
+                                          ? accentPurple
+                                          : textColor,
                                         backgroundColor: isSelectedTarget
                                           ? "rgba(192, 132, 252, 0.12)"
                                           : "rgba(134, 239, 172, 0.08)",
@@ -564,7 +642,10 @@ export function ExampleShowcase(props: {
                                           : "1px solid rgba(134, 239, 172, 0.22)",
                                       }}
                                     >
-                                      <span class="font-semibold">{relation.targetType}</span> {relation.target}
+                                      <span class="font-semibold">
+                                        {relation.targetType}
+                                      </span>{" "}
+                                      {relation.target}
                                     </span>
                                   </div>
                                 );
@@ -607,7 +688,8 @@ export function ExampleShowcase(props: {
                           class="text-sm leading-6 m-0"
                           style={{ color: textMuted }}
                         >
-                          A scheduled watcher keeps this memory current as new source changes arrive.
+                          A scheduled watcher keeps this memory current as new
+                          source changes arrive.
                         </p>
                       </div>
 
@@ -630,7 +712,10 @@ export function ExampleShowcase(props: {
                         </span>
                       </div>
                       <div class="grid gap-2">
-                        <div class="text-xs leading-5" style={{ color: textMuted }}>
+                        <div
+                          class="text-xs leading-5"
+                          style={{ color: textMuted }}
+                        >
                           {activeExample.watcher.prompt}
                         </div>
                         <div>
@@ -657,7 +742,10 @@ export function ExampleShowcase(props: {
                           >
                             Schema evolution
                           </div>
-                          <div class="text-xs leading-5" style={{ color: textMuted }}>
+                          <div
+                            class="text-xs leading-5"
+                            style={{ color: textMuted }}
+                          >
                             {activeExample.watcher.schemaEvolution}
                           </div>
                         </div>
@@ -723,7 +811,8 @@ export function ExampleShowcase(props: {
                                         style={{
                                           color,
                                           borderBottom: `1px solid ${cardBorderSubtle}`,
-                                          backgroundColor: "rgba(255,255,255,0.02)",
+                                          backgroundColor:
+                                            "rgba(255,255,255,0.02)",
                                         }}
                                       >
                                         {column}
@@ -740,7 +829,9 @@ export function ExampleShowcase(props: {
                                           class="px-3 py-2 text-xs leading-5 align-top"
                                           style={{
                                             color:
-                                              index === 0 ? textColor : textMuted,
+                                              index === 0
+                                                ? textColor
+                                                : textMuted,
                                             borderBottom: `1px solid ${cardBorderFaint}`,
                                           }}
                                         >
@@ -793,7 +884,9 @@ export function ExampleShowcase(props: {
                                       border: `1px solid ${cardBorderSubtle}`,
                                     }}
                                   >
-                                    <PlatformLogo platformId={item.platform.id} />
+                                    <PlatformLogo
+                                      platformId={item.platform.id}
+                                    />
                                     <span>{item.platform.label}</span>
                                   </div>
                                 ) : null}
@@ -805,11 +898,7 @@ export function ExampleShowcase(props: {
                     ) : step.chips?.length ? (
                       <div class="flex flex-wrap gap-1.5 mb-4">
                         {step.chips.map((chip) => (
-                          <StepChip
-                            key={chip}
-                            label={chip}
-                            color={color}
-                          />
+                          <StepChip key={chip} label={chip} color={color} />
                         ))}
                       </div>
                     ) : null}

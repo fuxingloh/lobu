@@ -150,17 +150,19 @@ export type LandingUseCaseMemoryDefinition = {
 export type LandingUseCaseDefinition = {
   id: string;
   label: string;
+  examplePath: string;
   agent: LandingUseCaseAgentDefinition;
   model: LandingUseCaseModelDefinition;
   skills?: LandingUseCaseSkillsDefinition;
   memory?: LandingUseCaseMemoryDefinition;
+  owlettoOrg?: string;
 };
 
-const technicalLinks = {
+export const technicalLinks = {
   mcpProxy: { label: "MCP proxy", href: "/guides/mcp-proxy/" },
   connectorSdk: {
     label: "Connector SDK",
-    href: "/reference/owletto-cli/#connector-sdk-and-data-integration",
+    href: "/reference/owletto-cli/#connector-sdk",
   },
   memoryDocs: { label: "Memory docs", href: "/getting-started/memory/" },
   mcpAuthFlow: { label: "MCP auth flow", href: "/guides/mcp-proxy/" },
@@ -170,6 +172,7 @@ export const landingUseCases = {
   legal: {
     id: "legal",
     label: "Legal",
+    examplePath: "legal",
     agent: {
       identity: [
         "You review contracts, summarize risk, and surface missing protections.",
@@ -223,6 +226,7 @@ export const landingUseCases = {
   devops: {
     id: "devops",
     label: "DevOps",
+    examplePath: "devops",
     agent: {
       identity: [
         "You help platform teams triage incidents, reviews, and deploy safety checks.",
@@ -280,6 +284,7 @@ export const landingUseCases = {
   support: {
     id: "support",
     label: "Support",
+    examplePath: "support",
     agent: {
       identity: [
         "You help support teams route tickets, draft replies, and escalate urgent issues.",
@@ -497,20 +502,26 @@ export const landingUseCases = {
       relations: [
         {
           source: "Alex Kim",
+          sourceType: "person",
           label: "works_at",
           target: "Acme Health",
+          targetType: "organization",
           note: "Organization affiliation extracted directly from the meeting note.",
         },
         {
           source: "Alex Kim",
+          sourceType: "person",
           label: "prefers",
           target: "Weekly email summaries",
+          targetType: "preference",
           note: "Stored as a durable preference for future agent behavior.",
         },
         {
           source: "Q3 planning call",
+          sourceType: "task",
           label: "created_task",
           target: "Send draft by Thursday",
+          targetType: "task",
           note: "Operational memory stays attached to the originating event.",
         },
       ],
@@ -519,6 +530,7 @@ export const landingUseCases = {
   finance: {
     id: "finance",
     label: "Finance",
+    examplePath: "finance",
     agent: {
       identity: [
         "You help finance teams reconcile data, explain variance, and prepare reporting runs.",
@@ -572,6 +584,7 @@ export const landingUseCases = {
   sales: {
     id: "sales",
     label: "Sales",
+    examplePath: "sales",
     agent: {
       identity: [
         "You help revenue teams track account health, rollout progress, and renewal signals.",
@@ -779,20 +792,26 @@ export const landingUseCases = {
       relations: [
         {
           source: "Northstar Foods",
+          sourceType: "organization",
           label: "expanded_into",
           target: "EMEA",
+          targetType: "region",
           note: "Regional growth becomes part of the organization hierarchy.",
         },
         {
           source: "Operations team",
+          sourceType: "team",
           label: "runs",
           target: "Warehouse OS pilot",
+          targetType: "product",
           note: "Owning team provides retrieval context for future planning questions.",
         },
         {
           source: "Pricing concern",
+          sourceType: "renewal-risk",
           label: "affects",
           target: "October renewal",
+          targetType: "renewal",
           note: "Temporal linkage makes the signal useful for upcoming workflows.",
         },
       ],
@@ -801,6 +820,7 @@ export const landingUseCases = {
   delivery: {
     id: "delivery",
     label: "Delivery",
+    examplePath: "delivery",
     agent: {
       identity: [
         "You help delivery teams keep milestones, blockers, owners, and artifacts aligned.",
@@ -1014,20 +1034,26 @@ export const landingUseCases = {
       relations: [
         {
           source: "Phoenix migration",
+          sourceType: "project",
           label: "owned_by",
           target: "Maya",
+          targetType: "stakeholder",
           note: "Ownership becomes a stable graph edge instead of a transient note.",
         },
         {
           source: "Phoenix migration",
+          sourceType: "project",
           label: "blocked_by",
           target: "SSO cutover dependency",
+          targetType: "blocker",
           note: "Operational blockers remain tied to the project for retrieval and updates.",
         },
         {
           source: "Phoenix migration",
+          sourceType: "project",
           label: "documented_in",
           target: "Launch doc",
+          targetType: "document",
           note: "Source artifacts stay attached to the project record.",
         },
       ],
@@ -1036,6 +1062,7 @@ export const landingUseCases = {
   leadership: {
     id: "leadership",
     label: "Leadership",
+    examplePath: "leadership",
     agent: {
       identity: [
         "You help leadership teams turn memos, decisions, and board materials into reusable operating context.",
@@ -1241,24 +1268,700 @@ export const landingUseCases = {
       relations: [
         {
           source: "Board memo",
+          sourceType: "document",
           label: "approved",
           target: "LATAM expansion budget",
+          targetType: "decision",
           note: "Decision state can be surfaced independently from the full memo text.",
         },
         {
           source: "Warehouse lease decision",
+          sourceType: "pending-decision",
           label: "blocked_by",
           target: "Legal review",
+          targetType: "risk",
           note: "Blockers keep the pending item contextualized.",
         },
         {
           source: "Elena",
+          sourceType: "person",
           label: "assigned",
           target: "Updated forecast",
+          targetType: "task",
           note: "Ownership becomes reusable operational memory.",
         },
       ],
     },
+  },
+  "market-intelligence": {
+    id: "market-intelligence",
+    label: "Market Intelligence",
+    examplePath: "market-intelligence",
+    agent: {
+      identity: [
+        "You track brands, products, and market signals across the competitive landscape.",
+        "Monitor company positioning, product launches, and strategic shifts.",
+      ],
+      soul: [
+        "- Distinguish signal from noise in market chatter.",
+        "- Preserve source context for every insight.",
+        "- Cross-reference mentions across brands and products.",
+      ],
+      user: [
+        "- Team: Product strategy and competitive intelligence",
+        "- Priority: Track competitive moves and customer sentiment",
+        "- Preference: Weekly market scans with alert-driven updates",
+      ],
+    },
+    model: {
+      entities: ["Brand", "Product"],
+      relationships: [
+        {
+          label: "mentions",
+          note: "Track content mentions across news, reviews, and social channels to understand market presence.",
+        },
+      ],
+    },
+    skills: {
+      description:
+        "Monitor brands, track product launches, analyze market trends",
+      agentId: "market-intel",
+      skillId: "market-intel",
+      skills: ["product-hunt-mcp", "crunchbase-mcp", "web-monitor"],
+      nixPackages: ["playwright", "jq"],
+      allowedDomains: ["producthunt.com", "crunchbase.com", ".techcrunch.com"],
+      mcpServer: "web-monitor",
+      providerId: "anthropic",
+      model: "claude/sonnet-4-5",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      skillInstructions: [
+        "Flag significant product changes and pricing shifts.",
+        "Track competitive responses to new feature launches.",
+      ],
+    },
+    memory: {
+      id: "brand",
+      description:
+        "Track brands, products, and market positioning with source-linked evidence.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that Airtable launched Airtable Interfaces, added AI features to their product suite, and was mentioned in a comparison against Notion in three recent reviews.",
+      entitySelections: {
+        Brand: "brand-entity",
+        Product: "brand-product",
+      },
+      howItWorks: [
+        {
+          id: "model",
+          label: "1",
+          title: "Model the market",
+          detail:
+            "Represent brands and products as first-class objects with positioning, features, and competitive relationships.",
+          chips: ["Brand", "Product", "Positioning", "Features"],
+        },
+        {
+          id: "connect",
+          label: "2",
+          title: "Connect sources",
+          detail:
+            "Ingest from Product Hunt, review sites, news sources, and social mentions through supported connectors and MCP proxying.",
+          chips: [
+            "Product Hunt",
+            "Review sites",
+            "News feeds",
+            "Social mentions",
+            "Custom SDK",
+          ],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        {
+          id: "auth",
+          label: "3",
+          title: "Let users connect their data",
+          detail:
+            "Support OAuth for review platforms, RSS feeds for news, and API keys for private sources while keeping credentials scoped outside the agent runtime.",
+          chips: ["OAuth", "RSS feeds", "API keys", "Manual import"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        {
+          id: "reuse",
+          label: "4",
+          title: "Reuse context everywhere",
+          detail:
+            "Market intelligence powers competitive analysis agents in Slack, strategy tools, and MCP clients like OpenClaw, ChatGPT, and Claude.",
+          chips: ["Slack", "Strategy tools", "OpenClaw", "ChatGPT", "Claude"],
+        },
+        {
+          id: "fresh",
+          label: "5",
+          title: "Keep it fresh",
+          detail:
+            "Watchers turn new product launches, feature announcements, and market shifts into updated brand and product memory.",
+        },
+      ],
+      watcher: {
+        name: "Competitive brand tracker",
+        schedule: "Every 6 hours",
+        prompt:
+          "Monitor Airtable for new features, pricing changes, and competitive positioning against similar tools.",
+        extractionSchema:
+          "{ new_features[], pricing_changes[], positioning_shifts[], competitive_mentions[] }",
+        schemaEvolution:
+          "Started with product_features + pricing. After tracking for a month, added integrations and target_audience fields to capture positioning evolution.",
+      },
+      highlights: [
+        { label: "Brand", value: "Airtable" },
+        { label: "New feature", value: "Airtable Interfaces" },
+        { label: "Enhancement", value: "AI features added" },
+        {
+          label: "Competitive context",
+          value: "Compared to Notion in 3 reviews",
+        },
+      ],
+      nodeHighlights: {
+        "brand-root": [
+          { label: "Brand", value: "Airtable" },
+          { label: "New feature", value: "Airtable Interfaces" },
+          { label: "Enhancement", value: "AI features added" },
+          { label: "Mentions", value: "Compared to Notion in reviews" },
+        ],
+        "brand-entity": [
+          { label: "Type", value: "Brand" },
+          { label: "Name", value: "Airtable" },
+          { label: "Category", value: "Spreadsheets and Databases" },
+          { label: "Recent activity", value: "New AI features" },
+        ],
+        "brand-product": [
+          { label: "Type", value: "Product" },
+          { label: "Name", value: "Airtable Interfaces" },
+          { label: "Launch date", value: "Recent" },
+          { label: "Brand", value: "Airtable" },
+        ],
+      },
+      recordTree: {
+        id: "brand-root",
+        label: "Record: Airtable market update",
+        kind: "Model record",
+        summary:
+          "Market scan captures product launches, feature additions, and competitive context for the brand.",
+        chips: ["market-intel", "competitive", "timelined"],
+        children: [
+          {
+            id: "brand-entity",
+            label: "Entity: Airtable",
+            kind: "Brand",
+            summary:
+              "Primary brand node accumulates product launches, positioning, and competitive intelligence.",
+            chips: ["primary", "brand"],
+          },
+          {
+            id: "brand-product",
+            label: "Product: Airtable Interfaces",
+            kind: "Product",
+            summary:
+              "New product launch is tracked as its own entity with feature set and market positioning.",
+            chips: ["product", "launch"],
+          },
+        ],
+      },
+      relations: [
+        {
+          source: "Reviews",
+          sourceType: "content",
+          label: "mentions",
+          target: "Airtable vs Notion",
+          targetType: "comparison",
+          note: "Competitive mentions are preserved with source context.",
+        },
+      ],
+    },
+    owlettoOrg: "market-intelligence",
+  },
+  careops: {
+    id: "careops",
+    label: "Healthcare",
+    examplePath: "careops",
+    agent: {
+      identity: [
+        "You help healthcare practices manage patient care, appointments, and treatment workflows.",
+        "Track therapist assignments, treatment plans, and operational coordination.",
+      ],
+      soul: [
+        "- Protect patient privacy and confidentiality.",
+        "- Preserve treatment history and provider assignments.",
+        "- Flag scheduling conflicts and care gaps immediately.",
+      ],
+      user: [
+        "- Team: Clinical operations and practice management",
+        "- Priority: Coordinate care and track patient progress",
+        "- Preference: Clear therapist availability and patient status",
+      ],
+    },
+    model: {
+      entities: ["Patient", "Appointment", "Treatment", "Therapist", "Vendor"],
+      relationships: [
+        {
+          label: "assigned_to",
+          note: "Track which therapist is responsible for each patient and their care coordination.",
+        },
+        {
+          label: "has_appointment",
+          note: "Link scheduled appointments to patients and treatment plans.",
+        },
+        {
+          label: "on_treatment",
+          note: "Connect patients to their active treatment plans and care protocols.",
+        },
+        {
+          label: "treats",
+          note: "Track therapist-patient relationships and care assignments.",
+        },
+        {
+          label: "covered_by",
+          note: "Link patients and treatments to insurance vendors for billing.",
+        },
+      ],
+    },
+    skills: {
+      description:
+        "Schedule appointments, track treatment progress, coordinate care",
+      agentId: "careops",
+      skillId: "careops",
+      skills: ["calendar-mcp", "ehr-mcp", "insurance-portal"],
+      nixPackages: ["ripgrep", "jq"],
+      allowedDomains: [".ehr.com", ".insurance-portal.com"],
+      mcpServer: "calendar-mcp",
+      providerId: "anthropic",
+      model: "claude/sonnet-4-5",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      skillInstructions: [
+        "Confirm patient identity and authorization before discussing care details.",
+        "Flag appointments that need rescheduling or therapist follow-up.",
+      ],
+    },
+    memory: {
+      id: "patient",
+      description:
+        "Coordinate patient care, track treatment progress, and manage therapist assignments.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that James McManus is assigned to therapist Nicole Musto for OCD treatment, has an appointment next Tuesday at 2 PM, and his treatment plan includes weekly exposure therapy sessions covered by Blue Cross Blue Shield.",
+      entitySelections: {
+        Patient: "patient-entity",
+        Appointment: "patient-appointment",
+        Treatment: "patient-treatment",
+        Therapist: "patient-therapist",
+      },
+      howItWorks: [
+        {
+          id: "model",
+          label: "1",
+          title: "Model patient care",
+          detail:
+            "Represent patients, appointments, treatments, and therapists as linked entities that capture the full care context.",
+          chips: ["Patient", "Appointment", "Treatment", "Therapist"],
+        },
+        {
+          id: "connect",
+          label: "2",
+          title: "Connect sources",
+          detail:
+            "Ingest from EHR systems, calendar feeds, patient portals, and email threads through supported connectors and MCP proxying.",
+          chips: ["EHR", "Calendars", "Patient portal", "Email", "Custom SDK"],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        {
+          id: "auth",
+          label: "3",
+          title: "Let users connect their data",
+          detail:
+            "Support OAuth for EHR and calendar systems, API keys for practice management tools, and HIPAA-compliant imports for patient data.",
+          chips: ["OAuth", "EHR integration", "API keys", "Secure import"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        {
+          id: "reuse",
+          label: "4",
+          title: "Reuse context everywhere",
+          detail:
+            "Patient care context powers coordination agents in practice portals, messaging apps, and MCP clients like OpenClaw, ChatGPT, and Claude.",
+          chips: [
+            "Practice portals",
+            "Messaging",
+            "OpenClaw",
+            "ChatGPT",
+            "Claude",
+          ],
+        },
+        {
+          id: "fresh",
+          label: "5",
+          title: "Keep it fresh",
+          detail:
+            "Watchers turn new appointments, treatment plan updates, and therapist assignments into current patient memory.",
+        },
+      ],
+      watcher: {
+        name: "Patient care tracker",
+        schedule: "Every morning at 7 AM",
+        prompt:
+          "Check James McManus for appointment changes, treatment progress, and insurance coverage status.",
+        extractionSchema:
+          "{ next_appointment, treatment_status, therapist_notes[], insurance_status, upcoming_actions[] }",
+        schemaEvolution:
+          "Started with appointment + therapist. After two months, added treatment_milestones and insurance_renewal_date to capture care progression.",
+      },
+      highlights: [
+        { label: "Patient", value: "James McManus" },
+        { label: "Therapist", value: "Nicole Musto" },
+        { label: "Next appointment", value: "Tuesday at 2 PM" },
+        { label: "Treatment", value: "Weekly exposure therapy" },
+        { label: "Insurance", value: "Blue Cross Blue Shield" },
+      ],
+      nodeHighlights: {
+        "patient-root": [
+          { label: "Patient", value: "James McManus" },
+          { label: "Therapist", value: "Nicole Musto" },
+          { label: "Next appointment", value: "Tuesday at 2 PM" },
+          { label: "Insurance", value: "Blue Cross Blue Shield" },
+        ],
+        "patient-entity": [
+          { label: "Type", value: "Patient" },
+          { label: "Name", value: "James McManus" },
+          { label: "Status", value: "Active treatment" },
+          { label: "Therapist", value: "Nicole Musto" },
+        ],
+        "patient-appointment": [
+          { label: "Type", value: "Appointment" },
+          { label: "When", value: "Tuesday at 2 PM" },
+          { label: "Type", value: "Weekly session" },
+          { label: "Patient", value: "James McManus" },
+        ],
+        "patient-treatment": [
+          { label: "Type", value: "Treatment" },
+          { label: "Plan", value: "Exposure therapy for OCD" },
+          { label: "Frequency", value: "Weekly sessions" },
+          { label: "Duration", value: "Ongoing" },
+        ],
+        "patient-therapist": [
+          { label: "Type", value: "Therapist" },
+          { label: "Name", value: "Nicole Musto" },
+          { label: "Credentials", value: "MS, LPC" },
+          { label: "Patient", value: "James McManus" },
+        ],
+      },
+      recordTree: {
+        id: "patient-root",
+        label: "Record: James McManus care update",
+        kind: "Model record",
+        summary:
+          "Patient care becomes a hierarchy of appointments, treatment plans, therapist assignments, and insurance context.",
+        chips: ["patient-care", "hipaa-aware", "actionable"],
+        children: [
+          {
+            id: "patient-entity",
+            label: "Entity: James McManus",
+            kind: "Patient",
+            summary:
+              "Primary patient node holds treatment status, therapist assignment, and care coordination context.",
+            chips: ["primary", "patient"],
+          },
+          {
+            id: "patient-appointment",
+            label: "Appointment: Tuesday session",
+            kind: "Appointment",
+            summary:
+              "Scheduled appointments are tracked with treatment context and preparation notes.",
+            chips: ["scheduled", "recurring"],
+          },
+          {
+            id: "patient-treatment",
+            label: "Treatment: Exposure therapy plan",
+            kind: "Treatment",
+            summary:
+              "Active treatment plan captures therapy type, frequency, and progress milestones.",
+            chips: ["active", "evidence-based"],
+          },
+        ],
+      },
+      relations: [
+        {
+          source: "James McManus",
+          sourceType: "patient",
+          label: "treats",
+          target: "Nicole Musto",
+          targetType: "therapist",
+          note: "Therapist assignment becomes durable care relationship context.",
+        },
+        {
+          source: "James McManus",
+          sourceType: "patient",
+          label: "has_appointment",
+          target: "Tuesday at 2 PM",
+          targetType: "appointment",
+          note: "Scheduled appointments are linked to patient and treatment plans.",
+        },
+        {
+          source: "James McManus treatment",
+          sourceType: "treatment",
+          label: "covered_by",
+          target: "Blue Cross Blue Shield",
+          targetType: "insurance",
+          note: "Insurance coverage is tracked for billing and care authorization.",
+        },
+      ],
+    },
+    owlettoOrg: "careops",
+  },
+  "venture-capital": {
+    id: "venture-capital",
+    label: "Venture Capital",
+    examplePath: "venture-capital",
+    agent: {
+      identity: [
+        "You help VC firms track companies, founders, and investment opportunities.",
+        "Monitor portfolio companies, sourcing pipeline, and market signals.",
+      ],
+      soul: [
+        "- Distinguish signal from noise in deal flow.",
+        "- Preserve investment memos and decision context.",
+        "- Track competitive dynamics and market shifts.",
+      ],
+      user: [
+        "- Team: Investment partners and sourcing team",
+        "- Priority: Track portfolio health and new opportunities",
+        "- Preference: Company summaries with clear investment signals",
+      ],
+    },
+    model: {
+      entities: ["Company", "Founder", "Investor", "Fund Round", "Sector"],
+      relationships: [
+        {
+          label: "founded_by",
+          note: "Track founding teams and their backgrounds for pattern recognition.",
+        },
+        {
+          label: "invested_in",
+          note: "Keep investment history and portfolio connections visible.",
+        },
+        {
+          label: "works_at",
+          note: "Track founder and executive movements across companies.",
+        },
+        {
+          label: "in_sector",
+          note: "Connect companies to investment sectors and thesis areas.",
+        },
+        {
+          label: "round_of",
+          note: "Link funding rounds to companies and lead investors.",
+        },
+        {
+          label: "sourced_by",
+          note: "Track deal sourcing and network connections.",
+        },
+      ],
+    },
+    skills: {
+      description:
+        "Track companies, monitor deal flow, analyze portfolio metrics",
+      agentId: "vc-tracking",
+      skillId: "vc-tracking",
+      skills: ["crunchbase-mcp", "linkedin-mcp", "news-monitor"],
+      nixPackages: ["playwright", "jq"],
+      allowedDomains: ["crunchbase.com", "linkedin.com", ".techcrunch.com"],
+      mcpServer: "news-monitor",
+      providerId: "anthropic",
+      model: "claude/sonnet-4-5",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      skillInstructions: [
+        "Flag significant funding rounds and executive changes.",
+        "Track portfolio company expansion into new markets.",
+      ],
+    },
+    memory: {
+      id: "company",
+      description:
+        "Track companies, founders, funding rounds, and investment signals with full context.",
+      sourceLabel: "Example prompt",
+      sourceText:
+        "Remember that Lovable raised a $653M Series B at a $6.6B valuation, was founded by Anton Osika and Fabian Hedin, operates in the AI Developer Tools sector, and their round was led by a16z.",
+      entitySelections: {
+        Company: "company-entity",
+        Founder: "company-founder",
+        "Fund Round": "company-round",
+        Sector: "company-sector",
+        Investor: "company-investor",
+      },
+      howItWorks: [
+        {
+          id: "model",
+          label: "1",
+          title: "Model the venture landscape",
+          detail:
+            "Represent companies, founders, investors, and funding rounds as linked entities for deal tracking and pattern recognition.",
+          chips: ["Company", "Founder", "Investor", "Fund Round", "Sector"],
+        },
+        {
+          id: "connect",
+          label: "2",
+          title: "Connect sources",
+          detail:
+            "Ingest from Crunchbase, LinkedIn, news sources, and internal deal memos through supported connectors and MCP proxying.",
+          chips: [
+            "Crunchbase",
+            "LinkedIn",
+            "News feeds",
+            "Deal memos",
+            "Custom SDK",
+          ],
+          links: [technicalLinks.mcpProxy, technicalLinks.connectorSdk],
+        },
+        {
+          id: "auth",
+          label: "3",
+          title: "Let users connect their data",
+          detail:
+            "Support OAuth for data providers, API keys for premium sources, and manual imports for proprietary deal information.",
+          chips: ["OAuth", "API keys", "CSV import", "Manual entry"],
+          links: [technicalLinks.memoryDocs, technicalLinks.mcpAuthFlow],
+        },
+        {
+          id: "reuse",
+          label: "4",
+          title: "Reuse context everywhere",
+          detail:
+            "Investment intelligence powers deal review agents in internal tools, messaging apps, and MCP clients like OpenClaw, ChatGPT, and Claude.",
+          chips: ["Deal tools", "Slack", "OpenClaw", "ChatGPT", "Claude"],
+        },
+        {
+          id: "fresh",
+          label: "5",
+          title: "Keep it fresh",
+          detail:
+            "Watchers turn new funding rounds, portfolio updates, and market signals into current company memory.",
+        },
+      ],
+      watcher: {
+        name: "Portfolio company monitor",
+        schedule: "Every 12 hours",
+        prompt:
+          "Check Lovable for new funding, product launches, team growth, and competitive positioning changes.",
+        extractionSchema:
+          "{ new_funding[], product_launches[], headcount_change, competitive_moves[], market_expansion[] }",
+        schemaEvolution:
+          "Started with funding + team_size. After tracking for 3 months, added product_milestones and enterprise_customers to capture growth signals.",
+      },
+      highlights: [
+        { label: "Company", value: "Lovable" },
+        { label: "Series B", value: "$653M raised" },
+        { label: "Valuation", value: "$6.6B" },
+        { label: "Founders", value: "Anton Osika, Fabian Hedin" },
+        { label: "Sector", value: "AI Developer Tools" },
+        { label: "Lead investor", value: "a16z" },
+      ],
+      nodeHighlights: {
+        "company-root": [
+          { label: "Company", value: "Lovable" },
+          { label: "Funding", value: "Series B: $653M" },
+          { label: "Valuation", value: "$6.6B" },
+          { label: "Founders", value: "Anton Osika, Fabian Hedin" },
+          { label: "Sector", value: "AI Developer Tools" },
+        ],
+        "company-entity": [
+          { label: "Type", value: "Company" },
+          { label: "Name", value: "Lovable" },
+          { label: "Stage", value: "Series B" },
+          { label: "Valuation", value: "$6.6B" },
+          { label: "Sector", value: "AI Developer Tools" },
+        ],
+        "company-founder": [
+          { label: "Type", value: "Founder" },
+          { label: "Name", value: "Anton Osika" },
+          { label: "Role", value: "CEO & Co-Founder" },
+          { label: "Company", value: "Lovable" },
+        ],
+        "company-round": [
+          { label: "Type", value: "Fund Round" },
+          { label: "Stage", value: "Series B" },
+          { label: "Amount", value: "$653M" },
+          { label: "Lead", value: "a16z" },
+          { label: "Company", value: "Lovable" },
+        ],
+        "company-sector": [
+          { label: "Sector", value: "AI Developer Tools" },
+          { label: "Practice area", value: "AI infrastructure" },
+          { label: "Companies", value: "Lovable, Bolt, others" },
+        ],
+        "company-investor": [
+          { label: "Type", value: "Investor" },
+          { label: "Name", value: "a16z" },
+          { label: "Role", value: "Lead investor" },
+          { label: "Company", value: "Lovable" },
+        ],
+      },
+      recordTree: {
+        id: "company-root",
+        label: "Record: Lovable company update",
+        kind: "Model record",
+        summary:
+          "Company record accumulates funding history, founder information, sector placement, and investor relationships.",
+        chips: ["portfolio", "timelined", "comprehensive"],
+        children: [
+          {
+            id: "company-entity",
+            label: "Entity: Lovable",
+            kind: "Company",
+            summary:
+              "Primary company node holds stage, valuation, and market position context.",
+            chips: ["primary", "company"],
+          },
+          {
+            id: "company-founder",
+            label: "Founder: Anton Osika",
+            kind: "Founder",
+            summary:
+              "Founders are tracked with role, background, and other portfolio companies they've founded.",
+            chips: ["founder", "team"],
+          },
+          {
+            id: "company-round",
+            label: "Fund Round: Series B",
+            kind: "Fund Round",
+            summary:
+              "Funding rounds capture amount, lead investor, and competitive context.",
+            chips: ["funding", "growth"],
+          },
+        ],
+      },
+      relations: [
+        {
+          source: "Anton Osika",
+          sourceType: "founder",
+          label: "founded_by",
+          target: "Lovable",
+          targetType: "company",
+          note: "Founder relationships support pattern recognition across successful founders.",
+        },
+        {
+          source: "Lovable",
+          sourceType: "company",
+          label: "invested_in",
+          target: "a16z",
+          targetType: "investor",
+          note: "Investment relationships track portfolio companies and syndicate partners.",
+        },
+        {
+          source: "Lovable",
+          sourceType: "company",
+          label: "in_sector",
+          target: "AI Developer Tools",
+          targetType: "sector",
+          note: "Sector placement enables thesis tracking and competitive landscape analysis.",
+        },
+      ],
+    },
+    owlettoOrg: "venture-capital",
   },
 } satisfies Record<string, LandingUseCaseDefinition>;
 

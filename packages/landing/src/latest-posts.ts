@@ -1,13 +1,11 @@
 import { getCollection } from "astro:content";
 import type { LatestBlogPost } from "./components/LatestBlogPosts";
 
-export async function getLatestPosts(
-  count = 3,
-): Promise<LatestBlogPost[]> {
+export async function getLatestPosts(count = 3): Promise<LatestBlogPost[]> {
   const isProduction = import.meta.env.PROD;
   return (
     await getCollection("blog", ({ data }) =>
-      isProduction ? !data.draft : true,
+      isProduction ? !data.draft : true
     )
   )
     .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())

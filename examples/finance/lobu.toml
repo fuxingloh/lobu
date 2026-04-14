@@ -1,0 +1,19 @@
+# lobu.toml — Agent configuration
+# Docs: https://lobu.ai/docs/getting-started
+
+[agents.finance]
+name = "finance"
+description = "Help finance teams reconcile data, explain variance, and prepare reporting runs"
+dir = "./agents/finance"
+
+[[agents.finance.providers]]
+id = "anthropic"
+model = "claude/sonnet-4-5"
+key = "$ANTHROPIC_API_KEY"
+
+# Skills from the registry
+[agents.finance.skills]
+enabled = ["github"]
+
+[agents.finance.network]
+allowed = ["github.com", ".github.com", ".githubusercontent.com", "registry.npmjs.org", ".npmjs.org"]

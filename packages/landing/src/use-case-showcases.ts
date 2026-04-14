@@ -1,5 +1,6 @@
 import {
   landingUseCases,
+  technicalLinks,
   type HowItWorksPanel,
   type LandingUseCaseDefinition,
   type LandingUseCaseId,
@@ -35,15 +36,18 @@ type CampaignMeta = {
 
 export type ShowcaseSkillWorkspacePreview = SkillWorkspacePreviewData & {
   useCaseId: LandingUseCaseId;
+  examplePath: string;
 };
 
 export type ShowcaseMemoryExample = MemoryExample & {
   useCaseId: LandingUseCaseId;
+  examplePath: string;
 };
 
 export type LandingUseCaseShowcase = {
   id: LandingUseCaseId;
   label: string;
+  examplePath: string;
   campaign: CampaignMeta;
   runtime: RuntimeJourney;
   skills: ShowcaseSkillWorkspacePreview;
@@ -52,19 +56,278 @@ export type LandingUseCaseShowcase = {
 
 const docsLinks = {
   owlettoDocs: { label: "What is Owletto?", href: "/getting-started/memory/" },
-  mcpProxy: { label: "MCP proxy", href: "/guides/mcp-proxy/" },
-  connectorSdk: {
-    label: "Connector SDK",
-    href: "/reference/owletto-cli/#connector-sdk-and-data-integration",
-  },
-  memoryDocs: { label: "Memory docs", href: "/getting-started/memory/" },
-  mcpAuthFlow: { label: "MCP auth flow", href: "/guides/mcp-proxy/" },
+  ...technicalLinks,
 };
 
 const memoryStepPanels: Record<
   LandingUseCaseId,
   Partial<Record<"connect" | "auth" | "reuse", HowItWorksPanel>>
 > = {
+  "market-intelligence": {
+    connect: {
+      title: "Market intel source inputs",
+      description:
+        "Brand and product memory comes from monitoring the channels where competitive signals appear.",
+      items: [
+        {
+          meta: "Product Hunt",
+          label: "Launch tracking",
+          detail:
+            "Monitor product launches, feature announcements, and upvotes for competitive positioning signals.",
+        },
+        {
+          meta: "Crunchbase",
+          label: "Funding database",
+          detail:
+            "Pull funding rounds, investor syndicates, and valuation changes for company growth tracking.",
+        },
+        {
+          meta: "Review sites",
+          label: "Customer feedback",
+          detail:
+            "Aggregate reviews and comparisons to understand how products are positioned against alternatives.",
+        },
+        {
+          meta: "News & social",
+          label: "Market chatter",
+          detail:
+            "Track mentions, feature announcements, and strategic moves across news and social channels.",
+        },
+      ],
+    },
+    auth: {
+      title: "How market data is connected",
+      description:
+        "Connect product and brand data sources while keeping API keys outside the agent runtime.",
+      items: [
+        {
+          meta: "API key",
+          label: "Premium databases",
+          detail:
+            "Store Crunchbase, PitchBook, or other research platform keys centrally for company and funding data.",
+        },
+        {
+          meta: "RSS feeds",
+          label: "News and reviews",
+          detail:
+            "Pull industry news, blog coverage, and review updates through RSS without per-request auth.",
+        },
+        {
+          meta: "Web scraping",
+          label: "Public websites",
+          detail:
+            "Monitor company blogs, changelogs, and pricing pages for product and positioning updates.",
+        },
+        {
+          meta: "Agent boundary",
+          label: "Scoped access",
+          detail:
+            "The market agent receives extracted insights, not raw credentials or database dumps.",
+        },
+      ],
+    },
+    reuse: {
+      title: "Market intelligence agents",
+      description:
+        "The same brand and product memory powers competitive analysis wherever teams work.",
+      items: [
+        {
+          label: "Competitive analysis",
+          detail: "Drafts comparison briefs with latest features and pricing.",
+          platform: { id: "slack", label: "Slack" },
+        },
+        {
+          label: "Deal screen assistant",
+          detail:
+            "Checks company signals and market position before investment.",
+          platform: { id: "openclaw", label: "OpenClaw" },
+        },
+        {
+          label: "Product strategist",
+          detail: "Reuses positioning insights across go-to-market planning.",
+          platform: { id: "claude", label: "Claude" },
+        },
+      ],
+    },
+  },
+  careops: {
+    connect: {
+      title: "Care operations source inputs",
+      description:
+        "Patient care memory is built from the systems clinical and operational teams already use.",
+      items: [
+        {
+          meta: "EHR",
+          label: "Patient records",
+          detail:
+            "Pull treatment history, diagnoses, and care plans from the electronic health record system.",
+        },
+        {
+          meta: "Calendar",
+          label: "Appointments",
+          detail:
+            "Sync scheduled sessions, cancellations, and availability from therapist calendars.",
+        },
+        {
+          meta: "Email",
+          label: "Patient communications",
+          detail:
+            "Capture handoff notes, treatment updates, and follow-up commitments from email threads.",
+        },
+        {
+          meta: "Patient portal",
+          label: "Self-reported data",
+          detail:
+            "Import patient-reported outcomes, symptom trackers, and feedback through the patient portal.",
+        },
+      ],
+    },
+    auth: {
+      title: "How patient data is connected",
+      description:
+        "Connect clinical systems while maintaining HIPAA compliance and credential isolation.",
+      items: [
+        {
+          meta: "OAuth",
+          label: "EHR and calendar",
+          detail:
+            "Authorize read-only access to patient schedules and treatment history for care coordination.",
+        },
+        {
+          meta: "Service account",
+          label: "Internal practice tools",
+          detail:
+            "Use practice management credentials for scheduling and insurance verification.",
+        },
+        {
+          meta: "Secure import",
+          label: "Patient records",
+          detail:
+            "Load HIPAA-compliant imports for new patients or transferring from other providers.",
+        },
+        {
+          meta: "Isolation",
+          label: "Agent boundary",
+          detail:
+            "The care agent receives context, not raw patient data or PHI directly.",
+        },
+      ],
+    },
+    reuse: {
+      title: "Care coordination agents",
+      description:
+        "The same patient care memory powers clinical workflows wherever the team works.",
+      items: [
+        {
+          label: "Care coordinator",
+          detail:
+            "Checks appointment availability and treatment progress before scheduling.",
+          platform: { id: "slack", label: "Slack" },
+        },
+        {
+          label: "Handoff assistant",
+          detail:
+            "Summarizes care status and treatment progress when handing off between therapists.",
+          platform: { id: "claude", label: "Claude" },
+        },
+        {
+          label: "Therapist assistant",
+          detail:
+            "Drafts session notes and treatment plan updates based on patient conversations.",
+          platform: { id: "openclaw", label: "OpenClaw" },
+        },
+      ],
+    },
+  },
+  "venture-capital": {
+    connect: {
+      title: "Venture capital source inputs",
+      description:
+        "Company and deal memory comes from public databases, proprietary sources, and internal deal memos.",
+      items: [
+        {
+          meta: "Data providers",
+          label: "Company databases",
+          detail:
+            "Pull funding rounds, company descriptions, and team data from Crunchbase, PitchBook, or similar platforms.",
+        },
+        {
+          meta: "Web scraping",
+          label: "Company websites",
+          detail:
+            "Monitor company blogs, engineering blogs, and job postings for growth and product signals.",
+        },
+        {
+          meta: "News API",
+          label: "Press and announcements",
+          detail:
+            "Track funding announcements, leadership changes, and strategic moves from news and press releases.",
+        },
+        {
+          meta: "Internal",
+          label: "Deal memos and notes",
+          detail:
+            "Import investment committee memos, sourcing notes, and partnership discussions for private context.",
+        },
+      ],
+    },
+    auth: {
+      title: "How deal data is connected",
+      description:
+        "Connect data providers and internal tools while keeping credentials isolated from workers.",
+      items: [
+        {
+          meta: "API key",
+          label: "Premium databases",
+          detail:
+            "Store Crunchbase API keys or PitchBook credentials centrally for company and funding data.",
+        },
+        {
+          meta: "RSS",
+          label: "Company news feeds",
+          detail:
+            "Pull company blog RSS feeds, tech press, and announcement lists without per-request auth.",
+        },
+        {
+          meta: "Web auth",
+          label: "Private portals",
+          detail:
+            "Authorize access to investor portals or private company databases for portfolio monitoring.",
+        },
+        {
+          meta: "Agent boundary",
+          label: "Credential isolation",
+          detail:
+            "The VC agent receives extracted company insights, not raw database access.",
+        },
+      ],
+    },
+    reuse: {
+      title: "Venture capital agents",
+      description:
+        "The same company and deal memory powers investment workflows across the firm.",
+      items: [
+        {
+          label: "Deal screener",
+          detail:
+            "Checks company signals, funding history, and team background before first calls.",
+          platform: { id: "slack", label: "Slack" },
+        },
+        {
+          label: "Portfolio monitor",
+          detail:
+            "Tracks portfolio company growth, competitive moves, and follow-on opportunities.",
+          platform: { id: "openclaw", label: "OpenClaw" },
+        },
+        {
+          label: "IC assistant",
+          detail:
+            "Prep investment committee memos with company context and market analysis.",
+          platform: { id: "claude", label: "Claude" },
+        },
+      ],
+    },
+  },
   legal: {
     connect: {
       title: "Legal source inputs",
@@ -202,12 +465,7 @@ const memoryStepPanels: Record<
       table: {
         columns: ["Account", "Brought by", "Access", "Used for"],
         rows: [
-          [
-            "GitHub / GitLab",
-            "User",
-            "OAuth",
-            "PRs, commits, diffs",
-          ],
+          ["GitHub / GitLab", "User", "OAuth", "PRs, commits, diffs"],
           [
             "Slack / Linear / Notion",
             "User",
@@ -226,12 +484,7 @@ const memoryStepPanels: Record<
             "Service account",
             "Infra and deploy metadata",
           ],
-          [
-            "Incident history",
-            "Org",
-            "Import / sync",
-            "Memory bootstrap",
-          ],
+          ["Incident history", "Org", "Import / sync", "Memory bootstrap"],
         ],
       },
     },
@@ -242,14 +495,12 @@ const memoryStepPanels: Record<
       items: [
         {
           label: "Incident responder",
-          detail:
-            "Answers what broke, what changed, and what’s blocked now.",
+          detail: "Answers what broke, what changed, and what’s blocked now.",
           platform: { id: "slack", label: "Slack" },
         },
         {
           label: "Deploy safety agent",
-          detail:
-            "Checks rollback readiness and deploy risk before action.",
+          detail: "Checks rollback readiness and deploy risk before action.",
           platform: { id: "openclaw", label: "OpenClaw" },
         },
         {
@@ -1154,7 +1405,7 @@ const fallbackMemory: Partial<
   finance: {
     id: "variance",
     description:
-      "Track accounts, transactions, variance, and reporting notes so close workflows can reuse the same structured state.",
+      "Track accounts and transactions so close workflows can reuse the same structured state.",
     sourceLabel: "Example prompt",
     sourceText:
       "Remember that March close shows a $42k Stripe payout variance on Account 4100, refunds are the likely cause, and the reconciliation note must land in the month-end deck.",
@@ -1554,6 +1805,105 @@ const runtimeContent: Record<LandingUseCaseId, RuntimeJourney> = {
       "Clear owners and blockers for follow-up work",
     ],
   },
+  "market-intelligence": {
+    requestLabel: "Incoming request",
+    request:
+      "What's new with Airtable this week, and how do they compare to Notion?",
+    summary:
+      "Track brands and products across the competitive landscape so teams can reuse market intelligence in every conversation.",
+    steps: [
+      {
+        title: "Runtime gathers market signals",
+        detail:
+          "Lobu monitors brands, products, and competitive positioning from news, reviews, and social channels in a sandbox.",
+        chips: ["Product Hunt", "Crunchbase", "reviews", "social"],
+      },
+      {
+        title: "Skills package market research tools",
+        detail:
+          "The market intelligence skill bundles content monitors, research databases, and comparison tools through one installable unit.",
+        chips: ["web monitoring", "Crunchbase", "comparison"],
+      },
+      {
+        title: "Memory builds the brand graph",
+        detail:
+          "Owletto stores brands, products, mentions, and positioning so every competitive analysis starts with the same evidence.",
+        chips: ["brand memory", "mentions", "positioning"],
+      },
+    ],
+    outcomeLabel: "What the team gets",
+    outcome: [
+      "Weekly competitive scans with feature and pricing changes",
+      "Durable brand and product memory for pattern recognition",
+      "Shared market context across product and strategy teams",
+    ],
+  },
+  careops: {
+    requestLabel: "Incoming request",
+    request:
+      "Check James McManus's appointment status and summarize his treatment progress.",
+    summary:
+      "Coordinate patient care across therapists, appointments, and treatment plans so clinical context is always available.",
+    steps: [
+      {
+        title: "Runtime accesses care systems",
+        detail:
+          "Lobu checks calendars, EHR systems, and patient portals in a sandbox and can request approval before any sensitive access.",
+        chips: ["EHR", "calendars", "patient portals"],
+      },
+      {
+        title: "Skills bundle care coordination tools",
+        detail:
+          "The careops bundle connects scheduling, treatment tracking, and insurance verification through one installable unit.",
+        chips: ["calendar sync", "EHR integration", "insurance"],
+      },
+      {
+        title: "Memory preserves the care graph",
+        detail:
+          "Owletto stores patients, appointments, treatments, and therapist assignments so care coordination continues across handoffs.",
+        chips: ["patient memory", "therapists", "treatments"],
+      },
+    ],
+    outcomeLabel: "What the team gets",
+    outcome: [
+      "Current patient status and appointment availability",
+      "Treatment progress summaries across sessions",
+      "Shared care coordination across clinical staff",
+    ],
+  },
+  "venture-capital": {
+    requestLabel: "Incoming request",
+    request:
+      "What's the latest on Lovable, and what other AI dev tools should we track?",
+    summary:
+      "Combine portfolio tracking, deal sourcing, and market signals so investment teams can reuse company context.",
+    steps: [
+      {
+        title: "Runtime checks portfolio and pipeline",
+        detail:
+          "Lobu pulls company data, funding rounds, and market signals from multiple sources in a sandbox.",
+        chips: ["Crunchbase", "LinkedIn", "news feeds"],
+      },
+      {
+        title: "Skills package deal flow tools",
+        detail:
+          "The VC skill bundles company databases, founder tracking, and market monitoring through one installable unit.",
+        chips: ["deal tracking", "founder research", "market scans"],
+      },
+      {
+        title: "Memory builds the venture graph",
+        detail:
+          "Owletto stores companies, founders, investors, and sectors so deal context compounds over time.",
+        chips: ["portfolio memory", "deal flow", "network"],
+      },
+    ],
+    outcomeLabel: "What the team gets",
+    outcome: [
+      "Company summaries with funding and team history",
+      "Portfolio health and competitive signals",
+      "Shared context across partners and associates",
+    ],
+  },
 };
 
 function getSkillsDefinition(
@@ -1594,6 +1944,7 @@ function toSkillPreview(
 
   return {
     useCaseId,
+    examplePath: useCase.examplePath,
     name: useCase.label,
     description: skills.description,
     agentId: skills.agentId,
@@ -1620,6 +1971,7 @@ function toMemoryExample(
 
   return {
     useCaseId,
+    examplePath: useCase.examplePath,
     id: memory.id,
     tab: useCase.label,
     title: useCase.label,
@@ -1662,6 +2014,7 @@ export const landingUseCaseShowcases: LandingUseCaseShowcase[] = (
   return {
     id: useCaseId,
     label: useCase.label,
+    examplePath: useCase.examplePath,
     campaign: toCampaignMeta(useCaseId, useCase, runtime),
     runtime,
     skills: toSkillPreview(useCaseId, useCase),
@@ -1699,7 +2052,7 @@ export const showcaseMemoryExamples = landingUseCaseShowcases.map(
 export function getSkillsPrompt(showcase: LandingUseCaseShowcase) {
   const workspace = showcase.skills;
 
-  return `Set up a new Lobu agent for ${showcase.label}. Create lobu.toml with [agents.${workspace.agentId}] pointing at ./agents/${workspace.agentId}, add IDENTITY.md, SOUL.md, and USER.md under agents/${workspace.agentId}/, and add a shared skill in skills/${workspace.skillId}/SKILL.md with nix packages, a network allowlist, tool permissions, and MCP servers for ${workspace.skills.join(", ")}. Keep the workflow aligned with this request: ${showcase.runtime.request}`;
+  return `Set up a new Lobu agent for ${showcase.label}. Create lobu.toml with [agents.${workspace.agentId}] pointing at ./agents/${workspace.agentId}, add IDENTITY.md, SOUL.md, and USER.md under agents/${workspace.agentId}/, and add a shared skill in skills/${workspace.skillId}/SKILL.md with nix packages, a network allowlist, and MCP servers for ${workspace.skills.join(", ")}. Keep tool policy in lobu.toml. Keep the workflow aligned with this request: ${showcase.runtime.request}`;
 }
 
 export function getMemoryPrompt(showcase: LandingUseCaseShowcase) {

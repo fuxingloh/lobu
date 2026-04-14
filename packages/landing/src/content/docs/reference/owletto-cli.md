@@ -3,18 +3,10 @@ title: Owletto CLI Reference
 description: What the owletto CLI does, how it authenticates, and how to use it to run Owletto memory tools directly.
 ---
 
-The `owletto` CLI is the command-line entrypoint for the Owletto runtime. Use it when you want to:
-
-- start a local Owletto server
-- connect local agent clients to an Owletto MCP endpoint
-- authenticate against Owletto Cloud or a self-hosted instance
-- select the active organization
-- run Owletto MCP tools such as `search_knowledge` or `save_knowledge` directly from the terminal
-
-Project links:
+The `owletto` CLI starts local Owletto servers, connects agent clients, and runs memory tools directly.
 
 - GitHub: [lobu-ai/owletto](https://github.com/lobu-ai/owletto)
-- Hosted product: [owletto.com](https://owletto.com)
+- Hosted: [owletto.com](https://owletto.com)
 
 ## Install And Run
 
@@ -29,149 +21,34 @@ owletto <command>
 
 The published package name is `owletto`.
 
-## How Owletto Works
+## Architecture Overview
 
-The CLI is just the entrypoint. Underneath it, Owletto is a memory system built in layers:
+Owletto is a layered memory system that separates raw capture from structured knowledge:
 
-1. **Connectors** capture source data from external systems
-2. **Events** store that source data as a normalized append-only log
-3. **Entities and relationships** turn raw capture into durable domain knowledge
-4. **Watchers** analyze event streams and write higher-order structured memory
-5. **Recall tools** retrieve the right facts and analysis back into the agent prompt
-
-The important design choice is that Owletto does not treat memory as one flat blob of embeddings. It separates:
-
-- raw captured evidence
-- append-only event history
-- durable structured facts
-- higher-order analysis
-
-That is what makes it usable across different agents and different use cases.
-
-## Connector SDK And Data Integration
-
-Owletto's data integration layer is the **Connector SDK**.
-
-Each connector is a TypeScript module that declares:
-
-- a `ConnectorDefinition` with auth, feeds, actions, and schemas
-- a `ConnectorRuntime` that implements `sync()` and optionally `execute()`
-
-In practice:
-
-- `sync()` reads from an external source and emits normalized events
-- `execute()` performs write-back actions when the connector supports them
-
-This lets Owletto ingest data from APIs, feeds, browser-backed integrations, internal systems, and other sources through one runtime model.
-
-The connector docs live in the Owletto repo:
-
-- [Connector SDK](https://github.com/lobu-ai/owletto/blob/main/connectors/README.md)
-
-## Events As The Capture Layer
-
-Think of Owletto events like a change-data-capture log for agent memory.
-
-Connectors do not write directly into a final summary table. They first emit normalized **events** into Owletto's canonical event layer. That gives you:
-
-- replayability
-- provenance
-- auditability
-- reprocessing when your schemas or watchers change
-- a timeline of what changed and when
-
-Owletto is designed around keeping the source capture durable and append-oriented. Instead of constantly mutating the past, it prefers:
-
-- ingesting new source events
-- adding new watcher windows and analyses
-- superseding outdated facts when the durable memory changes
-
-That makes the system much easier to reason about than a memory store that only keeps the latest summary.
-
-It also helps agents and operators see:
-
-- what changed between runs
-- when an earlier belief became stale
-- what action or ingestion step may have caused a mistake
-- how to revert, correct, or supersede a bad memory
-
-In other words, the event history is part of how the system learns operationally over time.
-
-## Actions As Interactive Events
-
-Events are not only passive observations. Some events come from actions and workflows.
-
-That includes cases where an agent wants to:
-
-- send a message
-- update an external system
-- trigger an operation
-- write back through a connector
-
-Owletto treats those as first-class operational records too, so you keep an audit trail of what the agent proposed and what actually happened.
-
-Approval matters here:
-
-- low-risk or explicitly allowed operations can be pre-approved
-- destructive or user-impacting actions can require explicit consent
-- the resulting action outcome is still captured as part of the event history
-
-That gives you a safer loop for agent execution: propose, approve if needed, execute, and retain the event trail.
-
-## Watchers And Recall
-
-Watchers are the layer that turns captured events into something an agent can actually think with.
-
-A watcher:
-
-- reads bounded windows from the event layer
-- applies a schema-guided analysis step
-- stores extracted structured output in watcher windows
-- links conclusions back to cited source events
-
-That analysis then becomes part of the agent's recall path through tools like `read_knowledge`, `search_knowledge`, and the graph itself.
-
-The practical flow is:
-
-```text
+```
 external source
-  -> connector sync
-  -> normalized events
+  -> connectors (sync/execute)
+  -> normalized events (append-only log)
   -> watcher analysis windows
   -> entities / relationships / classifications
-  -> agent recall
+  -> agent recall (search_knowledge, read_knowledge)
 ```
 
-So when you design Owletto memory, do not only think "what should the agent store?"
+**Key concepts:**
 
-Think:
+- **Events** are append-only and immutable. They provide replayability, provenance, and auditability.
+- **Watchers** analyze event windows and extract structured facts linked to source evidence.
+- **Entities** form a hierarchical knowledge graph that turns raw capture into durable domain knowledge.
+- **Actions** are first-class events too, with approval workflows for destructive operations.
 
-- what should this agent value?
-- what patterns should it notice repeatedly?
-- what distinctions should become first-class entities?
-- what evidence should remain queryable later?
+## Connector SDK
 
-That is how you build a memory system that helps the agent think better over time, not just remember strings.
+Owletto's data integration layer. Each connector declares:
 
-## Hierarchical Knowledge Graph
+- `ConnectorDefinition` — auth, feeds, actions, schemas
+- `ConnectorRuntime` — implements `sync()` and optional `execute()`
 
-Owletto works best when you model memory hierarchically.
-
-```text
-raw source events
-  -> entity-linked event history
-    -> relationships between entities
-      -> watcher outputs and rollups
-        -> reusable organizational memory for recall
-```
-
-Different use cases want different shapes:
-
-- support agents may care about customer preferences, issue history, and account relationships
-- research agents may care about competitors, products, sentiment shifts, and cited evidence
-- operations agents may care about incidents, dependencies, owners, and change history
-
-The point is not to store everything equally. The point is to structure what should matter for that agent and that organization.
+Docs: [Connector SDK](https://github.com/lobu-ai/owletto/blob/main/connectors/README.md)
 
 ## Core Commands
 
@@ -195,22 +72,14 @@ If `DATABASE_URL` is set, the CLI starts the server against external Postgres in
 
 ### `owletto init`
 
-Configures supported local agent clients to use an Owletto MCP endpoint.
+Configures local agent clients to use an Owletto MCP endpoint.
 
 ```bash
 npx owletto@latest init
 npx owletto@latest init --url http://localhost:8787/mcp
 ```
 
-The init flow:
-
-1. lets you choose Owletto Cloud, a local runtime, or a custom MCP URL
-2. checks that endpoint when possible
-3. detects supported local agent clients
-4. configures the selected clients directly when possible
-5. falls back to handoff/manual steps when a client cannot be auto-configured
-
-Use this after `owletto start` for local development, or point it at a hosted Owletto MCP URL for shared environments.
+Detects supported clients and auto-configures them. Falls back to manual steps when needed.
 
 ## Authentication
 
@@ -295,49 +164,15 @@ This is the most direct way to inspect or test Owletto memory behavior outside a
 
 ### Which MCP tools are available?
 
-The exact tool list depends on the endpoint and your session scope.
+The exact tool list depends on the endpoint and your session scope. Run `owletto run` with no arguments to see what's available.
 
-- `owletto run` with no tool name shows the tools available to your current session.
-- Unscoped sessions can expose organization-switching tools.
-- Admin sessions can expose workspace management tools.
-- Some internal helper tools exist for Owletto's own page/rendering flows and are not normally shown to end users.
+**Core memory:** `search_knowledge`, `read_knowledge`, `save_knowledge`
 
-In practice, the Owletto MCP surface is organized like this:
+**Watchers:** `list_watchers`, `get_watcher`
 
-#### Core memory tools
+**Organization:** `list_organizations`, `switch_organization` (unscoped endpoint only)
 
-- `search_knowledge` — search the workspace knowledge graph and saved memory for entities and related context.
-- `read_knowledge` — read or search saved knowledge/content, including watcher windows when watcher parameters are provided.
-- `save_knowledge` — persist durable knowledge and optionally supersede stale facts.
-
-#### Watcher tools
-
-- `list_watchers` — discover watcher definitions for the current organization.
-- `get_watcher` — inspect one watcher's metadata and saved analysis windows.
-
-#### Organization tools
-
-These are typically available only on the unscoped `/mcp` endpoint:
-
-- `list_organizations` — list organizations available to the authenticated user.
-- `switch_organization` — move the current session into a different organization.
-
-#### Admin / workspace tools
-
-If your session has admin-level access, Owletto can also expose management tools such as:
-
-- `manage_entity` — entity CRUD plus relationship operations.
-- `manage_entity_schema` — entity type and relationship type schema management.
-- `manage_connections` — connector/connection setup and auth flows.
-- `manage_feeds` — feed creation, updates, deletion, and manual triggering.
-- `manage_auth_profiles` — reusable auth profile management.
-- `manage_operations` — discover and execute connector-backed operations.
-- `manage_watchers` — create, version, update, and complete watchers.
-- `manage_classifiers` — classifier template and manual classification management.
-- `manage_view_templates` — configure view templates for entity types and entities.
-- `query_sql` — run paginated read-only SQL against org-scoped virtual tables.
-
-There is also an internal `resolve_path` helper used by Owletto's page/template flows, but it is not usually part of the normal user-facing MCP tool surface.
+**Admin / workspace** (admin sessions only): `manage_entity`, `manage_entity_schema`, `manage_connections`, `manage_feeds`, `manage_auth_profiles`, `manage_operations`, `manage_watchers`, `manage_classifiers`, `query_sql`
 
 ## Other Useful Commands
 
@@ -357,9 +192,7 @@ This is mainly for connector setup, not day-to-day memory usage.
 
 ### `owletto configure`
 
-Writes OpenClaw plugin config using an `owletto token` command, which is useful when wiring the Owletto memory plugin into OpenClaw-based runtimes.
-
-In practice, this is how you generate config for `@lobu/owletto-openclaw` outside Lobu. The plugin still runs inside OpenClaw as a normal `slot: "memory"` plugin; `owletto configure` just gives it the token command and endpoint details it needs to authenticate to an Owletto server.
+Writes OpenClaw plugin config for `@lobu/owletto-openclaw` using an `owletto token` command.
 
 ## Repo-Local Development
 

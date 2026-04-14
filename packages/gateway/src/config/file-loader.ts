@@ -9,7 +9,11 @@ import type {
   SystemSkillEntry,
   ToolsEntry,
 } from "@lobu/core";
-import { createLogger, lobuConfigSchema } from "@lobu/core";
+import {
+  createLogger,
+  lobuConfigSchema,
+  normalizeDomainPatterns,
+} from "@lobu/core";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 
@@ -366,8 +370,8 @@ function buildLocalSkills(skillFiles: LoadedSkillFile[]): SkillConfig[] {
       if (fm.nixPackages?.length) skill.nixPackages = fm.nixPackages;
       if (fm.network) {
         skill.networkConfig = {
-          allowedDomains: fm.network.allow,
-          deniedDomains: fm.network.deny,
+          allowedDomains: normalizeDomainPatterns(fm.network.allow),
+          deniedDomains: normalizeDomainPatterns(fm.network.deny),
         };
       }
       if (fm.mcpServers && Object.keys(fm.mcpServers).length > 0) {

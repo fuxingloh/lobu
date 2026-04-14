@@ -4,13 +4,14 @@
  * Populated from files (dev mode) or via API (embedded mode).
  */
 
-import type {
-  AgentMetadata,
-  AgentSettings,
-  AgentStore,
-  ChannelBinding,
-  Grant,
-  StoredConnection,
+import {
+  normalizeDomainPattern,
+  type AgentMetadata,
+  type AgentSettings,
+  type AgentStore,
+  type ChannelBinding,
+  type Grant,
+  type StoredConnection,
 } from "@lobu/core";
 
 export class InMemoryAgentStore implements AgentStore {
@@ -189,7 +190,11 @@ export class InMemoryAgentStore implements AgentStore {
   // ── Grants ──────────────────────────────────────────────────────
 
   private grantKey(agentId: string, pattern: string): string {
-    return `${agentId}:${pattern}`;
+    const normalizedPattern = pattern.startsWith("/")
+      ? pattern
+      : normalizeDomainPattern(pattern);
+
+    return `${agentId}:${normalizedPattern}`;
   }
 
   private getValidGrant(
@@ -234,11 +239,11 @@ export class InMemoryAgentStore implements AgentStore {
       }
     }
 
-    // Domain wildcard: sub.example.com -> *.example.com
+    // Domain wildcard: sub.example.com -> .example.com
     if (!pattern.startsWith("/")) {
       const parts = pattern.split(".");
       if (parts.length > 2) {
-        const wildcard = `*.${parts.slice(1).join(".")}`;
+        const wildcard = `.${parts.slice(1).join(".")}`;
         const entry = this.getValidGrant(agentId, wildcard);
         if (entry) return !entry.denied;
       }

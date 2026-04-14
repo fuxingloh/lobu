@@ -8,6 +8,7 @@ import {
 } from "../use-case-showcases";
 import { deliverySurfaces } from "./platforms";
 import { UseCaseTabs } from "./UseCaseTabs";
+import { accentCyan, accentPink, textColor } from "./memory/styles";
 
 function Card({
   title,
@@ -207,7 +208,9 @@ export function DemoSection(props: {
   linkTabsToCampaigns?: boolean;
 }) {
   const [internalUseCaseId, setInternalUseCaseId] = useState(
-    props.activeUseCaseId ?? props.defaultUseCaseId ?? DEFAULT_LANDING_USE_CASE_ID
+    props.activeUseCaseId ??
+      props.defaultUseCaseId ??
+      DEFAULT_LANDING_USE_CASE_ID
   );
 
   useEffect(() => {
@@ -222,6 +225,7 @@ export function DemoSection(props: {
     () => getLandingUseCaseShowcase(resolvedUseCaseId),
     [resolvedUseCaseId]
   );
+  const memoryHref = `/memory/for/${activeUseCase.id}`;
 
   return (
     <section id="how-it-works" class="pt-4 pb-14 px-8">
@@ -241,16 +245,15 @@ export function DemoSection(props: {
                     }
                   }
             }
-            hrefForId={props.linkTabsToCampaigns ? (id) => `/for/${id}` : undefined}
+            hrefForId={
+              props.linkTabsToCampaigns ? (id) => `/for/${id}` : undefined
+            }
             className="mb-6"
           />
         )}
 
         <div class="mb-6">
-          <Card
-            title="Runtime"
-            description={activeUseCase.runtime.summary}
-          >
+          <Card title="Runtime" description={activeUseCase.runtime.summary}>
             <RequestBlock
               label={activeUseCase.runtime.requestLabel}
               text={activeUseCase.runtime.request}
@@ -262,7 +265,7 @@ export function DemoSection(props: {
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card
-            title="Skill bundle"
+            title="Runtime"
             description={activeUseCase.skills.description}
             href="/skills"
             hrefLabel="Skills page"
@@ -304,7 +307,10 @@ export function DemoSection(props: {
                 >
                   Agent
                 </div>
-                <div class="text-sm" style={{ color: "var(--color-page-text)" }}>
+                <div
+                  class="text-sm"
+                  style={{ color: "var(--color-page-text)" }}
+                >
                   {activeUseCase.skills.agentId}
                 </div>
               </div>
@@ -315,7 +321,10 @@ export function DemoSection(props: {
                 >
                   MCP server
                 </div>
-                <div class="text-sm" style={{ color: "var(--color-page-text)" }}>
+                <div
+                  class="text-sm"
+                  style={{ color: "var(--color-page-text)" }}
+                >
                   {activeUseCase.skills.mcpServer}
                 </div>
               </div>
@@ -326,7 +335,10 @@ export function DemoSection(props: {
                 >
                   Provider
                 </div>
-                <div class="text-sm" style={{ color: "var(--color-page-text)" }}>
+                <div
+                  class="text-sm"
+                  style={{ color: "var(--color-page-text)" }}
+                >
                   {activeUseCase.skills.providerId}
                 </div>
               </div>
@@ -337,7 +349,10 @@ export function DemoSection(props: {
                 >
                   Model
                 </div>
-                <div class="text-sm" style={{ color: "var(--color-page-text)" }}>
+                <div
+                  class="text-sm"
+                  style={{ color: "var(--color-page-text)" }}
+                >
                   {activeUseCase.skills.model}
                 </div>
               </div>
@@ -357,12 +372,27 @@ export function DemoSection(props: {
                 </div>
               ))}
             </div>
+            <p
+              class="text-xs leading-6 mt-5"
+              style={{ color: "var(--color-page-text-muted)" }}
+            >
+              Need another service or workflow? Add your own MCP servers, Nix
+              packages, and custom skills. See the{" "}
+              <a
+                href="/skills"
+                class="hover:underline"
+                style={{ color: "var(--color-tg-accent)" }}
+              >
+                skills page
+              </a>
+              .
+            </p>
           </Card>
 
           <Card
             title="Memory"
             description={activeUseCase.memory.description}
-            href="/memory"
+            href={memoryHref}
             hrefLabel="Memory page"
           >
             <RequestBlock
@@ -378,6 +408,83 @@ export function DemoSection(props: {
                 Structured entities
               </div>
               <PillList items={activeUseCase.memory.entityTypes} />
+            </div>
+            <div class="mt-5">
+              <div
+                class="text-[10px] uppercase tracking-[0.18em] mb-2"
+                style={{ color: "var(--color-page-text-muted)" }}
+              >
+                Relationships
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs"
+                  style={{
+                    color: textColor,
+                    backgroundColor: `rgba(103, 232, 249, 0.08)`,
+                    border: "1px solid rgba(103, 232, 249, 0.22)",
+                  }}
+                >
+                  <span class="font-semibold">
+                    {activeUseCase.memory.relations[0]?.sourceType}
+                  </span>{" "}
+                  {activeUseCase.memory.relations[0]?.source}
+                </span>
+                <span
+                  class="px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-[0.16em]"
+                  style={{
+                    color: accentCyan,
+                    backgroundColor: `rgba(103, 232, 249, 0.06)`,
+                    border: "1px solid rgba(103, 232, 249, 0.18)",
+                  }}
+                >
+                  {activeUseCase.memory.relations[0]?.label}
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs"
+                  style={{
+                    color: textColor,
+                    backgroundColor: `rgba(134, 239, 172, 0.08)`,
+                    border: "1px solid rgba(134, 239, 172, 0.22)",
+                  }}
+                >
+                  <span class="font-semibold">
+                    {activeUseCase.memory.relations[0]?.targetType}
+                  </span>{" "}
+                  {activeUseCase.memory.relations[0]?.target}
+                </span>
+              </div>
+            </div>
+
+            <div class="mt-5">
+              <div
+                class="text-[10px] uppercase tracking-[0.18em] mb-2"
+                style={{ color: "var(--color-page-text-muted)" }}
+              >
+                Watcher
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs"
+                  style={{
+                    color: textColor,
+                    backgroundColor: `rgba(251, 113, 133, 0.08)`,
+                    border: "1px solid rgba(251, 113, 133, 0.22)",
+                  }}
+                >
+                  {activeUseCase.memory.watcher.name}
+                </span>
+                <span
+                  class="px-1.5 py-0.5 rounded-full text-[10px] uppercase tracking-[0.14em]"
+                  style={{
+                    color: accentPink,
+                    backgroundColor: `rgba(251, 113, 133, 0.06)`,
+                    border: "1px solid rgba(251, 113, 133, 0.18)",
+                  }}
+                >
+                  {activeUseCase.memory.watcher.schedule}
+                </span>
+              </div>
             </div>
           </Card>
         </div>

@@ -91,6 +91,7 @@ export default defineConfig({
           href: "https://github.com/lobu-ai/lobu",
         },
       ],
+      disable404Route: true,
     }),
     preact({ compat: true }),
     sitemap(),
