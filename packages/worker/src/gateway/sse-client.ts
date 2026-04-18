@@ -500,13 +500,13 @@ export class GatewayClient {
       );
     }
 
-    if (data.userId.toLowerCase() !== this.userId.toLowerCase()) {
-      logger.warn(
-        { traceId, receivedUserId: data.userId, expectedUserId: this.userId },
-        "Received message for wrong user"
-      );
-      return;
-    }
+    // No per-user filtering here: deployment names intentionally hash only
+    // `platform:channelId:conversationId` (see `generateDeploymentName` in
+    // base-deployment-manager.ts) so a channel/thread has ONE shared worker
+    // across all posting users. DMs are single-participant, so a check would
+    // be dead there too. The WORKER_TOKEN-scoped-to-spawning-user tradeoff
+    // for shared channel workers is acknowledged and deferred to per-message
+    // JWT minting — gating here would break the core group-bot design.
 
     // Check job type and dispatch accordingly
     if (data.jobType === "exec") {
