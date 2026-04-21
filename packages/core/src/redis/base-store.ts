@@ -15,10 +15,6 @@ export interface RedisStoreConfig {
 /**
  * Base class for all Redis-backed stores
  * Provides common CRUD operations with JSON serialization
- *
- * Consolidates:
- * - packages/gateway/src/auth/credential-store.ts (BaseCredentialStore)
- * - packages/gateway/src/infrastructure/redis/store.ts (BaseRedisStore)
  */
 export abstract class BaseRedisStore<T> {
   protected logger: Logger;
@@ -179,22 +175,6 @@ export abstract class BaseRedisStore<T> {
    * Return false to reject invalid data
    */
   protected validate(_value: T): boolean {
-    return true;
-  }
-}
-
-/**
- * Specialized base for credential stores
- * Validates that accessToken field exists
- */
-export abstract class BaseCredentialStore<
-  T extends { accessToken: string },
-> extends BaseRedisStore<T> {
-  protected override validate(value: T): boolean {
-    if (!value.accessToken) {
-      this.logger.warn("Invalid credentials: missing accessToken");
-      return false;
-    }
     return true;
   }
 }
