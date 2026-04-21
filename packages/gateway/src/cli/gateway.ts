@@ -48,7 +48,6 @@ export function createGatewayApp(
     authProvider,
   } = options;
 
-  // Wire injectable auth provider (for embedded mode)
   if (authProvider) {
     const { setAuthProvider } = require("../routes/public/settings-auth");
     setAuthProvider(authProvider);
@@ -56,7 +55,6 @@ export function createGatewayApp(
 
   const app = new OpenAPIHono();
 
-  // Global middleware
   app.use(
     "*",
     secureHeaders({
@@ -85,7 +83,6 @@ export function createGatewayApp(
     })
   );
 
-  // Health endpoints
   app.get("/health", (c) => {
     const mode =
       process.env.LOBU_MODE ||
@@ -110,13 +107,11 @@ export function createGatewayApp(
 
   app.get("/ready", (c) => c.json({ ready: true }));
 
-  // Compute adminPassword once — used by Agent API, CLI auth, metrics, and messaging
   const crypto = require("node:crypto");
   const adminPassword: string =
     process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString("base64url");
 
-  // Prometheus metrics endpoint.
-  // Keep auth optional so existing ServiceMonitor configs continue to scrape.
+  // Metrics auth is optional so existing ServiceMonitor configs continue to scrape.
   app.get("/metrics", async (c) => {
     const metricsAuthToken = process.env.METRICS_AUTH_TOKEN;
     if (metricsAuthToken) {
@@ -130,7 +125,6 @@ export function createGatewayApp(
     return c.text(getMetricsText());
   });
 
-  // Secret injection proxy (Hono)
   if (secretProxy) {
     app.route("/api/proxy", secretProxy.getApp());
     logger.debug("Secret proxy enabled at :8080/api/proxy");
@@ -144,26 +138,22 @@ export function createGatewayApp(
     }
   }
 
-  // Worker Gateway routes (Hono)
   if (workerGateway) {
     app.route("/worker", workerGateway.getApp());
     logger.debug("Worker gateway routes enabled at :8080/worker/*");
   }
 
-  // Register module endpoints
   const { moduleRegistry: coreModuleRegistry } = require("@lobu/core");
   if (coreModuleRegistry.registerHonoEndpoints) {
     coreModuleRegistry.registerHonoEndpoints(app);
   } else {
-    // Create express-like adapter for module registry
     const expressApp = createExpressAdapter(app);
     coreModuleRegistry.registerEndpoints(expressApp);
   }
   logger.debug("Module endpoints registered");
 
-  // MCP OAuth auth-code callback (public — browser-facing).
-  // MUST register BEFORE the MCP proxy mount at /mcp, otherwise the proxy's
-  // catch-all `/:mcpId/*` route swallows /mcp/oauth/callback.
+  // MCP OAuth callback MUST register before the MCP proxy mount at /mcp,
+  // otherwise the proxy's `/:mcpId/*` route swallows /mcp/oauth/callback.
   if (coreServices) {
     const { createMcpOAuthRoutes } = require("../routes/public/mcp-oauth");
     const mcpOAuthRouter = createMcpOAuthRoutes({
@@ -179,22 +169,17 @@ export function createGatewayApp(
     );
   }
 
-  // MCP proxy routes (Hono)
   if (mcpProxy) {
-    // Handle root path requests with X-Mcp-Id header
     app.all("/", async (c, next) => {
       if (mcpProxy.isMcpRequest(c)) {
-        // Forward to MCP proxy - need to handle directly since it's at root
         return mcpProxy.getApp().fetch(c.req.raw);
       }
       return next();
     });
-    // Mount MCP proxy at /mcp/*
     app.route("/mcp", mcpProxy.getApp());
     logger.debug("MCP proxy routes enabled at :8080/mcp/*");
   }
 
-  // File routes (already Hono) - uses platform registry for per-platform file handling
   if (platformRegistry && coreServices) {
     const artifactStore = coreServices.getArtifactStore();
     const { createFileRoutes } = require("../routes/internal/files");
@@ -212,7 +197,6 @@ export function createGatewayApp(
     );
   }
 
-  // History routes (already Hono)
   {
     const { createHistoryRoutes } = require("../routes/internal/history");
     const historyRouter = createHistoryRoutes();
@@ -220,7 +204,6 @@ export function createGatewayApp(
     logger.debug("History routes enabled at :8080/internal/history");
   }
 
-  // Device auth routes (gateway-mediated OAuth for workers)
   if (coreServices) {
     const {
       createDeviceAuthRoutes,
@@ -240,7 +223,6 @@ export function createGatewayApp(
     }
   }
 
-  // Audio routes (TTS synthesis for workers)
   if (coreServices) {
     const transcriptionService = coreServices.getTranscriptionService();
     if (transcriptionService) {
@@ -251,7 +233,6 @@ export function createGatewayApp(
     }
   }
 
-  // Image routes (image generation for workers)
   if (coreServices) {
     const imageGenerationService = coreServices.getImageGenerationService();
     if (imageGenerationService) {
@@ -262,7 +243,6 @@ export function createGatewayApp(
     }
   }
 
-  // Interaction routes (already Hono)
   if (interactionService) {
     const {
       createInteractionRoutes,
@@ -272,7 +252,6 @@ export function createGatewayApp(
     logger.debug("Internal interaction routes enabled");
   }
 
-  // Create CLI token service early so it can be shared by messaging + agent API
   let cliTokenService: any;
   if (coreServices) {
     const { CliTokenService } = require("../auth/cli/token-service");
@@ -280,7 +259,6 @@ export function createGatewayApp(
     cliTokenService = new CliTokenService(redisClient);
   }
 
-  // Agent API routes (direct API access + platform-routed messaging)
   if (coreServices) {
     const queueProducer = coreServices.getQueueProducer();
     const sessionMgr = coreServices.getSessionManager();
@@ -354,7 +332,6 @@ export function createGatewayApp(
   }
 
   if (coreServices) {
-    // Mount OAuth modules under unified auth router
     const authRouter = new OpenAPIHono();
     const registeredProviders: string[] = [];
 
@@ -600,12 +577,10 @@ export function createGatewayApp(
       });
     }
 
-    // Get shared dependencies (needed before mounting auth router)
     const agentSettingsStore = coreServices.getAgentSettingsStore();
     const claudeOAuthStateStore = coreServices.getOAuthStateStore();
     const scheduleService = coreServices.getScheduleService();
 
-    // Build provider stores and overrides dynamically from registered modules
     const providerStores: Record<
       string,
       { hasCredentials(agentId: string): Promise<boolean> }
@@ -638,7 +613,6 @@ export function createGatewayApp(
       );
     }
 
-    // Landing page (docs + integrations)
     {
       const { createLandingRoutes } = require("../routes/public/landing");
       const landingRouter = createLandingRoutes();
@@ -646,7 +620,6 @@ export function createGatewayApp(
       logger.debug("Landing page enabled at :8080/");
     }
 
-    // Agent history routes (proxy to worker HTTP server)
     {
       const connectionManager = coreServices
         .getWorkerGateway()
@@ -668,7 +641,6 @@ export function createGatewayApp(
       }
     }
 
-    // Agent config routes (/api/v1/agents/{id}/config)
     if (agentSettingsStore) {
       const {
         createAgentConfigRoutes,
@@ -696,7 +668,6 @@ export function createGatewayApp(
       );
     }
 
-    // OAuth routes (mounted under unified auth router)
     if (agentSettingsStore) {
       const { createOAuthRoutes } = require("../routes/public/oauth");
       const { OAuthClient } = require("../auth/oauth/client");
@@ -712,7 +683,6 @@ export function createGatewayApp(
       registeredProviders.push("oauth");
     }
 
-    // Mount unified auth router (includes provider modules + OAuth)
     if (registeredProviders.length > 0) {
       app.route("/api/v1/auth", authRouter);
       logger.debug(
@@ -720,7 +690,6 @@ export function createGatewayApp(
       );
     }
 
-    // Channel binding routes (mount under agent API)
     const channelBindingService = coreServices.getChannelBindingService();
     if (channelBindingService) {
       const {
@@ -731,14 +700,12 @@ export function createGatewayApp(
         userAgentsStore: coreServices.getUserAgentsStore(),
         agentMetadataStore: coreServices.getAgentMetadataStore(),
       });
-      // Mount as a sub-router under /api/v1/agents/:agentId/channels
       app.route("/api/v1/agents/:agentId/channels", channelBindingRouter);
       logger.debug(
         "Channel binding routes enabled at :8080/api/v1/agents/{agentId}/channels/*"
       );
     }
 
-    // Agent management routes (separate from Agent API's /api/v1/agents)
     {
       const userAgentsStore = coreServices.getUserAgentsStore();
       const agentMetadataStore = coreServices.getAgentMetadataStore();
@@ -754,7 +721,6 @@ export function createGatewayApp(
     }
   }
 
-  // Chat SDK connection routes (webhook + CRUD)
   if (chatInstanceManager) {
     const {
       createSlackRoutes,
@@ -778,9 +744,6 @@ export function createGatewayApp(
     );
   }
 
-  // ─── Reload endpoint (file-first dev mode) ──────────────────────────────────
-  // Re-reads lobu.toml + markdown and re-populates InMemoryAgentStore.
-  // Only works in dev mode (files exist), authenticated with ADMIN_PASSWORD.
   app.post("/api/v1/reload", async (c) => {
     if (process.env.NODE_ENV === "production") {
       return c.json({ error: "Not found" }, 404);
@@ -808,9 +771,6 @@ export function createGatewayApp(
     }
   });
 
-  // ─── Internal CLI status endpoint ──────────────────────────────────────────
-  // Returns agents, connections, and sandboxes for `lobu status`.
-  // Only available in non-production, authenticated with ADMIN_PASSWORD.
   app.get("/internal/status", async (c) => {
     if (process.env.NODE_ENV === "production") {
       return c.json({ error: "Not found" }, 404);
@@ -883,10 +843,8 @@ export function createGatewayApp(
     });
   });
 
-  // Auto-register any non-openapi routes so everything shows up in the schema
   registerAutoOpenApiRoutes(app);
 
-  // OpenAPI Documentation
   app.doc("/api/docs/openapi.json", {
     openapi: "3.0.0",
     info: {
@@ -1031,7 +989,6 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
     headers[key] = value;
   });
 
-  // Express-compatible request object
   const req: any = {
     method: c.req.method,
     url: c.req.url,
@@ -1042,18 +999,16 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
     body: null,
     get: (name: string) => headers[name.toLowerCase()],
     on: () => {
-      // Express event listener stub - not used in Hono compat layer
+      /* no-op */
     },
   };
 
-  // Response state
   let statusCode = 200;
   const responseHeaders = new Headers();
   let isStreaming = false;
   let streamController: ReadableStreamDefaultController<Uint8Array> | null =
     null;
 
-  // Express-compatible response object
   const res: any = {
     statusCode: 200,
     destroyed: false,
@@ -1152,11 +1107,10 @@ function createExpressCompatObjects(c: any, overridePath?: string) {
     },
 
     flushHeaders() {
-      // No-op for compatibility
+      /* no-op */
     },
   };
 
-  // Parse body for POST/PUT/PATCH
   if (["POST", "PUT", "PATCH"].includes(c.req.method)) {
     const contentType = c.req.header("content-type") || "";
     c.req.raw
@@ -1201,7 +1155,7 @@ function createExpressAdapter(honoApp: any) {
     },
     use: (pathOrHandler: any, handler?: any) => {
       if (typeof pathOrHandler === "function") {
-        // Global middleware - skip for now
+        // no-op
       } else if (handler) {
         honoApp.all(`${pathOrHandler}/*`, (c: any) =>
           handleExpressHandler(c, handler)
@@ -1217,30 +1171,24 @@ function createExpressAdapter(honoApp: any) {
 export async function startGateway(config: GatewayConfig): Promise<void> {
   logger.info("Starting Lobu Gateway");
 
-  // Start filtering proxy for worker network isolation (if enabled)
   const { startFilteringProxy } = await import("../proxy/proxy-manager");
   await startFilteringProxy();
 
-  // Import dependencies
   const { Orchestrator } = await import("../orchestration");
   const { Gateway } = await import("../gateway-main");
 
-  // Create and start orchestrator
   logger.debug("Creating orchestrator", { mode: process.env.DEPLOYMENT_MODE });
   const orchestrator = new Orchestrator(config.orchestration);
   await orchestrator.start();
   logger.debug("Orchestrator started");
 
-  // Create Gateway
   const gateway = new Gateway(config);
 
-  // Register API platform (always enabled)
   const { ApiPlatform } = await import("../api");
   const apiPlatform = new ApiPlatform();
   gateway.registerPlatform(apiPlatform);
   logger.debug("API platform registered");
 
-  // Start gateway
   await gateway.start();
   logger.debug("Gateway started");
 
@@ -1255,7 +1203,6 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
     logger.debug("Grant store connected to HTTP proxy");
   }
 
-  // Inject core services into orchestrator (provider modules carry their own credential stores)
   await orchestrator.injectCoreServices(
     coreServices.getQueue().getRedisClient(),
     coreServices.getSecretStore(),
@@ -1278,7 +1225,6 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
     );
   });
 
-  // Initialize Chat SDK connection manager (API-driven platform connections)
   const { ChatInstanceManager, ChatResponseBridge } = await import(
     "../connections"
   );
@@ -1286,13 +1232,11 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
   try {
     await chatInstanceManager.initialize(coreServices);
 
-    // Register chat platform adapters (delegates to ChatInstanceManager)
     for (const adapter of chatInstanceManager.createPlatformAdapters()) {
       gateway.registerPlatform(adapter);
     }
     logger.debug("ChatInstanceManager initialized");
 
-    // Seed connections from file-loaded agents (file-first architecture)
     const fileLoadedAgents = coreServices.getFileLoadedAgents();
     if (fileLoadedAgents.length > 0) {
       for (const agent of fileLoadedAgents) {
@@ -1328,7 +1272,6 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
       }
     }
 
-    // Wire ChatResponseBridge into unified thread consumer
     const unifiedConsumer = gateway.getUnifiedConsumer();
     if (unifiedConsumer) {
       const chatResponseBridge = new ChatResponseBridge(chatInstanceManager);
@@ -1342,7 +1285,6 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
     );
   }
 
-  // Setup server on port 8080 (single port for all HTTP traffic)
   if (!httpServer) {
     const app = createGatewayApp({
       secretProxy: coreServices.getSecretProxy(),
@@ -1358,7 +1300,6 @@ export async function startGateway(config: GatewayConfig): Promise<void> {
 
   logger.info("Lobu Gateway is running!");
 
-  // Setup graceful shutdown
   const cleanup = async () => {
     logger.info("Shutting down gateway...");
 
