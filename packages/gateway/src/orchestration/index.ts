@@ -14,6 +14,7 @@ import {
   type ModelProviderModule,
 } from "../modules/module-system.js";
 import type { GrantStore } from "../permissions/grant-store.js";
+import type { PolicyStore } from "../permissions/policy-store.js";
 import type { WritableSecretStore } from "../secrets/index.js";
 import type {
   BaseDeploymentManager,
@@ -55,7 +56,8 @@ export class Orchestrator {
     redisClient: Redis,
     secretStore: WritableSecretStore,
     providerCatalogService?: ProviderCatalogService,
-    grantStore?: GrantStore
+    grantStore?: GrantStore,
+    policyStore?: PolicyStore
   ): Promise<void> {
     this.deploymentManager.setRedisClient(redisClient);
     this.deploymentManager.setSecretStore(secretStore);
@@ -63,6 +65,11 @@ export class Orchestrator {
     // Inject grant store for auto-adding domain grants at deployment time
     if (grantStore) {
       this.deploymentManager.setGrantStore(grantStore);
+    }
+
+    // Inject policy store for syncing per-agent egress judge rules at deployment time
+    if (policyStore) {
+      this.deploymentManager.setPolicyStore(policyStore);
     }
 
     // Inject provider catalog service for per-agent provider resolution
