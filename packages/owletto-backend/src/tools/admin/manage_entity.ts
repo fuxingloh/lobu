@@ -542,9 +542,10 @@ async function handleUpdate(
 
   // Fetch before state for change tracking and validation
   const beforeRows = await sql`
-    SELECT name, slug, parent_id, metadata, entity_type
-    FROM entities
-    WHERE id = ${entityId} AND deleted_at IS NULL
+    SELECT e.name, e.slug, e.parent_id, e.metadata, et.slug AS entity_type
+    FROM entities e
+    JOIN entity_types et ON et.id = e.entity_type_id
+    WHERE e.id = ${entityId} AND e.deleted_at IS NULL
   `;
   if (beforeRows.length === 0) {
     throw new Error(`Entity with ID ${entityId} not found`);
@@ -876,9 +877,9 @@ const RELATIONSHIP_SELECT = `
   rt.name as relationship_type_name,
   rt.is_symmetric,
   fe.name as from_entity_name,
-  fe.entity_type as from_entity_type,
+  fet.slug as from_entity_type,
   te.name as to_entity_name,
-  te.entity_type as to_entity_type,
+  tet.slug as to_entity_type,
   r.metadata,
   r.confidence,
   r.source,
@@ -893,7 +894,9 @@ const RELATIONSHIP_JOINS = `
   FROM entity_relationships r
   JOIN entity_relationship_types rt ON r.relationship_type_id = rt.id
   LEFT JOIN entities fe ON r.from_entity_id = fe.id
+  LEFT JOIN entity_types fet ON fet.id = fe.entity_type_id
   LEFT JOIN entities te ON r.to_entity_id = te.id
+  LEFT JOIN entity_types tet ON tet.id = te.entity_type_id
 `;
 
 // ============================================
