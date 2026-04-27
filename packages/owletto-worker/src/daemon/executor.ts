@@ -228,16 +228,48 @@ async function executeSyncRun(
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[executor] Sync run ${run_id} failed:`, errorMessage);
 
+    const diag = extractSubprocessDiagnostics(error);
+
     await client.complete({
       run_id,
       worker_id: client.id,
       status: 'failed',
       items_collected: itemsCollectedSoFar,
       error_message: errorMessage,
+      ...(diag ?? {}),
     });
 
     return { itemsCollected: itemsCollectedSoFar, error: errorMessage };
   }
+}
+
+/**
+ * Pull diagnostic fields off a SubprocessError-shaped error so the worker
+ * can persist them on the failed run row. Returns `undefined` when the
+ * thrown value isn't a subprocess failure (e.g. a stream/HTTP error).
+ */
+function extractSubprocessDiagnostics(error: unknown):
+  | {
+      output_tail?: string;
+      exit_code?: number | null;
+      exit_signal?: string | null;
+      exit_reason?: 'ok' | 'error_message' | 'timeout' | 'oom' | 'crash';
+    }
+  | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const e = error as {
+    exitReason?: 'ok' | 'error_message' | 'timeout' | 'oom' | 'crash';
+    exitCode?: number | null;
+    exitSignal?: string | null;
+    outputTail?: string;
+  };
+  if (!e.exitReason && e.exitCode === undefined && !e.outputTail) return undefined;
+  return {
+    output_tail: e.outputTail || undefined,
+    exit_code: e.exitCode ?? null,
+    exit_signal: e.exitSignal ?? null,
+    exit_reason: e.exitReason,
+  };
 }
 
 /**
@@ -408,12 +440,16 @@ async function executeAuthRun(
     clearInterval(heartbeatInterval);
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[executor] Auth run ${run_id} failed:`, errorMessage);
+
+    const diag = extractSubprocessDiagnostics(error);
+
     try {
       await client.completeAuth({
         run_id,
         worker_id: client.id,
         status: 'failed',
         error_message: errorMessage,
+        ...(diag ?? {}),
       });
     } catch (completeErr) {
       console.error('[executor] completeAuth after failure errored:', completeErr);

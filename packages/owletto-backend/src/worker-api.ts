@@ -14,6 +14,10 @@ import { notifyBrowserAuthExpired } from './notifications/triggers';
 import { materializeDueFeeds } from './scheduled/check-due-feeds';
 import { supersedeActionEvent } from './tools/admin/manage_operations';
 import { getAuthProfileById, getBrowserSessionReadiness } from './utils/auth-profiles';
+import {
+  maybeCloseRepairThread,
+  maybeOpenOrAppendRepairThread,
+} from './connectors/repair-agent';
 import { autoLinkEvent } from './utils/auto-linker';
 import { nextRunAt as nextRunAtFromCron } from './utils/cron';
 import { resolveConnectorCode } from './utils/ensure-connector-installed';
@@ -447,19 +451,41 @@ export async function completeWorkerJob(c: Context<{ Bindings: Env }>) {
       error_message?: string;
       checkpoint?: Record<string, unknown>;
       auth_update?: Record<string, unknown>;
+      // Diagnostic fields from the subprocess executor (failed-run path only).
+      // The worker redacts output_tail before sending; backend stores as-is.
+      output_tail?: string;
+      exit_code?: number | null;
+      exit_signal?: string | null;
+      exit_reason?: 'ok' | 'error_message' | 'timeout' | 'oom' | 'crash';
     }>();
 
     const sql = getDb();
 
-    await sql`
-    UPDATE runs
-    SET status = ${req.status === 'success' ? 'completed' : 'failed'},
-        completed_at = current_timestamp,
-        items_collected = ${req.items_collected ?? 0},
-        error_message = ${req.error_message ?? null},
-        checkpoint = COALESCE(${req.checkpoint ? sql.json(req.checkpoint) : null}, checkpoint)
-    WHERE id = ${req.run_id}
-  `;
+    if (req.status === 'failed') {
+      await sql`
+      UPDATE runs
+      SET status = 'failed',
+          completed_at = current_timestamp,
+          items_collected = ${req.items_collected ?? 0},
+          error_message = ${req.error_message ?? null},
+          checkpoint = COALESCE(${req.checkpoint ? sql.json(req.checkpoint) : null}, checkpoint),
+          output_tail = ${req.output_tail ?? null},
+          exit_code = ${req.exit_code ?? null},
+          exit_signal = ${req.exit_signal ?? null},
+          exit_reason = ${req.exit_reason ?? null}
+      WHERE id = ${req.run_id}
+    `;
+    } else {
+      await sql`
+      UPDATE runs
+      SET status = 'completed',
+          completed_at = current_timestamp,
+          items_collected = ${req.items_collected ?? 0},
+          error_message = ${req.error_message ?? null},
+          checkpoint = COALESCE(${req.checkpoint ? sql.json(req.checkpoint) : null}, checkpoint)
+      WHERE id = ${req.run_id}
+    `;
+    }
 
     // Update the feed's sync state
     const runRows = (await sql`
@@ -482,12 +508,32 @@ export async function completeWorkerJob(c: Context<{ Bindings: Env }>) {
             last_sync_status = ${req.status},
             last_error = ${isSuccess ? null : (req.error_message ?? null)},
             consecutive_failures = ${isSuccess ? sql`0` : sql`consecutive_failures + 1`},
+            first_failure_at = ${isSuccess ? sql`NULL` : sql`COALESCE(first_failure_at, current_timestamp)`},
             items_collected = ${isSuccess ? sql`items_collected + ${req.items_collected ?? 0}` : sql`items_collected`},
             checkpoint = ${isSuccess ? sql`COALESCE(${req.checkpoint ? sql.json(req.checkpoint) : null}, checkpoint)` : sql`checkpoint`},
             next_run_at = ${nextRun},
             updated_at = current_timestamp
         WHERE id = ${feedId}
       `;
+
+      // Repair-agent trigger: open / append / close threads based on the
+      // updated streak state. All errors swallowed inside the helper — must
+      // never block the worker-completion path.
+      if (isSuccess) {
+        await maybeCloseRepairThread(feedId, req.run_id).catch((err) => {
+          logger.warn(
+            { feed_id: feedId, error: errorMessage(err) },
+            '[completeWorkerJob] maybeCloseRepairThread threw'
+          );
+        });
+      } else {
+        await maybeOpenOrAppendRepairThread(feedId, req.run_id).catch((err) => {
+          logger.warn(
+            { feed_id: feedId, error: errorMessage(err) },
+            '[completeWorkerJob] maybeOpenOrAppendRepairThread threw'
+          );
+        });
+      }
     }
 
     // Persist refreshed browser auth data on the auth profile
@@ -801,19 +847,40 @@ export async function completeAuthRun(c: Context<{ Bindings: Env }>) {
       credentials?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
       error_message?: string;
+      // Diagnostic fields from the subprocess executor (failed-run path only).
+      // The worker redacts output_tail before sending; backend stores as-is.
+      output_tail?: string;
+      exit_code?: number | null;
+      exit_signal?: string | null;
+      exit_reason?: 'ok' | 'error_message' | 'timeout' | 'oom' | 'crash';
     }>();
 
     const sql = getDb();
 
-    const runRows = (await sql`
+    const runRows =
+      req.status === 'failed'
+        ? ((await sql`
       UPDATE runs
-      SET status = ${req.status === 'success' ? 'completed' : 'failed'},
+      SET status = 'failed',
+          completed_at = current_timestamp,
+          error_message = ${req.error_message ?? null},
+          auth_signal = NULL,
+          output_tail = ${req.output_tail ?? null},
+          exit_code = ${req.exit_code ?? null},
+          exit_signal = ${req.exit_signal ?? null},
+          exit_reason = ${req.exit_reason ?? null}
+      WHERE id = ${req.run_id}
+      RETURNING auth_profile_id, organization_id
+    `) as Array<{ auth_profile_id: number | null; organization_id: string }>)
+        : ((await sql`
+      UPDATE runs
+      SET status = 'completed',
           completed_at = current_timestamp,
           error_message = ${req.error_message ?? null},
           auth_signal = NULL
       WHERE id = ${req.run_id}
       RETURNING auth_profile_id, organization_id
-    `) as Array<{ auth_profile_id: number | null; organization_id: string }>;
+    `) as Array<{ auth_profile_id: number | null; organization_id: string }>);
 
     const authProfileId = runRows[0]?.auth_profile_id ?? null;
     const organizationId = runRows[0]?.organization_id;
