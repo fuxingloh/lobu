@@ -4,10 +4,14 @@
  * Tests for requiresOwnerAdmin and isPublicReadable authorization checks.
  */
 
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ToolNotRegisteredError } from '../../utils/errors';
 import { routeAction } from '../../tools/admin/action-router';
 import { type AuthContext, checkToolAccess } from '../../tools/execute';
-import type { ToolContext } from '../../tools/registry';
+import { getTool, type ToolContext } from '../../tools/registry';
 import {
   getRequiredAccessLevel,
   isPublicReadable,
@@ -289,13 +293,19 @@ describe('checkToolAccess', () => {
     ).not.toThrow();
   });
 
-  it('hides legacy internal tools from external MCP calls even when the name is known', () => {
+  it('hides internal tools from external MCP calls even when the name is known', () => {
     expect(() =>
       checkToolAccess('manage_entity', { action: 'list' }, { ...baseAuth, memberRole: 'owner' })
     ).toThrow('Tool not found: manage_entity');
   });
 
-  it('allows REST compatibility paths to reach legacy internal tools subject to access', () => {
+  it('throws ToolNotRegisteredError for genuinely unregistered names so REST proxy can alert', () => {
+    expect(() =>
+      checkToolAccess('this_tool_does_not_exist', {}, { ...baseAuth, memberRole: 'owner' })
+    ).toThrow(ToolNotRegisteredError);
+  });
+
+  it('allows REST compatibility paths to reach internal tools subject to access', () => {
     expect(() =>
       checkToolAccess('manage_entity', { action: 'create' }, {
         ...baseAuth,
@@ -305,6 +315,25 @@ describe('checkToolAccess', () => {
       })
     ).not.toThrow();
   });
+
+  it.each(['list_watchers', 'get_watcher', 'read_knowledge'])(
+    'hides %s from external MCP but keeps it reachable via REST',
+    (toolName) => {
+      // External MCP — must look like an unknown tool to the caller.
+      expect(() =>
+        checkToolAccess(toolName, {}, { ...baseAuth, memberRole: 'owner' })
+      ).toThrow(`Tool not found: ${toolName}`);
+
+      // REST proxy — frontend reaches the same handler.
+      expect(() =>
+        checkToolAccess(
+          toolName,
+          {},
+          { ...baseAuth, memberRole: 'member', allowInternalTools: true }
+        )
+      ).not.toThrow();
+    }
+  );
 
   it('keeps admin-only tools restricted for members', () => {
     // query_sql is the canonical admin-only tool on the post-PR-2 surface.
@@ -321,5 +350,132 @@ describe('checkToolAccess', () => {
     ).toThrow(
       'This action requires admin or owner access. Ask an organization owner to grant elevated access.'
     );
+  });
+});
+
+describe('first-party tool-name coverage', () => {
+  // Both surfaces share the same dispatch (`POST /api/:orgSlug/:toolName` →
+  // `restToolProxy` → `executeTool` → `getTool(name)`), but the CLI's
+  // browser-auth flow goes through MCP RPC and needs its tools to *also* be
+  // visible on `tools/list` (i.e. NOT `internal: true`). These tests pin both
+  // invariants.
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const webSrcRoot = join(__dirname, '..', '..', '..', '..', 'owletto-web', 'src');
+  const cliSrcRoot = join(__dirname, '..', '..', '..', '..', 'owletto-cli', 'src');
+
+  function present(path: string): boolean {
+    try {
+      statSync(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function collectTsFiles(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+        collectTsFiles(full, out);
+      } else if (/\.(ts|tsx)$/.test(entry.name)) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  function extractMatches(root: string, pattern: RegExp): Set<string> {
+    const names = new Set<string>();
+    for (const file of collectTsFiles(root)) {
+      for (const match of readFileSync(file, 'utf-8').matchAll(pattern)) {
+        names.add(match[1]);
+      }
+    }
+    return names;
+  }
+
+  // Names a first-party caller invokes that have no backend handler. Each
+  // entry is dead code — kept here so the test fails the day someone wires
+  // it up without first registering the tool. Empty this set when cleaned up.
+  const KNOWN_DEAD_NAMES = new Set<string>([
+    // useDeleteWindow in owletto-web/src/hooks/use-watchers.ts has no caller;
+    // manage_queue was never registered. Delete the hook or add the tool.
+    'manage_queue',
+  ]);
+
+  function assertRegistered(used: Set<string>): void {
+    const drift: string[] = [];
+    const stale: string[] = [];
+    for (const name of used) {
+      const registered = !!getTool(name);
+      if (KNOWN_DEAD_NAMES.has(name)) {
+        if (registered) stale.push(name);
+        continue;
+      }
+      if (!registered) drift.push(name);
+    }
+    expect(drift).toEqual([]);
+    // If a previously-dead name is now registered, remove it from the allowlist.
+    expect(stale).toEqual([]);
+  }
+
+  it('every owletto-web tool reference (apiCall + hook-factory) is registered', () => {
+    if (!present(webSrcRoot)) return; // submodule not checked out (shallow clone)
+    // Two patterns: direct `apiCall(<...>?)('foo', …)` and the hook-factory
+    // config form `tool: 'foo'` (used at api/entities.ts:165, api/connections.ts,
+    // etc. — over 30 sites the direct-apiCall regex would otherwise miss).
+    const apiCallNames = extractMatches(
+      webSrcRoot,
+      /\bapiCall(?:<[^>]*>)?\(\s*['"]([a-zA-Z_][a-zA-Z0-9_]*)['"]/g
+    );
+    const hookFactoryNames = extractMatches(
+      webSrcRoot,
+      /\btool:\s*['"]([a-zA-Z_][a-zA-Z0-9_]*)['"]/g
+    );
+    assertRegistered(new Set([...apiCallNames, ...hookFactoryNames]));
+  });
+
+  it('every owletto-cli REST callTool(ctx, name) is registered', () => {
+    if (!present(cliSrcRoot)) return;
+    const used = extractMatches(
+      cliSrcRoot,
+      /\bcallTool\(\s*[A-Za-z_][A-Za-z0-9_]*\s*,\s*['"]([a-zA-Z_][a-zA-Z0-9_]*)['"]/g
+    );
+    assertRegistered(used);
+  });
+
+  // CLI tools that flow through MCP RPC (`mcpRpc(url, 'tools/call', { name })`)
+  // — must be registered AND non-internal, since `tools/list` filters out
+  // `internal: true`. Hardcoded rather than regex-derived so a removal from
+  // the CLI source can't silently shrink the assertion set.
+  const CLI_PUBLIC_MCP_TOOLS = ['manage_connections', 'manage_auth_profiles'] as const;
+
+  it.each(CLI_PUBLIC_MCP_TOOLS)(
+    'CLI MCP tool %s is registered and visible on the public MCP surface',
+    (name) => {
+      const tool = getTool(name);
+      expect(tool).toBeDefined();
+      // `internal: true` would hide the tool from external `tools/list`,
+      // silently breaking `owletto browser-auth`.
+      expect(tool?.internal ?? false).toBe(false);
+    }
+  );
+
+  it('CLI browser-auth tools/call literals match the pinned set', () => {
+    // Drift detector: if browser-auth.ts starts calling a new MCP tool, fail
+    // here rather than silently expand the public-MCP surface unannounced.
+    if (!present(cliSrcRoot)) return;
+    const browserAuth = join(cliSrcRoot, 'commands', 'browser-auth.ts');
+    if (!present(browserAuth)) return;
+    const content = readFileSync(browserAuth, 'utf-8');
+    const used = new Set<string>();
+    // Match `mcpRpc(…, 'tools/call', { … name: 'X' … })` across newlines.
+    for (const match of content.matchAll(
+      /'tools\/call'[\s\S]{0,300}?\bname:\s*['"]([a-zA-Z_][a-zA-Z0-9_]*)['"]/g
+    )) {
+      used.add(match[1]);
+    }
+    expect([...used].sort()).toEqual([...CLI_PUBLIC_MCP_TOOLS].sort());
   });
 });
